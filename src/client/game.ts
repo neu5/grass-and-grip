@@ -1,6 +1,6 @@
 import { createRace, DT, step, type CarConfig, type GameState, type TickInputs } from '../sim';
 import { BINDINGS_P1, BINDINGS_P2, BINDINGS_SOLO, Keyboard } from './input';
-import { Renderer } from './renderer';
+import type { Renderer3D } from './renderer3d';
 
 export interface GameOptions {
   humans: 1 | 2;
@@ -22,7 +22,6 @@ const MAX_STEPS_PER_FRAME = 8;
 export class Game {
   private prev!: GameState;
   private curr!: GameState;
-  private renderer!: Renderer;
   private acc = 0;
   private lastTime = 0;
   private raf = 0;
@@ -31,7 +30,7 @@ export class Game {
   inputLog: TickInputs[] = [];
 
   constructor(
-    private canvas: HTMLCanvasElement,
+    private renderer: Renderer3D,
     private keyboard: Keyboard,
     private options: GameOptions,
   ) {
@@ -49,7 +48,7 @@ export class Game {
     this.humanIds = cars.map((c, i) => (c.controller === 'human' ? i : -1)).filter((i) => i >= 0);
     this.inputLog = [];
     this.acc = 0;
-    this.renderer = new Renderer(this.canvas, this.curr.trackId);
+    this.renderer.resetRace();
   }
 
   private sampleInputs(): TickInputs {

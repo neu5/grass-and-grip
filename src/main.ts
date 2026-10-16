@@ -1,8 +1,11 @@
 import './style.css';
 import { Game, type GameOptions } from './client/game';
 import { Keyboard } from './client/input';
+import { Renderer3D } from './client/renderer3d';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
+const hud = document.querySelector<HTMLCanvasElement>('#hud')!;
+const renderer = new Renderer3D(canvas, hud, 'meadow');
 const menu = document.querySelector<HTMLDivElement>('#menu')!;
 const form = document.querySelector<HTMLFormElement>('#menu-form')!;
 const keyboard = new Keyboard(window);
@@ -29,7 +32,7 @@ form.addEventListener('submit', (e) => {
     laps: Number(selected('laps')),
   };
   game?.stop();
-  game = new Game(canvas, keyboard, options);
+  game = new Game(renderer, keyboard, options);
   (window as unknown as { race: Game }).race = game;
   menu.hidden = true;
   canvas.focus();
@@ -39,6 +42,7 @@ form.addEventListener('submit', (e) => {
 window.addEventListener('keydown', (e) => {
   if (!game || !menu.hidden) return;
   if (e.code === 'KeyR') game.reset();
+  if (e.code === 'KeyC') renderer.toggleCamera();
   if (e.code === 'Escape') {
     game.stop();
     game = null;

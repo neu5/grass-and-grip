@@ -4,6 +4,13 @@ export type Vec2 = { x: number; y: number };
 
 export type Surface = 'asphalt' | 'grass';
 
+export interface Obstacle {
+  x: number;
+  y: number;
+  r: number;
+  kind: 'tyres' | 'tree';
+}
+
 export interface TrackDef {
   id: string;
   name: string;
@@ -13,7 +20,7 @@ export interface TrackDef {
   controlPoints: Vec2[];
   halfWidth: number;
   checkpointCount: number;
-  obstacles: { x: number; y: number; r: number }[];
+  obstacles: Obstacle[];
 }
 
 export interface Gate {
@@ -194,10 +201,22 @@ export const TRACKS: Record<string, TrackDef> = {
       { x: 190, y: 290 },
     ],
     obstacles: [
-      { x: 520, y: 520, r: 20 },
-      { x: 600, y: 450, r: 16 },
-      { x: 1180, y: 360, r: 18 },
-      { x: 1580, y: 600, r: 18 },
+      { x: 520, y: 520, r: 20, kind: 'tyres' },
+      { x: 600, y: 450, r: 16, kind: 'tyres' },
+      { x: 1180, y: 360, r: 18, kind: 'tyres' },
+      { x: 1580, y: 600, r: 18, kind: 'tyres' },
+      { x: 1480, y: 100, r: 16, kind: 'tree' },
+      { x: 130, y: 940, r: 18, kind: 'tree' },
+      { x: 100, y: 160, r: 15, kind: 'tree' },
+      { x: 430, y: 310, r: 17, kind: 'tree' },
+      { x: 1510, y: 880, r: 16, kind: 'tree' },
+      { x: 400, y: 640, r: 18, kind: 'tree' },
+      { x: 310, y: 520, r: 15, kind: 'tree' },
+      { x: 1390, y: 640, r: 16, kind: 'tree' },
+      { x: 730, y: 340, r: 17, kind: 'tree' },
+      { x: 640, y: 670, r: 15, kind: 'tree' },
+      { x: 1300, y: 70, r: 14, kind: 'tree' },
+      { x: 970, y: 340, r: 16, kind: 'tree' },
     ],
   },
 };
