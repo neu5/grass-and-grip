@@ -36,7 +36,7 @@ Any host that runs a long-lived Node process with websockets works (Render, Fly.
 - Start command: `npm start`
 - Node 20.11 or newer. The server listens on `$PORT`, which these hosts set for you.
 
-On Render, for example: New → Web Service → this repo, with the build and start commands above. On Fly.io or Railway, use the same two commands (Railway's Nixpacks detects them from `package.json`).
+On Render, the repo has a `render.yaml` blueprint (free web service, health check `/healthz`): Dashboard → New → Blueprint → pick this repo and branch → Apply. Free instances sleep after ~15 minutes idle, so the first visit takes a moment to wake up. The page connects with `wss://` on the same origin, so no extra configuration is needed. On Fly.io or Railway, use the same two commands (Railway's Nixpacks detects them from `package.json`).
 
 ## Controls
 

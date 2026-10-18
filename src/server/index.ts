@@ -23,7 +23,13 @@ const MIME: Record<string, string> = {
 };
 
 function serveStatic(req: IncomingMessage, res: ServerResponse) {
-  let path = decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname);
+  let path: string;
+  try {
+    path = decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname);
+  } catch {
+    res.writeHead(400).end('Bad request');
+    return;
+  }
   if (path === '/') path = '/index.html';
   if (!extname(path)) path += '.html';
   const file = normalize(join(DIST, path));
@@ -35,14 +41,16 @@ function serveStatic(req: IncomingMessage, res: ServerResponse) {
   createReadStream(file).pipe(res);
 }
 
-const server = createServer();
+const server = createServer((req, res) => {
+  if (req.url === '/healthz') res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
+});
 
 if (PROD) {
-  server.on('request', serveStatic);
+  server.on('request', (req, res) => req.url !== '/healthz' && serveStatic(req, res));
 } else {
   const { createServer: createVite } = await import('vite');
   const vite = await createVite({ root: ROOT, appType: 'mpa', server: { middlewareMode: true, hmr: { server } } });
-  server.on('request', (req, res) => vite.middlewares(req, res));
+  server.on('request', (req, res) => req.url !== '/healthz' && vite.middlewares(req, res));
 }
 
 interface Client {

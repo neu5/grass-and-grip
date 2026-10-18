@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: grass-and-grip
+    runtime: node
+    plan: free
+    # Rooms live in memory, so this must stay a single instance.
+    numInstances: 1
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
