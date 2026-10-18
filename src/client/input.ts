@@ -43,6 +43,7 @@ export class Keyboard {
 
   constructor(target: Window) {
     target.addEventListener('keydown', (e) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (GAME_KEYS.has(e.code)) e.preventDefault();
       this.down.add(e.code);
     });

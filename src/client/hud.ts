@@ -15,6 +15,7 @@ export function drawHud(
   alpha: number,
   labels: Label[],
   cameraName: string,
+  finishHint: string,
 ) {
   const order = standings(state);
   const tickNow = state.tick + alpha;
@@ -100,7 +101,7 @@ export function drawHud(
     bigText(ctx, `${order[0].name} wins!`, cw / 2, ch / 2 - 20);
     ctx.font = '600 18px system-ui, sans-serif';
     ctx.fillStyle = '#fff';
-    ctx.fillText('Press R to race again · Esc for menu', cw / 2, ch / 2 + 36);
+    ctx.fillText(finishHint, cw / 2, ch / 2 + 36);
   }
   ctx.restore();
 }

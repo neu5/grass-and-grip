@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect x=%223%22 y=%225%22 width=%2210%22 height=%226%22 rx=%222%22 fill=%22%233a8ee8%22/%3E%3C/svg%3E" />
+    <title>Grass &amp; Grip — online room</title>
+  </head>
+  <body>
+    <canvas id="game" tabindex="0"></canvas>
+    <canvas id="hud"></canvas>
+    <div id="menu">
+      <div class="card">
+        <h1>Grass <span>&amp;</span> Grip</h1>
+        <p class="tag">Online room <b id="room-id"></b> · up to 4 cars. <span id="conn" class="muted">Connecting…</span></p>
+
+        <form id="join-form" hidden>
+          <fieldset class="stack">
+            <legend>Your name</legend>
+            <input id="name" class="text" maxlength="16" placeholder="Driver name" autocomplete="nickname" />
+          </fieldset>
+          <fieldset id="colors">
+            <legend>Car color</legend>
+          </fieldset>
+          <button type="submit">Join room</button>
+        </form>
+
+        <div id="lobby" hidden>
+          <legend>Drivers</legend>
+          <ul id="players"></ul>
+          <fieldset id="ai">
+            <legend>AI opponents</legend>
+          </fieldset>
+          <fieldset id="laps">
+            <legend>Laps</legend>
+          </fieldset>
+          <p id="status" class="muted"></p>
+          <button id="ready" type="button">Ready</button>
+        </div>
+
+        <p id="error" class="error" hidden></p>
+        <div class="controls">
+          <div><b>Drive</b> Arrows or WASD &nbsp;·&nbsp; <b>Handbrake</b> Space / Shift &nbsp;·&nbsp; <b>C</b> camera</div>
+          <div class="muted">Share this page's URL to invite friends. <a href="/">Local play</a></div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/room.ts"></script>
+  </body>
+</html>
