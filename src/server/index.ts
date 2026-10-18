@@ -1,17 +1,21 @@
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import type { Socket } from 'node:net';
 import { extname, join, normalize, resolve } from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
 import { TICK_RATE } from '../sim';
 import type { ClientMessage, ServerMessage } from '../net/protocol';
+import { SNAPSHOT_HZ } from '../net/protocol';
+import { encodeSnapshot } from '../net/snapshot';
 import { Room } from '../net/room';
 
 const PROD = process.env.NODE_ENV === 'production';
 const PORT = Number(process.env.PORT ?? 47315);
 const ROOT = resolve(import.meta.dirname, '../..');
 const DIST = join(ROOT, 'dist');
-/** Race snapshots go out every Nth sim tick. */
-const BROADCAST_EVERY = 2;
+const SNAP_EVERY = Math.max(1, Math.round(TICK_RATE / SNAPSHOT_HZ));
+const FAKE_LAG_MS = Math.max(0, Number(process.env.FAKE_LAG_MS ?? 0) || 0);
+const FAKE_JITTER_MS = Math.max(0, Number(process.env.FAKE_JITTER_MS ?? 0) || 0);
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -44,6 +48,7 @@ function serveStatic(req: IncomingMessage, res: ServerResponse) {
 const server = createServer((req, res) => {
   if (req.url === '/healthz') res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
 });
+server.on('connection', (sock) => sock.setNoDelay(true));
 
 if (PROD) {
   server.on('request', (req, res) => req.url !== '/healthz' && serveStatic(req, res));
@@ -64,13 +69,26 @@ const clients = new Set<Client>();
 const sentVersion = new Map<Room, number>();
 let nextId = 1;
 
+function lagMs(): number {
+  if (FAKE_LAG_MS <= 0 && FAKE_JITTER_MS <= 0) return 0;
+  const jitter = FAKE_JITTER_MS > 0 ? (Math.random() * 2 - 1) * FAKE_JITTER_MS : 0;
+  return Math.max(0, FAKE_LAG_MS + jitter);
+}
+
+function later(fn: () => void): void {
+  const ms = lagMs();
+  if (ms <= 0) fn();
+  else setTimeout(fn, ms);
+}
+
 function send(socket: WebSocket, msg: ServerMessage) {
-  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
+  later(() => {
+    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
+  });
 }
 
 function broadcast(room: Room, msg: ServerMessage) {
-  const data = JSON.stringify(msg);
-  for (const c of clients) if (c.room === room && c.socket.readyState === WebSocket.OPEN) c.socket.send(data);
+  for (const c of clients) if (c.room === room) send(c.socket, msg);
 }
 
 function roomFor(id: string): Room {
@@ -96,28 +114,40 @@ function handle(client: Client, msg: ClientMessage) {
       error = room.setSettings(id, msg);
       break;
     case 'input':
-      room.setInput(id, msg.input);
+      room.setInput(id, msg.input, msg.seq);
+      break;
+    case 'ping':
+      send(client.socket, { t: 'pong', t0: msg.t0 });
       break;
   }
   if (error) send(client.socket, { t: 'error', message: error });
 }
 
-const wss = new WebSocketServer({ noServer: true });
+function disableNagle(ws: WebSocket) {
+  const sock = (ws as WebSocket & { _socket?: Socket })._socket;
+  sock?.setNoDelay(true);
+}
+
+const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
 server.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url ?? '/', 'http://x');
   if (url.pathname !== '/ws') return;
+  (socket as Socket).setNoDelay?.(true);
   wss.handleUpgrade(req, socket, head, (ws) => {
+    disableNagle(ws);
     const roomId = (url.searchParams.get('room') || 'main').slice(0, 32);
     const client: Client = { id: String(nextId++), room: roomFor(roomId), socket: ws };
     clients.add(client);
     send(ws, { t: 'welcome', id: client.id });
     send(ws, { t: 'lobby', lobby: client.room.view() });
     ws.on('message', (data) => {
-      try {
-        handle(client, JSON.parse(String(data)) as ClientMessage);
-      } catch {
-        send(ws, { t: 'error', message: 'Bad message' });
-      }
+      later(() => {
+        try {
+          handle(client, JSON.parse(String(data)) as ClientMessage);
+        } catch {
+          send(ws, { t: 'error', message: 'Bad message' });
+        }
+      });
     });
     ws.on('close', () => {
       clients.delete(client);
@@ -138,7 +168,12 @@ function loop() {
   while (simTime + TICK_MS <= now) {
     simTime += TICK_MS;
     for (const room of rooms.values()) {
-      if (room.tick() && room.race && room.race.tick % BROADCAST_EVERY === 0) broadcast(room, { t: 'state', state: room.race });
+      if (room.tick() && room.race && room.race.tick % SNAP_EVERY === 0) {
+        const encoded = encodeSnapshot(room.race);
+        for (const c of clients) {
+          if (c.room === room) send(c.socket, { t: 'snap', snap: { ...encoded, ack: room.ackOf(c.id) } });
+        }
+      }
     }
   }
   for (const room of rooms.values()) {
@@ -152,5 +187,6 @@ function loop() {
 loop();
 
 server.listen(PORT, () => {
-  console.log(`Grass & Grip ${PROD ? '' : 'dev '}server on http://localhost:${PORT}  (online lobby: /room)`);
+  const lag = FAKE_LAG_MS ? `  fake lag ${FAKE_LAG_MS}ms ±${FAKE_JITTER_MS}ms` : '';
+  console.log(`Grass & Grip ${PROD ? '' : 'dev '}server on http://localhost:${PORT}  (online lobby: /room)${lag}`);
 });

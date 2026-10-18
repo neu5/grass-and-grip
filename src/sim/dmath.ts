@@ -57,3 +57,8 @@ export function datan2(y: number, x: number): number {
 export function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
+
+/** Shortest-path interpolation on the circle. `t` is 0..1. */
+export function lerpAngle(a: number, b: number, t: number): number {
+  return normalizeAngle(a + normalizeAngle(b - a) * t);
+}

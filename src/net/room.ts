@@ -35,6 +35,7 @@ export class Room {
   /** Bumped whenever the lobby view changes, so the server knows when to broadcast it. */
   version = 0;
   private inputs: TickInputs = {};
+  private lastSeq = new Map<string, number>();
   private resultsLeft = 0;
 
   constructor(readonly id: string) {}
@@ -67,6 +68,7 @@ export class Room {
     if (this.phase !== 'lobby') {
       const carId = this.carOf.get(id);
       this.carOf.delete(id);
+      this.lastSeq.delete(id);
       if (carId !== undefined) delete this.inputs[carId];
       if (this.carOf.size === 0) this.backToLobby();
     }
@@ -100,10 +102,20 @@ export class Room {
     return null;
   }
 
-  setInput(id: string, input: PlayerInput): void {
+  setInput(id: string, input: PlayerInput, seq?: number): void {
     const carId = this.carOf.get(id);
     if (carId === undefined || !input) return;
+    if (seq !== undefined) {
+      const prev = this.lastSeq.get(id) ?? 0;
+      if (seq <= prev) return;
+      this.lastSeq.set(id, seq);
+    }
     this.inputs[carId] = { throttle: clamp1(input.throttle), steer: clamp1(input.steer), handbrake: !!input.handbrake };
+  }
+
+  /** Last input seq applied for this player, for snapshot acks. */
+  ackOf(id: string): number {
+    return this.lastSeq.get(id) ?? 0;
   }
 
   /** Advance one sim tick. Returns true when there is a race state to broadcast. */
@@ -144,6 +156,7 @@ export class Room {
       ...freeColors.slice(0, this.aiCount).map((color, i): CarConfig => ({ name: AI_NAMES[i], color, controller: 'ai' })),
     ];
     this.carOf.clear();
+    this.lastSeq.clear();
     this.players.forEach((p, i) => this.carOf.set(p.id, i));
     this.inputs = {};
     this.race = createRace({ trackId: TRACK_ID, totalLaps: this.laps, cars, countdownSeconds: COUNTDOWN_SECONDS });
@@ -155,6 +168,7 @@ export class Room {
     this.phase = 'lobby';
     this.race = null;
     this.carOf.clear();
+    this.lastSeq.clear();
     this.inputs = {};
     for (const p of this.players) p.ready = false;
     this.changed();
