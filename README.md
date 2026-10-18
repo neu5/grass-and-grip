@@ -6,11 +6,37 @@ A small 3D isometric racing game in the browser, in the spirit of GeneRally. It 
 
 ```bash
 npm install
-npm run dev        # http://localhost:47315
-npm test           # vitest unit tests for the simulation
+npm run dev        # http://localhost:47315 (local play) and /room (online)
+npm test           # vitest unit tests for the simulation and the online room
 npm run typecheck
-npm run build      # static build into dist/
+npm run build      # client build into dist/
+npm start          # production: serves dist/ + websocket on $PORT (default 47315)
 ```
+
+`npm run dev` starts one Node process (`src/server/index.ts`, via `tsx watch`) that runs the game server and mounts Vite as middleware, so the client has hot reload and the websocket lives on the same port.
+
+## Online multiplayer
+
+Open `/room` (or `/room?id=anything` for a separate room) in up to 4 browsers. Each player types a name, picks one of 4 car colors (a color can only be used once per room) and joins. The host (first player in the room) picks the number of AI cars (humans + AI ≤ 4) and the lap count. When every human has clicked **Ready**, the race starts with a 5 second countdown on the grid. A few seconds after the race ends, everyone goes back to the room. People who join during a race watch it and take part in the next one.
+
+The server is authoritative. It runs the same `step()` as local play at 60 ticks/s, applies the latest input each player sent, and broadcasts the full race state 30 times a second. Clients only send their keyboard input (when it changes) and render about 100 ms behind the newest snapshot, interpolating between snapshots.
+
+```
+src/net/protocol.ts   message types, colors, limits
+src/net/room.ts       Room: join/leave, colors, host, settings, ready -> race -> results -> lobby (no I/O, unit-tested)
+src/server/index.ts   HTTP + websocket server (/ws?room=id), 60 Hz loop, serves dist/ in production
+src/room.ts           /room page: lobby UI, input upload, snapshot interpolation
+```
+
+### Deploy
+
+Any host that runs a long-lived Node process with websockets works (Render, Fly.io, Railway). It is a single process, so use one instance. Rooms live in memory.
+
+- Build command: `npm ci --include=dev && npm run build`
+- Start command: `npm start`
+- Node 20.11 or newer. The server listens on `$PORT`, which these hosts set for you.
+
+On Render, the repo has a `render.yaml` blueprint (free web service, health check `/healthz`): Dashboard → New → Blueprint → pick this repo and branch → Apply. Free instances sleep after ~15 minutes idle, so the first visit takes a moment to wake up. The page connects with `wss://` on the same origin, so no extra configuration is needed. On Fly.io or Railway, use the same two commands (Railway's Nixpacks detects them from `package.json`).
 
 ## Controls
 
@@ -24,7 +50,7 @@ Press `C` to switch between the follow and overview cameras, `R` to restart the 
 
 ## Architecture
 
-The code is built so online multiplayer (lockstep or server-authoritative) can be added later without a rewrite.
+The sim is pure and deterministic, so the online server runs exactly the same code as local play.
 
 ```
 src/sim/      pure, DOM-free simulation (can run on a server as-is)
