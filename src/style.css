@@ -170,7 +170,10 @@ fieldset.stack {
   display: block;
 }
 
-input.text {
+fieldset input.text {
+  position: static;
+  opacity: 1;
+  pointer-events: auto;
   width: 100%;
   padding: 10px 12px;
   border-radius: 8px;
@@ -190,7 +193,8 @@ fieldset input:disabled + span {
 }
 
 #colors input:checked + span {
-  border-color: #fff;
+  outline: 2px solid #fff;
+  outline-offset: 2px;
 }
 
 #players {
