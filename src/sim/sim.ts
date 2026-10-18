@@ -48,7 +48,7 @@ export function createRace(config: RaceConfig): GameState {
   return { tick: 0, trackId: config.trackId, phase: 'countdown', startTick, totalLaps: config.totalLaps, cars };
 }
 
-function sanitize(input: PlayerInput | undefined): PlayerInput {
+export function sanitize(input: PlayerInput | undefined): PlayerInput {
   if (!input) return NO_INPUT;
   const t = Number(input.throttle);
   const s = Number(input.steer);
@@ -112,6 +112,29 @@ export function step(prev: GameState, inputs: TickInputs): GameState {
     const relevant = humans.length > 0 ? humans : cars;
     if (relevant.every((c) => c.finishTick !== null)) state.phase = 'finished';
   }
+  return state;
+}
+
+/**
+ * Advance only one car with the same physics, static collisions and
+ * checkpoints as `step`. Other cars are left untouched (no car-car collision),
+ * so a client can predict its own car from the last authoritative snapshot.
+ */
+export function stepOwnCar(prev: GameState, carId: number, input: PlayerInput): GameState {
+  const state: GameState = structuredClone(prev);
+  const track = getTrack(state.trackId);
+  state.tick++;
+  if (state.phase === 'countdown' && state.tick >= state.startTick) state.phase = 'racing';
+  const canDrive = state.phase !== 'countdown';
+  const car = state.cars.find((c) => c.id === carId);
+  if (!car) return state;
+  const use = canDrive ? sanitize(input) : NO_INPUT;
+  const px = car.x;
+  const py = car.y;
+  stepCarPhysics(car, use, surfaceAt(track, car.x, car.y), DT);
+  if (canDrive) updateCheckpoints(state, car, track, px, py);
+  for (const o of track.def.obstacles) collideCircle(car, o.x, o.y, o.r);
+  collideBounds(car, track.def.width, track.def.height);
   return state;
 }
 

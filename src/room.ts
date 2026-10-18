@@ -1,15 +1,20 @@
 import './style.css';
 import { BINDINGS_SOLO, Keyboard } from './client/input';
+import { drawNetDebug } from './client/netDebug';
 import { Renderer3D } from './client/renderer3d';
-import { CAR_COLORS, COLOR_NAMES, LAP_OPTIONS, MAX_PLAYERS, type ClientMessage, type LobbyState, type ServerMessage } from './net/protocol';
-import { TICK_RATE, type GameState, type PlayerInput } from './sim';
+import { SNAPSHOT_HZ, CAR_COLORS, COLOR_NAMES, LAP_OPTIONS, MAX_PLAYERS, type ClientMessage, type CompactSnapshot, type LobbyState, type ServerMessage } from './net/protocol';
+import { SnapshotBuffer, mergeOwn } from './net/interpolate';
+import { InputQueue, lerpCar, reconcile, replaceCar } from './net/prediction';
+import { decodeSnapshot } from './net/snapshot';
+import { DT, stepOwnCar, type GameState, type PlayerInput } from './sim';
 
-/** Render this many ticks behind the newest snapshot so there is always a pair to interpolate. */
-const INTERP_DELAY_TICKS = 6;
+const MAX_STEPS_PER_FRAME = 8;
+const PING_EVERY_MS = 500;
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const canvas = $<HTMLCanvasElement>('#game');
-const renderer = new Renderer3D(canvas, $<HTMLCanvasElement>('#hud'), 'meadow');
+const hudCanvas = $<HTMLCanvasElement>('#hud');
+const renderer = new Renderer3D(canvas, hudCanvas, 'meadow');
 renderer.finishHint = 'Back to the room in a few seconds…';
 const keyboard = new Keyboard(window);
 const menu = $<HTMLDivElement>('#menu');
@@ -17,6 +22,7 @@ const joinForm = $<HTMLFormElement>('#join-form');
 const lobbyEl = $<HTMLDivElement>('#lobby');
 const readyBtn = $<HTMLButtonElement>('#ready');
 const errorEl = $<HTMLParagraphElement>('#error');
+const hudCtx = hudCanvas.getContext('2d')!;
 
 const roomId = new URLSearchParams(location.search).get('id') || 'main';
 $('#room-id').textContent = roomId;
@@ -25,10 +31,18 @@ nameInput.value = localStorage.getItem('gg-name') ?? '';
 
 let myId = '';
 let lobby: LobbyState | null = null;
-let snapshots: GameState[] = [];
-let tickOffset: number | null = null;
-let lastSentInput = '';
 let socket: WebSocket;
+const remotes = new SnapshotBuffer();
+const inputs = new InputQueue();
+let predicted: GameState | null = null;
+let prevPredicted: GameState | null = null;
+let lastAck = 0;
+let acc = 0;
+let lastFrame = performance.now();
+let debugOn = false;
+let pingMs = -1;
+let lastPingAt = 0;
+const snapTimes: number[] = [];
 
 function radios(container: HTMLElement, name: string, values: readonly (string | number)[], label: (v: string) => string, style?: (v: string) => string) {
   for (const v of values) {
@@ -51,6 +65,15 @@ function showError(message: string) {
   setTimeout(() => (errorEl.hidden = true), 3000);
 }
 
+function resetRaceNet() {
+  remotes.clear();
+  inputs.reset();
+  predicted = null;
+  prevPredicted = null;
+  lastAck = 0;
+  acc = 0;
+}
+
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   socket = new WebSocket(`${proto}://${location.host}/ws?room=${encodeURIComponent(roomId)}`);
@@ -58,7 +81,7 @@ function connect() {
   socket.onclose = () => {
     $('#conn').textContent = 'Disconnected — reconnecting…';
     lobby = null;
-    snapshots = [];
+    resetRaceNet();
     renderLobby();
     setTimeout(connect, 1500);
   };
@@ -69,7 +92,8 @@ function connect() {
     else if (msg.t === 'lobby') {
       lobby = msg.lobby;
       renderLobby();
-    } else if (msg.t === 'state') onSnapshot(msg.state);
+    } else if (msg.t === 'snap') onSnapshot(msg.snap);
+    else if (msg.t === 'pong') pingMs = performance.now() - msg.t0;
   };
 }
 
@@ -77,10 +101,7 @@ function renderLobby() {
   const me = lobby?.players.find((p) => p.id === myId);
   const inRace = !!lobby && lobby.phase !== 'lobby';
   menu.hidden = inRace;
-  if (!inRace) {
-    snapshots = [];
-    lastSentInput = '';
-  }
+  if (!inRace) resetRaceNet();
   joinForm.hidden = !lobby || !!me;
   lobbyEl.hidden = !lobby || !me;
   if (!lobby) return;
@@ -141,51 +162,91 @@ lobbyEl.addEventListener('change', (e) => {
   if (input.name === 'laps') send({ t: 'settings', laps: Number(input.value) });
 });
 
-function onSnapshot(state: GameState) {
-  const last = snapshots[snapshots.length - 1];
-  if (last && state.tick <= last.tick) {
-    snapshots = [];
-    tickOffset = null;
-  }
-  if (snapshots.length === 0) renderer.resetRace();
-  snapshots.push(state);
-  if (snapshots.length > 30) snapshots.shift();
-  renderer.onTick(state);
-  const sample = state.tick - (performance.now() * TICK_RATE) / 1000;
-  tickOffset = tickOffset === null || Math.abs(sample - tickOffset) > TICK_RATE ? sample : tickOffset + (sample - tickOffset) * 0.05;
-}
-
 function myCarId(): number | undefined {
   return lobby?.cars[myId];
 }
 
-function sendInput() {
-  if (myCarId() === undefined || !menu.hidden) return;
-  const input: PlayerInput = keyboard.sample(BINDINGS_SOLO);
-  const key = JSON.stringify(input);
-  if (key !== lastSentInput) {
-    lastSentInput = key;
-    send({ t: 'input', input });
+function onSnapshot(raw: CompactSnapshot) {
+  const now = performance.now();
+  snapTimes.push(now);
+  while (snapTimes[0] < now - 1000) snapTimes.shift();
+  lastAck = raw.ack;
+  const state = decodeSnapshot(raw, remotes.latest ?? predicted ?? undefined);
+  if (remotes.length === 0) renderer.resetRace();
+  remotes.push(state, now);
+  renderer.onTick(state);
+  const carId = myCarId();
+  if (carId === undefined) return;
+  inputs.ack(raw.ack);
+  predicted = reconcile(predicted, state, carId, inputs.unacked);
+}
+
+function predictTicks(now: number) {
+  const carId = myCarId();
+  if (carId === undefined || !predicted) return;
+  acc += Math.min(0.25, (now - lastFrame) / 1000);
+  let steps = 0;
+  while (acc >= DT && steps < MAX_STEPS_PER_FRAME) {
+    const input: PlayerInput = keyboard.sample(BINDINGS_SOLO);
+    const item = inputs.push(predicted.tick, input);
+    send({ t: 'input', seq: item.seq, tick: item.tick, input: item.input });
+    prevPredicted = predicted;
+    predicted = stepOwnCar(predicted, carId, input);
+    acc -= DT;
+    steps++;
   }
+  if (steps === MAX_STEPS_PER_FRAME) acc = 0;
+}
+
+function maybePing(now: number) {
+  if (socket?.readyState !== WebSocket.OPEN || now - lastPingAt < PING_EVERY_MS) return;
+  lastPingAt = now;
+  send({ t: 'ping', t0: now });
 }
 
 function frame(now: number) {
-  sendInput();
-  if (snapshots.length > 0 && tickOffset !== null && menu.hidden) {
-    const renderTick = (now * TICK_RATE) / 1000 + tickOffset - INTERP_DELAY_TICKS;
-    let i = snapshots.length - 1;
-    while (i > 0 && snapshots[i - 1].tick > renderTick) i--;
-    const b = snapshots[i];
-    const a = snapshots[Math.max(0, i - 1)];
-    const alpha = b.tick === a.tick ? 1 : Math.max(0, Math.min(1, (renderTick - a.tick) / (b.tick - a.tick)));
-    const carId = myCarId();
-    renderer.render(a, b, alpha, carId === undefined ? [] : [carId]);
+  maybePing(now);
+  if (menu.hidden) {
+    predictTicks(now);
+    const sample = remotes.sample(now);
+    if (sample) {
+      const carId = myCarId();
+      const own = predicted && carId !== undefined ? predicted.cars.find((c) => c.id === carId) : undefined;
+      const prevOwn = prevPredicted && carId !== undefined ? prevPredicted.cars.find((c) => c.id === carId) : undefined;
+      const ownState =
+        predicted && own
+          ? replaceCar(predicted, prevOwn ? lerpCar(prevOwn, own, acc / DT) : own)
+          : predicted;
+      const prev = mergeOwn(sample.prev, ownState, carId);
+      const curr = mergeOwn(sample.curr, ownState, carId);
+      renderer.render(prev, curr, sample.alpha, carId === undefined ? [] : [carId]);
+      if (debugOn) {
+        drawNetDebug(
+          hudCtx,
+          {
+            pingMs,
+            snapHz: snapTimes.length || SNAPSHOT_HZ,
+            seq: inputs.lastSeq,
+            ack: lastAck,
+            queued: inputs.unacked.length,
+            predictedTick: predicted?.tick ?? 0,
+            serverTick: remotes.latest?.tick ?? 0,
+          },
+          canvas.clientHeight,
+        );
+      }
+    }
   }
+  lastFrame = now;
   requestAnimationFrame(frame);
 }
 
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyC' && menu.hidden) renderer.toggleCamera();
+  if (e.code === 'F3') {
+    e.preventDefault();
+    debugOn = !debugOn;
+  }
 });
 
 connect();

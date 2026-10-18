@@ -7,7 +7,7 @@ A small 3D isometric racing game in the browser, in the spirit of GeneRally. It 
 ```bash
 npm install
 npm run dev        # http://localhost:47315 (local play) and /room (online)
-npm test           # vitest unit tests for the simulation and the online room
+npm test           # vitest unit tests for the simulation, room, and prediction/queue
 npm run typecheck
 npm run build      # client build into dist/
 npm start          # production: serves dist/ + websocket on $PORT (default 47315)
@@ -19,13 +19,24 @@ npm start          # production: serves dist/ + websocket on $PORT (default 4731
 
 Open `/room` (or `/room?id=anything` for a separate room) in up to 4 browsers. Each player types a name, picks one of 4 car colors (a color can only be used once per room) and joins. The host (first player in the room) picks the number of AI cars (humans + AI ≤ 4) and the lap count. When every human has clicked **Ready**, the race starts with a 5 second countdown on the grid. A few seconds after the race ends, everyone goes back to the room. People who join during a race watch it and take part in the next one.
 
-The server is authoritative. It runs the same `step()` as local play at 60 ticks/s, applies the latest input each player sent, and broadcasts the full race state 30 times a second. Clients only send their keyboard input (when it changes) and render about 100 ms behind the newest snapshot, interpolating between snapshots.
+The server is authoritative. It runs the same `step()` as local play at 60 ticks/s and broadcasts a compact, quantized snapshot 20 times a second. Each client input is tagged with a `seq`/`tick`; the snapshot acks the last seq the server applied. Your own car is predicted locally with `stepOwnCar()` (same physics as `step`), then reconciled on every snapshot by rewinding to the server pose and replaying unacked inputs. Small corrections are blended, not snapped. Other cars render about 100 ms behind the newest snapshot, interpolating between them and briefly extrapolating if a snapshot is late. TCP Nagle is off on the websocket.
 
 ```
-src/net/protocol.ts   message types, colors, limits
-src/net/room.ts       Room: join/leave, colors, host, settings, ready -> race -> results -> lobby (no I/O, unit-tested)
-src/server/index.ts   HTTP + websocket server (/ws?room=id), 60 Hz loop, serves dist/ in production
-src/room.ts           /room page: lobby UI, input upload, snapshot interpolation
+src/net/protocol.ts     message types, compact snapshot shape, colors, limits
+src/net/snapshot.ts     quantize / dequantize race snapshots
+src/net/prediction.ts   InputQueue, rewind+replay, smooth corrections
+src/net/interpolate.ts  100 ms interpolation buffer + short extrapolate
+src/net/room.ts         Room: join/leave, colors, host, settings, ready -> race -> results -> lobby (no I/O, unit-tested)
+src/server/index.ts     HTTP + websocket server (/ws?room=id), 60 Hz loop, 20 Hz snaps, serves dist/ in production
+src/room.ts             /room page: lobby UI, prediction, interpolation, F3 net overlay
+```
+
+`F3` toggles a net debug overlay (ping, snapshot rate, seq/ack).
+
+To fake a bad connection locally (two browser tabs on `/room`):
+
+```bash
+FAKE_LAG_MS=150 FAKE_JITTER_MS=40 npm run dev
 ```
 
 ### Deploy
