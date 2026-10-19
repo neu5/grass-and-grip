@@ -1,6 +1,6 @@
 # Grass & Grip
 
-A small 3D isometric racing game in the browser, in the spirit of GeneRally. It is rendered with Three.js: low-poly cars, real-time shadows, tyre stacks and trees, with a follow camera and a whole-track overview camera. You race on one track. Asphalt and grass have different grip, the cars slide and drift, and you can race up to three AI opponents. One or two players share a keyboard.
+A small 3D isometric racing game in the browser, in the spirit of GeneRally. It is rendered with Three.js: low-poly cars, real-time shadows, tyre stacks and trees, with a follow camera and a whole-track overview camera. You race on one track. Asphalt and grass have different grip, the cars slide and drift, and you can race up to three AI opponents. One or two players share a keyboard. Pick **Rally** (default, slides more) or **Formula 1** (faster, more grip); colors stay unique, car type can repeat.
 
 ## Run it
 
@@ -17,7 +17,7 @@ npm start          # production: serves dist/ + websocket on $PORT (default 4731
 
 ## Online multiplayer
 
-Open `/room` (or `/room?id=anything` for a separate room) in up to 4 browsers. Each player types a name, picks one of 4 car colors (a color can only be used once per room) and joins. The host (first player in the room) picks the number of AI cars (humans + AI ≤ 4) and the lap count. When every human has clicked **Ready**, the race starts with a 5 second countdown on the grid. A few seconds after the race ends, everyone goes back to the room. People who join during a race watch it and take part in the next one.
+Open `/room` (or `/room?id=anything` for a separate room) in up to 4 browsers. Each player types a name, picks Rally or Formula 1 plus one of 4 car colors (a color can only be used once per room; two Formula 1s is fine) and joins. The host (first player in the room) picks the number of AI cars (humans + AI ≤ 4) and the lap count. When every human has clicked **Ready**, the race starts with a 5 second countdown on the grid. A few seconds after the race ends, everyone goes back to the room. People who join during a race watch it and take part in the next one.
 
 The server is authoritative. It runs the same `step()` as local play at 60 ticks/s and broadcasts a compact, quantized snapshot 20 times a second. Each client input is tagged with a `seq`/`tick`; the snapshot acks the last seq the server applied. Your own car is predicted locally with `stepOwnCar()` (same physics as `step`), then reconciled on every snapshot by rewinding to the server pose and replaying unacked inputs. Small corrections are blended, not snapped. Other cars render about 100 ms behind the newest snapshot, interpolating between them and briefly extrapolating if a snapshot is late. TCP Nagle is off on the websocket.
 

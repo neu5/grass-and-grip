@@ -105,7 +105,7 @@ function handle(client: Client, msg: ClientMessage) {
   let error: string | null = null;
   switch (msg.t) {
     case 'join':
-      error = room.join(id, msg.name, msg.color);
+      error = room.join(id, msg.name, msg.color, msg.car);
       break;
     case 'ready':
       error = room.setReady(id, msg.ready);

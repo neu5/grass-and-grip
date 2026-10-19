@@ -22,6 +22,7 @@ export function createRace(config: RaceConfig): GameState {
       id: i,
       name: c.name,
       color: c.color,
+      kind: c.kind === 'f1' ? 'f1' : 'rally',
       controller: c.controller,
       x: p.x + nrm.x * lane,
       y: p.y + nrm.y * lane,

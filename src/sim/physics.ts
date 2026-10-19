@@ -1,6 +1,6 @@
 import { clamp, dcos, dsin, normalizeAngle } from './dmath';
 import type { Surface } from './track';
-import type { CarState, PlayerInput } from './types';
+import type { CarKind, CarState, PlayerInput } from './types';
 
 export interface SurfaceParams {
   grip: number;
@@ -13,31 +13,83 @@ export const SURFACES: Record<Surface, SurfaceParams> = {
   grass: { grip: 0.42, engine: 0.7, rolling: 1.8 },
 };
 
-export const CAR = {
-  length: 32,
-  width: 17,
-  radius: 14,
-  engineAccel: 520,
-  brakeDecel: 900,
-  reverseAccel: 260,
-  maxReverse: 150,
-  airDrag: 0.0012,
-  coastDrag: 0.5,
-  lateralGrip: 1150,
+export interface CarStats {
+  length: number;
+  width: number;
+  radius: number;
+  engineAccel: number;
+  brakeDecel: number;
+  reverseAccel: number;
+  maxReverse: number;
+  airDrag: number;
+  coastDrag: number;
+  lateralGrip: number;
   /** Above this lateral speed the tyres are sliding and grip drops. */
-  slideThreshold: 70,
-  slideGripFactor: 0.72,
-  handbrakeGripFactor: 0.32,
-  handbrakeDecel: 260,
-  slideScrub: 0.0035,
-  steerRate: 3.3,
-  steerFullSpeed: 110,
-  steerDampSpeed: 900,
+  slideThreshold: number;
+  slideGripFactor: number;
+  handbrakeGripFactor: number;
+  handbrakeDecel: number;
+  slideScrub: number;
+  steerRate: number;
+  steerFullSpeed: number;
+  steerDampSpeed: number;
+}
+
+/** Rally: stock sliding car. Formula 1: faster, more grip, less slide. */
+export const CARS: Record<CarKind, CarStats> = {
+  rally: {
+    length: 32,
+    width: 17,
+    radius: 14,
+    engineAccel: 520,
+    brakeDecel: 900,
+    reverseAccel: 260,
+    maxReverse: 150,
+    airDrag: 0.0012,
+    coastDrag: 0.5,
+    lateralGrip: 1150,
+    slideThreshold: 70,
+    slideGripFactor: 0.72,
+    handbrakeGripFactor: 0.32,
+    handbrakeDecel: 260,
+    slideScrub: 0.0035,
+    steerRate: 3.3,
+    steerFullSpeed: 110,
+    steerDampSpeed: 900,
+  },
+  f1: {
+    length: 38,
+    width: 20,
+    radius: 14,
+    engineAccel: 720,
+    brakeDecel: 1100,
+    reverseAccel: 280,
+    maxReverse: 140,
+    airDrag: 0.00072,
+    coastDrag: 0.38,
+    lateralGrip: 1850,
+    slideThreshold: 125,
+    slideGripFactor: 0.9,
+    handbrakeGripFactor: 0.5,
+    handbrakeDecel: 300,
+    slideScrub: 0.0016,
+    steerRate: 3.05,
+    steerFullSpeed: 160,
+    steerDampSpeed: 1200,
+  },
 };
+
+/** Default / rally stats. Prefer `statsFor(kind)` for per-car physics. */
+export const CAR = CARS.rally;
+
+export function statsFor(kind: CarKind | undefined): CarStats {
+  return CARS[kind === 'f1' ? 'f1' : 'rally'];
+}
 
 export const NO_INPUT: PlayerInput = { throttle: 0, steer: 0, handbrake: false };
 
 export function stepCarPhysics(car: CarState, input: PlayerInput, surface: Surface, dt: number): void {
+  const C = statsFor(car.kind);
   const s = SURFACES[surface];
   const ca = dcos(car.angle);
   const sa = dsin(car.angle);
@@ -49,33 +101,33 @@ export function stepCarPhysics(car: CarState, input: PlayerInput, surface: Surfa
   const hb = input.handbrake;
 
   if (throttle > 0) {
-    vF += CAR.engineAccel * s.engine * throttle * dt;
+    vF += C.engineAccel * s.engine * throttle * dt;
   } else if (throttle < 0) {
     if (vF > 5) {
-      vF = Math.max(0, vF + CAR.brakeDecel * throttle * dt);
+      vF = Math.max(0, vF + C.brakeDecel * throttle * dt);
     } else {
-      vF = Math.max(-CAR.maxReverse, vF + CAR.reverseAccel * s.engine * throttle * dt);
+      vF = Math.max(-C.maxReverse, vF + C.reverseAccel * s.engine * throttle * dt);
     }
   } else {
-    vF -= vF * CAR.coastDrag * dt;
+    vF -= vF * C.coastDrag * dt;
   }
   if (hb) {
-    const d = CAR.handbrakeDecel * dt;
+    const d = C.handbrakeDecel * dt;
     vF = vF > d ? vF - d : vF < -d ? vF + d : 0;
   }
 
-  vF -= vF * s.rolling * dt + vF * Math.abs(vF) * CAR.airDrag * dt;
+  vF -= vF * s.rolling * dt + vF * Math.abs(vF) * C.airDrag * dt;
 
-  let maxLat = CAR.lateralGrip * s.grip;
-  if (Math.abs(vR) > CAR.slideThreshold) maxLat *= CAR.slideGripFactor;
-  if (hb) maxLat *= CAR.handbrakeGripFactor;
+  let maxLat = C.lateralGrip * s.grip;
+  if (Math.abs(vR) > C.slideThreshold) maxLat *= C.slideGripFactor;
+  if (hb) maxLat *= C.handbrakeGripFactor;
   vR += clamp(-vR, -maxLat * dt, maxLat * dt);
-  vF -= vF * Math.min(1, Math.abs(vR) * CAR.slideScrub * dt);
+  vF -= vF * Math.min(1, Math.abs(vR) * C.slideScrub * dt);
 
   const absF = Math.abs(vF);
-  const speedFactor = Math.min(1, absF / CAR.steerFullSpeed);
-  const highSpeedDamp = 1 / (1 + absF / CAR.steerDampSpeed);
-  const yaw = steer * CAR.steerRate * speedFactor * highSpeedDamp * (vF >= 0 ? 1 : -1) * (hb ? 1.35 : 1);
+  const speedFactor = Math.min(1, absF / C.steerFullSpeed);
+  const highSpeedDamp = 1 / (1 + absF / C.steerDampSpeed);
+  const yaw = steer * C.steerRate * speedFactor * highSpeedDamp * (vF >= 0 ? 1 : -1) * (hb ? 1.35 : 1);
   car.angle = normalizeAngle(car.angle + yaw * dt);
 
   car.vx = vF * ca - vR * sa;
@@ -93,7 +145,7 @@ export function collideCars(a: CarState, b: CarState): void {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const d2 = dx * dx + dy * dy;
-  const min = CAR.radius * 2;
+  const min = statsFor(a.kind).radius + statsFor(b.kind).radius;
   if (d2 >= min * min || d2 === 0) return;
   const d = Math.sqrt(d2);
   const nx = dx / d;
@@ -117,7 +169,7 @@ export function collideCircle(car: CarState, ox: number, oy: number, r: number):
   const dx = car.x - ox;
   const dy = car.y - oy;
   const d2 = dx * dx + dy * dy;
-  const min = CAR.radius + r;
+  const min = statsFor(car.kind).radius + r;
   if (d2 >= min * min || d2 === 0) return;
   const d = Math.sqrt(d2);
   const nx = dx / d;
@@ -132,7 +184,7 @@ export function collideCircle(car: CarState, ox: number, oy: number, r: number):
 }
 
 export function collideBounds(car: CarState, width: number, height: number): void {
-  const m = CAR.radius;
+  const m = statsFor(car.kind).radius;
   if (car.x < m) {
     car.x = m;
     if (car.vx < 0) car.vx = -car.vx * RESTITUTION;

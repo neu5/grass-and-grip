@@ -2,7 +2,7 @@ import './style.css';
 import { BINDINGS_SOLO, Keyboard } from './client/input';
 import { drawNetDebug } from './client/netDebug';
 import { Renderer3D } from './client/renderer3d';
-import { SNAPSHOT_HZ, CAR_COLORS, COLOR_NAMES, LAP_OPTIONS, MAX_PLAYERS, type ClientMessage, type CompactSnapshot, type LobbyState, type ServerMessage } from './net/protocol';
+import { SNAPSHOT_HZ, CAR_COLORS, CAR_KINDS, CAR_KIND_NAMES, COLOR_NAMES, LAP_OPTIONS, MAX_PLAYERS, type ClientMessage, type CompactSnapshot, type LobbyState, type ServerMessage } from './net/protocol';
 import { SnapshotBuffer, mergeOwn } from './net/interpolate';
 import { InputQueue, lerpCar, reconcile, replaceCar } from './net/prediction';
 import { decodeSnapshot } from './net/snapshot';
@@ -52,8 +52,10 @@ function radios(container: HTMLElement, name: string, values: readonly (string |
   }
 }
 radios($('#colors'), 'color', CAR_COLORS, (c) => COLOR_NAMES[c], (c) => `background:${c}33;border-color:${c}`);
+radios($('#cars'), 'car', CAR_KINDS, (k) => CAR_KIND_NAMES[k as keyof typeof CAR_KIND_NAMES]);
 radios($('#ai'), 'ai', [0, 1, 2, 3], (v) => v);
 radios($('#laps'), 'laps', LAP_OPTIONS, (v) => v);
+joinForm.querySelector<HTMLInputElement>('input[name=car][value=rally]')!.checked = true;
 
 function send(msg: ClientMessage) {
   if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
@@ -122,7 +124,7 @@ function renderLobby() {
     .map(
       (p) => `<li><span class="swatch" style="background:${p.color}"></span><span class="grow">${escapeHtml(p.name)}${
         p.id === myId ? ' <span class="badge">(you)</span>' : ''
-      }${p.host ? ' <span class="badge">host</span>' : ''}</span><span class="${p.ready ? 'ready' : 'badge'}">${p.ready ? 'READY' : 'not ready'}</span></li>`,
+      }${p.host ? ' <span class="badge">host</span>' : ''} <span class="badge">${CAR_KIND_NAMES[p.car] ?? 'Rally'}</span></span><span class="${p.ready ? 'ready' : 'badge'}">${p.ready ? 'READY' : 'not ready'}</span></li>`,
     )
     .join('');
   const isHost = me.host;
@@ -149,8 +151,9 @@ function escapeHtml(s: string) {
 joinForm.addEventListener('submit', (e) => {
   e.preventDefault();
   const color = joinForm.querySelector<HTMLInputElement>('input[name=color]:checked')?.value ?? '';
+  const car = joinForm.querySelector<HTMLInputElement>('input[name=car]:checked')?.value === 'f1' ? 'f1' : 'rally';
   localStorage.setItem('gg-name', nameInput.value.trim());
-  send({ t: 'join', name: nameInput.value, color });
+  send({ t: 'join', name: nameInput.value, color, car });
 });
 readyBtn.addEventListener('click', () => {
   const me = lobby?.players.find((p) => p.id === myId);

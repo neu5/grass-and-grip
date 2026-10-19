@@ -1,4 +1,4 @@
-import { CAR, type CarState, type GameState, type Track } from '../sim';
+import { statsFor, type CarState, type GameState, type Track } from '../sim';
 
 function tracePath(ctx: CanvasRenderingContext2D, track: Track) {
   ctx.beginPath();
@@ -102,11 +102,12 @@ export class SkidMarks {
 }
 
 function rearWheels(car: CarState) {
+  const stats = statsFor(car.kind);
   const ca = Math.cos(car.angle);
   const sa = Math.sin(car.angle);
-  const bx = car.x - ca * CAR.length * 0.32;
-  const by = car.y - sa * CAR.length * 0.32;
-  const w = CAR.width * 0.4;
+  const bx = car.x - ca * stats.length * 0.32;
+  const by = car.y - sa * stats.length * 0.32;
+  const w = stats.width * 0.4;
   return [
     { x: bx - sa * w, y: by + ca * w },
     { x: bx + sa * w, y: by - ca * w },

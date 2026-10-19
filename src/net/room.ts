@@ -1,5 +1,5 @@
-import { createRace, step, TICK_RATE, type CarConfig, type GameState, type PlayerInput, type TickInputs } from '../sim';
-import { CAR_COLORS, LAP_OPTIONS, MAX_PLAYERS, type LobbyState, type RoomPhase } from './protocol';
+import { createRace, step, TICK_RATE, type CarConfig, type CarKind, type GameState, type PlayerInput, type TickInputs } from '../sim';
+import { CAR_COLORS, CAR_KINDS, LAP_OPTIONS, MAX_PLAYERS, type LobbyState, type RoomPhase } from './protocol';
 
 export const COUNTDOWN_SECONDS = 5;
 export const RESULTS_TICKS = 6 * TICK_RATE;
@@ -12,6 +12,7 @@ export interface RoomPlayer {
   id: string;
   name: string;
   color: string;
+  car: CarKind;
   ready: boolean;
 }
 
@@ -49,13 +50,15 @@ export class Room {
   }
 
   /** Returns an error message, or null on success. */
-  join(id: string, rawName: string, color: string): string | null {
+  join(id: string, rawName: string, color: string, car?: string): string | null {
     if (this.players.some((p) => p.id === id)) return 'Already joined';
     if (this.players.length >= MAX_PLAYERS) return 'Room is full';
     if (!(CAR_COLORS as readonly string[]).includes(color)) return 'Unknown color';
     if (this.takenColors().includes(color)) return 'Color already taken';
+    const kind = parseCarKind(car);
+    if (!kind) return 'Unknown car';
     const name = String(rawName ?? '').trim().slice(0, MAX_NAME_LENGTH) || `Player ${this.players.length + 1}`;
-    this.players.push({ id, name, color, ready: false });
+    this.players.push({ id, name, color, car: kind, ready: false });
     this.aiCount = Math.min(this.aiCount, MAX_PLAYERS - this.players.length);
     this.changed();
     return null;
@@ -151,9 +154,12 @@ export class Room {
   private startRace(): void {
     const taken = this.takenColors();
     const freeColors = CAR_COLORS.filter((c) => !taken.includes(c));
+    const humanKinds = this.players.map((p) => p.car);
     const cars: CarConfig[] = [
-      ...this.players.map((p): CarConfig => ({ name: p.name, color: p.color, controller: 'human' })),
-      ...freeColors.slice(0, this.aiCount).map((color, i): CarConfig => ({ name: AI_NAMES[i], color, controller: 'ai' })),
+      ...this.players.map((p): CarConfig => ({ name: p.name, color: p.color, controller: 'human', kind: p.car })),
+      ...freeColors.slice(0, this.aiCount).map(
+        (color, i): CarConfig => ({ name: AI_NAMES[i], color, controller: 'ai', kind: aiKind(i, humanKinds) }),
+      ),
     ];
     this.carOf.clear();
     this.lastSeq.clear();
@@ -177,4 +183,18 @@ export class Room {
   private changed(): void {
     this.version++;
   }
+}
+
+function parseCarKind(car: string | undefined): CarKind | null {
+  if (car === undefined || car === '') return 'rally';
+  return (CAR_KINDS as readonly string[]).includes(car) ? (car as CarKind) : null;
+}
+
+/** First AI fills in the missing body style so both cars show up; the rest alternate. */
+function aiKind(index: number, humans: CarKind[]): CarKind {
+  if (index === 0) {
+    if (!humans.includes('f1')) return 'f1';
+    if (!humans.includes('rally')) return 'rally';
+  }
+  return index % 2 === 0 ? 'f1' : 'rally';
 }
