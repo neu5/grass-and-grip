@@ -46,6 +46,8 @@ export interface CarState {
   angle: number;
   /** Lateral slip speed this tick, for skid marks / audio. */
   slip: number;
+  /** 0 = fresh, 1 = fully worn. Starts at 0; no pits in v1. */
+  tyreWear: number;
   onGrass: boolean;
   handbrake: boolean;
   lapsCompleted: number;

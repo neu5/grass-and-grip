@@ -88,23 +88,46 @@ export function statsFor(kind: CarKind | undefined): CarStats {
 
 export const NO_INPUT: PlayerInput = { throttle: 0, steer: 0, handbrake: false };
 
+/** Wear 0–1. Fresh tyres match stock grip; 1.0 is remaining grip/brake. */
+export const TYRE = {
+  brake: 0.08,
+  handbrake: 0.11,
+  slip: 0.00022,
+  grass: 0.045,
+  rolling: 0.0035,
+  corner: 0.028,
+  wornGrip: 0.38,
+  wornBrake: 0.5,
+  wornSlideThreshold: 0.48,
+};
+
+export function tyreFactor(wear: number, worn: number): number {
+  return 1 - clamp(wear, 0, 1) * (1 - worn);
+}
+
 export function stepCarPhysics(car: CarState, input: PlayerInput, surface: Surface, dt: number): void {
   const C = statsFor(car.kind);
   const s = SURFACES[surface];
+  const wear = clamp(car.tyreWear ?? 0, 0, 1);
+  const gripMul = tyreFactor(wear, TYRE.wornGrip);
+  const brakeMul = tyreFactor(wear, TYRE.wornBrake);
   const ca = dcos(car.angle);
   const sa = dsin(car.angle);
   let vF = car.vx * ca + car.vy * sa;
   let vR = -car.vx * sa + car.vy * ca;
+  const speed0 = Math.hypot(car.vx, car.vy);
 
   const throttle = clamp(input.throttle, -1, 1);
   const steer = clamp(input.steer, -1, 1);
   const hb = input.handbrake;
+  const braking = throttle < 0 && vF > 5;
+  const brakeAmt = braking ? -throttle : 0;
 
   if (throttle > 0) {
     vF += C.engineAccel * s.engine * throttle * dt;
   } else if (throttle < 0) {
     if (vF > 5) {
-      vF = Math.max(0, vF + C.brakeDecel * throttle * dt);
+      vF = Math.max(0, vF + C.brakeDecel * brakeMul * throttle * dt);
     } else {
       vF = Math.max(-C.maxReverse, vF + C.reverseAccel * s.engine * throttle * dt);
     }
@@ -118,8 +141,9 @@ export function stepCarPhysics(car: CarState, input: PlayerInput, surface: Surfa
 
   vF -= vF * s.rolling * dt + vF * Math.abs(vF) * C.airDrag * dt;
 
-  let maxLat = C.lateralGrip * s.grip;
-  if (Math.abs(vR) > C.slideThreshold) maxLat *= C.slideGripFactor;
+  const slideThresh = C.slideThreshold * tyreFactor(wear, TYRE.wornSlideThreshold);
+  let maxLat = C.lateralGrip * s.grip * gripMul;
+  if (Math.abs(vR) > slideThresh) maxLat *= C.slideGripFactor;
   if (hb) maxLat *= C.handbrakeGripFactor;
   vR += clamp(-vR, -maxLat * dt, maxLat * dt);
   vF -= vF * Math.min(1, Math.abs(vR) * C.slideScrub * dt);
@@ -137,6 +161,18 @@ export function stepCarPhysics(car: CarState, input: PlayerInput, surface: Surfa
   car.slip = Math.abs(vR);
   car.onGrass = surface === 'grass';
   car.handbrake = hb && absF > 30;
+
+  let wearRate = 0;
+  if (speed0 > 12) {
+    const spd = Math.min(1, speed0 / 280);
+    wearRate += TYRE.rolling * spd;
+    wearRate += TYRE.corner * Math.abs(steer) * spd;
+    if (brakeAmt > 0) wearRate += TYRE.brake * brakeAmt * spd;
+    if (hb) wearRate += TYRE.handbrake * spd;
+    wearRate += TYRE.slip * car.slip;
+    if (surface === 'grass') wearRate += TYRE.grass * spd;
+  }
+  car.tyreWear = clamp(wear + wearRate * dt, 0, 1);
 }
 
 const RESTITUTION = 0.35;

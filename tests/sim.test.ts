@@ -188,6 +188,66 @@ describe('simulation', () => {
     expect(lateralAfter('f1', 6)).toBeLessThan(lateralAfter('rally', 6) * 0.6);
   });
 
+  it('starts every car on fresh tyres', () => {
+    const s = createRace(humanVsAi);
+    for (const c of s.cars) expect(c.tyreWear).toBe(0);
+  });
+
+  it('wears tyres faster when hard-braking than when coasting', () => {
+    const track = getTrack('meadow');
+    const p = track.samples[0];
+    const drive = (input: PlayerInput, ticks: number, from: GameState) => {
+      let s = from;
+      for (let i = 0; i < ticks; i++) {
+        s.cars[0].x = p.x;
+        s.cars[0].y = p.y;
+        s = step(s, { 0: input });
+      }
+      return s;
+    };
+    const launch = () => {
+      let s = createRace({
+        trackId: 'meadow',
+        totalLaps: 1,
+        cars: [{ name: 'T', color: '#fff', controller: 'human', kind: 'f1' }],
+        countdownSeconds: 0,
+      });
+      s.phase = 'racing';
+      s.startTick = 0;
+      return drive({ throttle: 1, steer: 0, handbrake: false }, 180, s);
+    };
+    const coast = drive({ throttle: 0, steer: 0, handbrake: false }, 50, launch());
+    const brake = drive({ throttle: -1, steer: 0, handbrake: false }, 50, launch());
+    const gentle = drive({ throttle: -0.2, steer: 0, handbrake: false }, 50, launch());
+    expect(brake.cars[0].tyreWear).toBeGreaterThan(coast.cars[0].tyreWear);
+    expect(brake.cars[0].tyreWear).toBeGreaterThan(gentle.cars[0].tyreWear);
+    expect(gentle.cars[0].tyreWear).toBeGreaterThan(coast.cars[0].tyreWear);
+  });
+
+  it('gives worn tyres less grip than fresh tyres', () => {
+    const lateralAfter = (wear: number) => {
+      let s = createRace({
+        trackId: 'meadow',
+        totalLaps: 1,
+        cars: [{ name: 'T', color: '#fff', controller: 'human', kind: 'f1' }],
+        countdownSeconds: 0,
+      });
+      s.phase = 'racing';
+      s.startTick = 0;
+      const car = s.cars[0];
+      car.tyreWear = wear;
+      const a = car.angle;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      car.vx = 400 * ca - 220 * sa;
+      car.vy = 400 * sa + 220 * ca;
+      for (let i = 0; i < 8; i++) s = step(s, { 0: { throttle: 0, steer: 0, handbrake: false } });
+      const c = s.cars[0];
+      return Math.abs(-c.vx * Math.sin(c.angle) + c.vy * Math.cos(c.angle));
+    };
+    expect(lateralAfter(1)).toBeGreaterThan(lateralAfter(0) * 1.35);
+  });
+
   it('keeps obstacles off the racing surface', () => {
     const track = getTrack('meadow');
     for (const o of TRACKS.meadow.obstacles) {
