@@ -64,6 +64,8 @@ export interface CompactCar {
   vy: number;
   a: number;
   sl: number;
+  /** Tyre wear 0–1000 (0 = fresh, 1000 = fully worn). */
+  tw: number;
   g: 0 | 1;
   h: 0 | 1;
   lc: number;
