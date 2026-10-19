@@ -105,13 +105,13 @@ export function tyreFactor(wear: number, worn: number): number {
   return 1 - clamp(wear, 0, 1) * (1 - worn);
 }
 
-/** Remaining fuel 0–1. Throttle burns more than coast; empty is a crawl. */
+/** Remaining fuel 0–1. Throttle burns more than coast; empty is slower, not a crawl. */
 export const FUEL = {
   idle: 0.0028,
   throttle: 0.0074,
   lightGain: 0.055,
-  crawl: 0.045,
-  emptyDrag: 2.8,
+  crawl: 0.42,
+  emptyDrag: 0.45,
 };
 
 export function stepCarPhysics(car: CarState, input: PlayerInput, surface: Surface, dt: number): void {

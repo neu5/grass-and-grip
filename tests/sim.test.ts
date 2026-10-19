@@ -278,7 +278,10 @@ describe('simulation', () => {
       }
       return Math.hypot(s.cars[0].vx, s.cars[0].vy);
     };
-    expect(speedAfter(0, 120)).toBeLessThan(speedAfter(1, 120) * 0.25);
+    const empty = speedAfter(0, 120);
+    const full = speedAfter(1, 120);
+    expect(empty).toBeLessThan(full * 0.7);
+    expect(empty).toBeGreaterThan(full * 0.3);
   });
 
   it('makes a low tank a bit faster than a full tank before empty', () => {
