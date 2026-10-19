@@ -1,6 +1,6 @@
 # Grass & Grip
 
-A small 3D isometric racing game in the browser, in the spirit of GeneRally. It is rendered with Three.js: low-poly cars, real-time shadows, tyre stacks and trees, with a follow camera and a whole-track overview camera. You race on one track. Asphalt and grass have different grip, the cars slide and drift, and you can race up to three AI opponents. One or two players share a keyboard. Pick **Rally** (default, slides more) or **Formula 1** (faster, more grip); colors stay unique, car type can repeat. Hard braking, slides and grass wear tyres (0–100% in the HUD); worn tyres grip and brake less.
+A small 3D isometric racing game in the browser, in the spirit of GeneRally. It is rendered with Three.js: low-poly cars, real-time shadows, tyre stacks and trees, with a follow camera and a whole-track overview camera. You race on one track. Asphalt and grass have different grip, the cars slide and drift, and you can race up to three AI opponents. One or two players share a keyboard. Pick **Rally** (default, slides more) or **Formula 1** (faster, more grip); colors stay unique, car type can repeat. Hard braking, slides and grass wear tyres (HUD 100% fresh → 0% worn); worn tyres grip and brake less.
 
 ## Run it
 

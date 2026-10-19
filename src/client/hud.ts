@@ -65,8 +65,8 @@ export function drawHud(
       ctx.fillStyle = label === 'Best' ? '#ffd54a' : '#fff';
       ctx.fillText(value, x + 70, y + 48 + i * 17);
     });
-    const wear = Math.min(1, Math.max(0, car.tyreWear ?? 0));
-    const pct = Math.round(wear * 100);
+    const left = 1 - Math.min(1, Math.max(0, car.tyreWear ?? 0));
+    const pct = Math.round(left * 100);
     const barX = x + 70;
     const barY = y + 48 + 4 * 17 - 10;
     const barW = 90;
@@ -75,8 +75,8 @@ export function drawHud(
     ctx.fillText('Tyres', x + 14, y + 48 + 4 * 17);
     ctx.fillStyle = 'rgba(255,255,255,0.15)';
     ctx.fillRect(barX, barY, barW, barH);
-    ctx.fillStyle = wear < 0.4 ? '#6ee07a' : wear < 0.7 ? '#ffd54a' : '#ff6b4a';
-    ctx.fillRect(barX, barY, barW * wear, barH);
+    ctx.fillStyle = left > 0.6 ? '#6ee07a' : left > 0.3 ? '#ffd54a' : '#ff6b4a';
+    ctx.fillRect(barX, barY, barW * left, barH);
     ctx.textAlign = 'right';
     ctx.fillStyle = '#fff';
     ctx.fillText(`${pct}%`, x + panelW - 12, y + 48 + 4 * 17);
@@ -97,8 +97,8 @@ export function drawHud(
     ctx.fillStyle = '#fff';
     ctx.fillText(`${i + 1}. ${c.name}`, boardX + 30, 51 + i * 18);
     ctx.textAlign = 'right';
-    const wearPct = Math.round(Math.min(1, Math.max(0, c.tyreWear ?? 0)) * 100);
-    ctx.fillStyle = wearPct < 40 ? '#6ee07a' : wearPct < 70 ? '#ffd54a' : '#ff6b4a';
+    const wearPct = Math.round((1 - Math.min(1, Math.max(0, c.tyreWear ?? 0))) * 100);
+    ctx.fillStyle = wearPct > 60 ? '#6ee07a' : wearPct > 30 ? '#ffd54a' : '#ff6b4a';
     ctx.fillText(`${wearPct}%`, boardX + 158, 51 + i * 18);
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
     ctx.fillText(c.finishTick !== null ? 'FIN' : `L${Math.min(c.lapsCompleted + 1, state.totalLaps)}`, boardX + 198, 51 + i * 18);
