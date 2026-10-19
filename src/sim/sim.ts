@@ -31,6 +31,7 @@ export function createRace(config: RaceConfig): GameState {
       angle: track.tangentAngles[idx],
       slip: 0,
       tyreWear: 0,
+      fuel: 1,
       onGrass: false,
       handbrake: false,
       lapsCompleted: 0,

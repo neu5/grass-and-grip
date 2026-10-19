@@ -63,6 +63,7 @@ export function smoothCar(from: CarState, to: CarState): CarState {
     angle: lerpAngle(from.angle, to.angle, t),
     slip: from.slip + (to.slip - from.slip) * t,
     tyreWear: from.tyreWear + (to.tyreWear - from.tyreWear) * t,
+    fuel: from.fuel + (to.fuel - from.fuel) * t,
   };
 }
 
@@ -80,6 +81,7 @@ export function lerpCar(a: CarState, b: CarState, t: number): CarState {
     angle: lerpAngle(a.angle, b.angle, t),
     slip: a.slip + (b.slip - a.slip) * t,
     tyreWear: a.tyreWear + (b.tyreWear - a.tyreWear) * t,
+    fuel: a.fuel + (b.fuel - a.fuel) * t,
   };
 }
 

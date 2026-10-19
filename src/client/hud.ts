@@ -33,6 +33,7 @@ export function drawHud(
   ctx.textAlign = 'left';
 
   const panelW = 230;
+  const panelH = 154;
   humanIds.forEach((id, k) => {
     const car = state.cars[id];
     const pos = order.findIndex((c) => c.id === id) + 1;
@@ -40,10 +41,10 @@ export function drawHud(
     const y = 12;
     ctx.fillStyle = 'rgba(10,14,20,0.72)';
     ctx.beginPath();
-    ctx.roundRect(x, y, panelW, 136, 10);
+    ctx.roundRect(x, y, panelW, panelH, 10);
     ctx.fill();
     ctx.fillStyle = car.color;
-    ctx.fillRect(x, y + 10, 4, 116);
+    ctx.fillRect(x, y + 10, 4, panelH - 20);
     ctx.fillStyle = '#fff';
     ctx.font = '700 16px system-ui, sans-serif';
     ctx.fillText(car.name, x + 14, y + 26);
@@ -65,22 +66,10 @@ export function drawHud(
       ctx.fillStyle = label === 'Best' ? '#ffd54a' : '#fff';
       ctx.fillText(value, x + 70, y + 48 + i * 17);
     });
-    const left = 1 - Math.min(1, Math.max(0, car.tyreWear ?? 0));
-    const pct = Math.round(left * 100);
-    const barX = x + 70;
-    const barY = y + 48 + 4 * 17 - 10;
-    const barW = 90;
-    const barH = 10;
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.fillText('Tyres', x + 14, y + 48 + 4 * 17);
-    ctx.fillStyle = 'rgba(255,255,255,0.15)';
-    ctx.fillRect(barX, barY, barW, barH);
-    ctx.fillStyle = left > 0.6 ? '#6ee07a' : left > 0.3 ? '#ffd54a' : '#ff6b4a';
-    ctx.fillRect(barX, barY, barW * left, barH);
-    ctx.textAlign = 'right';
-    ctx.fillStyle = '#fff';
-    ctx.fillText(`${pct}%`, x + panelW - 12, y + 48 + 4 * 17);
-    ctx.textAlign = 'left';
+    const tyreLeft = 1 - Math.min(1, Math.max(0, car.tyreWear ?? 0));
+    const fuelLeft = Math.min(1, Math.max(0, car.fuel ?? 1));
+    drawRemainBar(ctx, 'Tyres', tyreLeft, x, y + 48 + 4 * 17, panelW);
+    drawRemainBar(ctx, 'Fuel', fuelLeft, x, y + 48 + 5 * 17, panelW);
   });
 
   const boardX = humanIds.length > 1 ? cw / 2 - 105 : cw - 222;
@@ -98,8 +87,11 @@ export function drawHud(
     ctx.fillText(`${i + 1}. ${c.name}`, boardX + 30, 51 + i * 18);
     ctx.textAlign = 'right';
     const wearPct = Math.round((1 - Math.min(1, Math.max(0, c.tyreWear ?? 0))) * 100);
+    const fuelPct = Math.round(Math.min(1, Math.max(0, c.fuel ?? 1)) * 100);
     ctx.fillStyle = wearPct > 60 ? '#6ee07a' : wearPct > 30 ? '#ffd54a' : '#ff6b4a';
-    ctx.fillText(`${wearPct}%`, boardX + 158, 51 + i * 18);
+    ctx.fillText(`${wearPct}%`, boardX + 128, 51 + i * 18);
+    ctx.fillStyle = fuelPct > 60 ? '#6ee07a' : fuelPct > 30 ? '#ffd54a' : '#ff6b4a';
+    ctx.fillText(`${fuelPct}%`, boardX + 168, 51 + i * 18);
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
     ctx.fillText(c.finishTick !== null ? 'FIN' : `L${Math.min(c.lapsCompleted + 1, state.totalLaps)}`, boardX + 198, 51 + i * 18);
     ctx.textAlign = 'left';
@@ -123,6 +115,35 @@ export function drawHud(
     ctx.fillText(finishHint, cw / 2, ch / 2 + 36);
   }
   ctx.restore();
+}
+
+function remainColor(left: number): string {
+  return left > 0.6 ? '#6ee07a' : left > 0.3 ? '#ffd54a' : '#ff6b4a';
+}
+
+function drawRemainBar(
+  ctx: CanvasRenderingContext2D,
+  label: string,
+  left: number,
+  x: number,
+  rowY: number,
+  panelW: number,
+) {
+  const pct = Math.round(left * 100);
+  const barX = x + 70;
+  const barY = rowY - 10;
+  const barW = 90;
+  const barH = 10;
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fillText(label, x + 14, rowY);
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.fillRect(barX, barY, barW, barH);
+  ctx.fillStyle = remainColor(left);
+  ctx.fillRect(barX, barY, barW * left, barH);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#fff';
+  ctx.fillText(`${pct}%`, x + panelW - 12, rowY);
+  ctx.textAlign = 'left';
 }
 
 function bigText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number) {
