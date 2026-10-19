@@ -105,10 +105,23 @@ export function tyreFactor(wear: number, worn: number): number {
   return 1 - clamp(wear, 0, 1) * (1 - worn);
 }
 
+/** Remaining fuel 0–1. Throttle burns more than coast; empty is a crawl. */
+export const FUEL = {
+  idle: 0.0028,
+  throttle: 0.0074,
+  lightGain: 0.055,
+  crawl: 0.045,
+  emptyDrag: 2.8,
+};
+
 export function stepCarPhysics(car: CarState, input: PlayerInput, surface: Surface, dt: number): void {
   const C = statsFor(car.kind);
   const s = SURFACES[surface];
   const wear = clamp(car.tyreWear ?? 0, 0, 1);
+  const fuel = clamp(car.fuel ?? 1, 0, 1);
+  const empty = fuel <= 0;
+  const lightMul = 1 + (1 - fuel) * FUEL.lightGain;
+  const powerMul = empty ? FUEL.crawl : lightMul;
   const gripMul = tyreFactor(wear, TYRE.wornGrip);
   const brakeMul = tyreFactor(wear, TYRE.wornBrake);
   const ca = dcos(car.angle);
@@ -124,12 +137,12 @@ export function stepCarPhysics(car: CarState, input: PlayerInput, surface: Surfa
   const brakeAmt = braking ? -throttle : 0;
 
   if (throttle > 0) {
-    vF += C.engineAccel * s.engine * throttle * dt;
+    vF += C.engineAccel * s.engine * throttle * powerMul * dt;
   } else if (throttle < 0) {
     if (vF > 5) {
       vF = Math.max(0, vF + C.brakeDecel * brakeMul * throttle * dt);
     } else {
-      vF = Math.max(-C.maxReverse, vF + C.reverseAccel * s.engine * throttle * dt);
+      vF = Math.max(-C.maxReverse, vF + C.reverseAccel * s.engine * throttle * powerMul * dt);
     }
   } else {
     vF -= vF * C.coastDrag * dt;
@@ -140,6 +153,7 @@ export function stepCarPhysics(car: CarState, input: PlayerInput, surface: Surfa
   }
 
   vF -= vF * s.rolling * dt + vF * Math.abs(vF) * C.airDrag * dt;
+  if (empty) vF -= vF * FUEL.emptyDrag * dt;
 
   const slideThresh = C.slideThreshold * tyreFactor(wear, TYRE.wornSlideThreshold);
   let maxLat = C.lateralGrip * s.grip * gripMul;
@@ -173,6 +187,13 @@ export function stepCarPhysics(car: CarState, input: PlayerInput, surface: Surfa
     if (surface === 'grass') wearRate += TYRE.grass * spd;
   }
   car.tyreWear = clamp(wear + wearRate * dt, 0, 1);
+
+  let burn = 0;
+  if (speed0 > 4 || throttle > 0) {
+    burn = FUEL.idle;
+    if (throttle > 0) burn += FUEL.throttle * throttle;
+  }
+  car.fuel = clamp(fuel - burn * dt, 0, 1);
 }
 
 const RESTITUTION = 0.35;

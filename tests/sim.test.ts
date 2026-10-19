@@ -224,6 +224,87 @@ describe('simulation', () => {
     expect(gentle.cars[0].tyreWear).toBeGreaterThan(coast.cars[0].tyreWear);
   });
 
+  it('starts every car with a full tank', () => {
+    const s = createRace(humanVsAi);
+    for (const c of s.cars) expect(c.fuel).toBe(1);
+  });
+
+  it('burns fuel faster at throttle than when coasting', () => {
+    const track = getTrack('meadow');
+    const p = track.samples[0];
+    const drive = (input: PlayerInput, ticks: number, from: GameState) => {
+      let s = from;
+      for (let i = 0; i < ticks; i++) {
+        s.cars[0].x = p.x;
+        s.cars[0].y = p.y;
+        s = step(s, { 0: input });
+      }
+      return s;
+    };
+    const launch = () => {
+      let s = createRace({
+        trackId: 'meadow',
+        totalLaps: 1,
+        cars: [{ name: 'T', color: '#fff', controller: 'human', kind: 'f1' }],
+        countdownSeconds: 0,
+      });
+      s.phase = 'racing';
+      s.startTick = 0;
+      return drive({ throttle: 1, steer: 0, handbrake: false }, 90, s);
+    };
+    const coast = drive({ throttle: 0, steer: 0, handbrake: false }, 90, launch());
+    const gas = drive({ throttle: 1, steer: 0, handbrake: false }, 90, launch());
+    expect(gas.cars[0].fuel).toBeLessThan(coast.cars[0].fuel);
+    expect(coast.cars[0].fuel).toBeLessThan(1);
+  });
+
+  it('makes an empty tank much slower than a full tank', () => {
+    const track = getTrack('meadow');
+    const p = track.samples[0];
+    const speedAfter = (fuel: number, ticks: number) => {
+      let s = createRace({
+        trackId: 'meadow',
+        totalLaps: 1,
+        cars: [{ name: 'T', color: '#fff', controller: 'human', kind: 'f1' }],
+        countdownSeconds: 0,
+      });
+      s.phase = 'racing';
+      s.startTick = 0;
+      s.cars[0].fuel = fuel;
+      for (let i = 0; i < ticks; i++) {
+        s.cars[0].x = p.x;
+        s.cars[0].y = p.y;
+        s = step(s, { 0: { throttle: 1, steer: 0, handbrake: false } });
+      }
+      return Math.hypot(s.cars[0].vx, s.cars[0].vy);
+    };
+    expect(speedAfter(0, 120)).toBeLessThan(speedAfter(1, 120) * 0.25);
+  });
+
+  it('makes a low tank a bit faster than a full tank before empty', () => {
+    const track = getTrack('meadow');
+    const p = track.samples[0];
+    const speedAfter = (fuel: number, ticks: number) => {
+      let s = createRace({
+        trackId: 'meadow',
+        totalLaps: 1,
+        cars: [{ name: 'T', color: '#fff', controller: 'human', kind: 'f1' }],
+        countdownSeconds: 0,
+      });
+      s.phase = 'racing';
+      s.startTick = 0;
+      s.cars[0].fuel = fuel;
+      for (let i = 0; i < ticks; i++) {
+        s.cars[0].x = p.x;
+        s.cars[0].y = p.y;
+        s.cars[0].fuel = fuel;
+        s = step(s, { 0: { throttle: 1, steer: 0, handbrake: false } });
+      }
+      return Math.hypot(s.cars[0].vx, s.cars[0].vy);
+    };
+    expect(speedAfter(0.12, 120)).toBeGreaterThan(speedAfter(1, 120));
+  });
+
   it('gives worn tyres less grip than fresh tyres', () => {
     const lateralAfter = (wear: number) => {
       let s = createRace({

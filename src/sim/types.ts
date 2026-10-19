@@ -48,6 +48,8 @@ export interface CarState {
   slip: number;
   /** 0 = fresh, 1 = fully worn. Starts at 0; no pits in v1. */
   tyreWear: number;
+  /** Remaining fuel 0–1 (1 = 100%). Starts full; no refuel in v1. */
+  fuel: number;
   onGrass: boolean;
   handbrake: boolean;
   lapsCompleted: number;

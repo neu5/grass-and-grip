@@ -143,9 +143,11 @@ describe('compact snapshots', () => {
     expect(Math.abs(again.cars[0].y - state.cars[0].y)).toBeLessThan(1 / POS_Q + 1e-9);
     expect(encodeSnapshot(state).c[0]).not.toHaveProperty('ai');
     expect(again.cars[0].tyreWear).toBeDefined();
-    const worn = { ...state, cars: [{ ...state.cars[0], tyreWear: 0.42 }] };
+    expect(again.cars[0].fuel).toBeDefined();
+    const worn = { ...state, cars: [{ ...state.cars[0], tyreWear: 0.42, fuel: 0.63 }] };
     const round = decodeSnapshot(encodeSnapshot(worn));
     expect(Math.abs(round.cars[0].tyreWear - 0.42)).toBeLessThan(1 / 1000 + 1e-9);
+    expect(Math.abs(round.cars[0].fuel - 0.63)).toBeLessThan(1 / 1000 + 1e-9);
   });
 });
 

@@ -1,10 +1,11 @@
 import type { CarState, GameState } from '../sim';
 import type { CompactCar, CompactSnapshot } from './protocol';
 
-/** Position / velocity stored in tenths. Angle in milliradians. Wear 0–1 as 0–1000. */
+/** Position / velocity stored in tenths. Angle in milliradians. Wear/fuel 0–1 as 0–1000. */
 export const POS_Q = 10;
 export const ANG_Q = 1000;
 export const WEAR_Q = 1000;
+export const FUEL_Q = 1000;
 
 const q = (v: number, scale: number) => Math.round(v * scale);
 const u = (v: number, scale: number) => v / scale;
@@ -23,6 +24,7 @@ function encodeCar(car: CarState): CompactCar {
     a: q(car.angle, ANG_Q),
     sl: q(car.slip, POS_Q),
     tw: q(car.tyreWear ?? 0, WEAR_Q),
+    fu: q(car.fuel ?? 1, FUEL_Q),
     g: car.onGrass ? 1 : 0,
     h: car.handbrake ? 1 : 0,
     lc: car.lapsCompleted,
@@ -48,6 +50,7 @@ function decodeCar(c: CompactCar, prev?: CarState): CarState {
     angle: u(c.a, ANG_Q),
     slip: u(c.sl, POS_Q),
     tyreWear: u(c.tw ?? 0, WEAR_Q),
+    fuel: u(c.fu ?? FUEL_Q, FUEL_Q),
     onGrass: !!c.g,
     handbrake: !!c.h,
     lapsCompleted: c.lc,

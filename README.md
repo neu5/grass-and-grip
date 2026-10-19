@@ -1,6 +1,6 @@
 # Grass & Grip
 
-A small 3D isometric racing game in the browser, in the spirit of GeneRally. It is rendered with Three.js: low-poly cars, real-time shadows, tyre stacks and trees, with a follow camera and a whole-track overview camera. You race on one track. Asphalt and grass have different grip, the cars slide and drift, and you can race up to three AI opponents. One or two players share a keyboard. Pick **Rally** (default, slides more) or **Formula 1** (faster, more grip); colors stay unique, car type can repeat. Hard braking, slides and grass wear tyres (HUD 100% fresh → 0% worn); worn tyres grip and brake less.
+A small 3D isometric racing game in the browser, in the spirit of GeneRally. It is rendered with Three.js: low-poly cars, real-time shadows, tyre stacks and trees, with a follow camera and a whole-track overview camera. You race on one track. Asphalt and grass have different grip, the cars slide and drift, and you can race up to three AI opponents. One or two players share a keyboard. Pick **Rally** (default, slides more) or **Formula 1** (faster, more grip); colors stay unique, car type can repeat. Hard braking, slides and grass wear tyres (HUD 100% fresh → 0% worn); worn tyres grip and brake less. Fuel starts at 100% and burns with throttle (idle/coast less); a lighter tank is a bit quicker, empty fuel is a crawl (no pits).
 
 ## Run it
 
@@ -67,14 +67,14 @@ The sim is pure and deterministic, so the online server runs exactly the same co
 src/sim/      pure, DOM-free simulation (can run on a server as-is)
   types.ts    GameState, CarState, PlayerInput, TickInputs (plain JSON data)
   sim.ts      createRace(), step(state, inputs) -> new state, standings(), hashState()
-  physics.ts  car model (grip, slip, drift, tyre wear), collisions
+  physics.ts  car model (grip, slip, drift, tyre wear, fuel), collisions
   track.ts    track definitions, spline centerline, surfaces, checkpoint gates, obstacles (tyres, trees)
   ai.ts       AI driver that outputs PlayerInput just like a human
   dmath.ts    deterministic sin/cos/atan2
 src/client/   browser-only code
   renderer3d.ts  Three.js scene: orthographic isometric camera, lights/shadows, car meshes
   trackTexture.ts  paints the grass/asphalt/curb ground texture and the skid-mark layer
-  hud.ts      2D canvas overlay: lap times, standings, tyre wear, countdown
+  hud.ts      2D canvas overlay: lap times, standings, tyre wear, fuel, countdown
   game.ts     fixed-timestep loop, input sampling, input log
 tests/        vitest tests for the simulation
 ```
