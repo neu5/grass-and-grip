@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CAR, getTrack, type CarState, type GameState, type Track } from '../sim';
+import { CARS, getTrack, type CarKind, type CarState, type GameState, type Track } from '../sim';
 import { drawHud, type Label } from './hud';
 import { paintTrackSurface, SkidMarks } from './trackTexture';
 
@@ -30,13 +30,19 @@ function shadowed<T extends THREE.Object3D>(o: T): T {
   return o;
 }
 
-const wheelGeo = new THREE.CylinderGeometry(4.6, 4.6, 3.6, 14).rotateX(Math.PI / 2);
+const rallyWheelGeo = new THREE.CylinderGeometry(4.6, 4.6, 3.6, 14).rotateX(Math.PI / 2);
+const f1WheelGeo = new THREE.CylinderGeometry(5.2, 5.2, 4.4, 14).rotateX(Math.PI / 2);
 const wheelMat = std('#151515', { roughness: 0.9 });
 const glassMat = std('#1b2633', { roughness: 0.25, metalness: 0.3 });
+const carbon = std('#1a1a1a', { roughness: 0.35, metalness: 0.45 });
 
-function buildCarMesh(color: string): THREE.Group {
-  const L = CAR.length;
-  const W = CAR.width;
+function buildCarMesh(color: string, kind: CarKind = 'rally'): THREE.Group {
+  return kind === 'f1' ? buildF1Mesh(color) : buildRallyMesh(color);
+}
+
+function buildRallyMesh(color: string): THREE.Group {
+  const L = CARS.rally.length;
+  const W = CARS.rally.width;
   const g = new THREE.Group();
   g.rotation.order = 'YXZ';
   const paint = std(color, { roughness: 0.45, metalness: 0.15 });
@@ -70,8 +76,87 @@ function buildCarMesh(color: string): THREE.Group {
     [L * 0.3, -W / 2],
     [L * 0.3, W / 2],
   ]) {
-    const w = new THREE.Mesh(wheelGeo, wheelMat);
+    const w = new THREE.Mesh(rallyWheelGeo, wheelMat);
     w.position.set(x, 4.6, z);
+    g.add(w);
+  }
+  return shadowed(g);
+}
+
+/** Low, wide-winged open-wheeler — distinct from the boxy rally body. */
+function buildF1Mesh(color: string): THREE.Group {
+  const L = CARS.f1.length;
+  const W = CARS.f1.width;
+  const g = new THREE.Group();
+  g.rotation.order = 'YXZ';
+  const paint = std(color, { roughness: 0.35, metalness: 0.25 });
+  const track = W * 0.62;
+
+  const tub = new THREE.Mesh(new THREE.BoxGeometry(L * 0.42, 3.2, W * 0.38), paint);
+  tub.position.set(-L * 0.02, 4.2, 0);
+  g.add(tub);
+  const nose = new THREE.Mesh(new THREE.BoxGeometry(L * 0.38, 2.2, 3.4), paint);
+  nose.position.set(L * 0.32, 3.6, 0);
+  g.add(nose);
+  const tip = new THREE.Mesh(new THREE.BoxGeometry(L * 0.16, 1.4, 2.2), paint);
+  tip.position.set(L * 0.52, 3.2, 0);
+  g.add(tip);
+
+  const frontWing = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.1, W * 1.35), carbon);
+  frontWing.position.set(L * 0.58, 2.1, 0);
+  g.add(frontWing);
+  for (const z of [-W * 0.64, W * 0.64]) {
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(4.2, 3.2, 0.7), carbon);
+    plate.position.set(L * 0.57, 3.2, z);
+    g.add(plate);
+  }
+
+  for (const z of [-W * 0.28, W * 0.28]) {
+    const pod = new THREE.Mesh(new THREE.BoxGeometry(L * 0.28, 3.4, 5.2), paint);
+    pod.position.set(-L * 0.04, 4.4, z);
+    g.add(pod);
+  }
+
+  const cockpit = new THREE.Mesh(new THREE.BoxGeometry(L * 0.16, 3.4, W * 0.28), glassMat);
+  cockpit.position.set(-L * 0.04, 6.8, 0);
+  g.add(cockpit);
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(3.4, 0.45, 8, 18).rotateX(Math.PI / 2), carbon);
+  halo.position.set(-L * 0.02, 8.4, 0);
+  halo.scale.set(1.15, 0.55, 1);
+  g.add(halo);
+
+  const rearWing = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.3, W * 1.2), carbon);
+  rearWing.position.set(-L * 0.48, 10.6, 0);
+  g.add(rearWing);
+  const lowerWing = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.9, W * 1.1), carbon);
+  lowerWing.position.set(-L * 0.48, 8.4, 0);
+  g.add(lowerWing);
+  for (const z of [-W * 0.58, W * 0.58]) {
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(4.4, 8.2, 0.7), carbon);
+    plate.position.set(-L * 0.48, 7.2, z);
+    g.add(plate);
+  }
+  for (const z of [-W * 0.22, W * 0.22]) {
+    const strut = new THREE.Mesh(new THREE.BoxGeometry(1.2, 6, 0.8), carbon);
+    strut.position.set(-L * 0.46, 7, z);
+    g.add(strut);
+  }
+
+  const engineCover = new THREE.Mesh(new THREE.BoxGeometry(L * 0.22, 3.6, W * 0.32), paint);
+  engineCover.position.set(-L * 0.28, 6.2, 0);
+  g.add(engineCover);
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(L * 0.7, 0.35, 1.8), std('#ffffff', { roughness: 0.5 }));
+  stripe.position.set(0.04 * L, 5.9, 0);
+  g.add(stripe);
+
+  for (const [x, z] of [
+    [-L * 0.34, -track],
+    [-L * 0.34, track],
+    [L * 0.34, -track],
+    [L * 0.34, track],
+  ]) {
+    const w = new THREE.Mesh(f1WheelGeo, wheelMat);
+    w.position.set(x, 5.2, z);
     g.add(w);
   }
   return shadowed(g);
@@ -223,7 +308,7 @@ export class Renderer3D {
   private skidTexture: THREE.CanvasTexture;
   private skidUploadTick = 0;
   private carMeshes: THREE.Group[] = [];
-  private carColors: string[] = [];
+  private carKeys: string[] = [];
   private hud: CanvasRenderingContext2D;
   private lastFrame = performance.now();
   cameraMode: CameraMode = 'follow';
@@ -315,12 +400,12 @@ export class Renderer3D {
   }
 
   private syncCars(state: GameState) {
-    const colors = state.cars.map((c) => c.color);
-    if (colors.join() === this.carColors.join()) return;
+    const keys = state.cars.map((c) => `${c.kind ?? 'rally'}:${c.color}`);
+    if (keys.join() === this.carKeys.join()) return;
     for (const m of this.carMeshes) this.scene.remove(m);
-    this.carMeshes = colors.map((c) => buildCarMesh(c));
+    this.carMeshes = state.cars.map((c) => buildCarMesh(c.color, c.kind === 'f1' ? 'f1' : 'rally'));
     for (const m of this.carMeshes) this.scene.add(m);
-    this.carColors = colors;
+    this.carKeys = keys;
   }
 
   private resize(): { w: number; h: number } {

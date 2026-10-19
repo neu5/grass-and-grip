@@ -19,6 +19,7 @@ function updateControlsHint() {
   const two = selected('humans') === '2';
   document.querySelector('#hint-solo')!.toggleAttribute('hidden', two);
   document.querySelector('#hint-duo')!.toggleAttribute('hidden', !two);
+  document.querySelector('#p2-car')!.toggleAttribute('hidden', !two);
 }
 
 form.addEventListener('change', updateControlsHint);
@@ -30,6 +31,8 @@ form.addEventListener('submit', (e) => {
     humans: selected('humans') === '2' ? 2 : 1,
     aiCount: Number(selected('ai')),
     laps: Number(selected('laps')),
+    p1Car: selected('p1car') === 'f1' ? 'f1' : 'rally',
+    p2Car: selected('p2car') === 'f1' ? 'f1' : 'rally',
   };
   game?.stop();
   game = new Game(renderer, keyboard, options);

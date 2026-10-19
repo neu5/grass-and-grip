@@ -1,4 +1,4 @@
-import { createRace, DT, step, type CarConfig, type GameState, type TickInputs } from '../sim';
+import { createRace, DT, step, type CarConfig, type CarKind, type GameState, type TickInputs } from '../sim';
 import { BINDINGS_P1, BINDINGS_P2, BINDINGS_SOLO, Keyboard } from './input';
 import type { Renderer3D } from './renderer3d';
 
@@ -6,6 +6,8 @@ export interface GameOptions {
   humans: 1 | 2;
   aiCount: number;
   laps: number;
+  p1Car?: CarKind;
+  p2Car?: CarKind;
 }
 
 const HUMAN_CARS: CarConfig[] = [
@@ -17,6 +19,14 @@ const AI_CARS: CarConfig[] = [
   { name: 'Viktor', color: '#9b59d0', controller: 'ai' },
   { name: 'Kenji', color: '#f0f0f0', controller: 'ai' },
 ];
+
+function aiKind(index: number, humans: CarKind[]): CarKind {
+  if (index === 0) {
+    if (!humans.includes('f1')) return 'f1';
+    if (!humans.includes('rally')) return 'rally';
+  }
+  return index % 2 === 0 ? 'f1' : 'rally';
+}
 const MAX_STEPS_PER_FRAME = 8;
 
 export class Game {
@@ -42,7 +52,12 @@ export class Game {
   }
 
   reset() {
-    const cars = [...HUMAN_CARS.slice(0, this.options.humans), ...AI_CARS.slice(0, this.options.aiCount)];
+    const p1: CarKind = this.options.p1Car === 'f1' ? 'f1' : 'rally';
+    const p2: CarKind = this.options.p2Car === 'f1' ? 'f1' : 'rally';
+    const humanKinds: CarKind[] = this.options.humans === 2 ? [p1, p2] : [p1];
+    const humans = HUMAN_CARS.slice(0, this.options.humans).map((c, i) => ({ ...c, kind: humanKinds[i] }));
+    const ai = AI_CARS.slice(0, this.options.aiCount).map((c, i) => ({ ...c, kind: aiKind(i, humanKinds) }));
+    const cars = [...humans, ...ai];
     this.curr = createRace({ trackId: 'meadow', totalLaps: this.options.laps, cars });
     this.prev = this.curr;
     this.humanIds = cars.map((c, i) => (c.controller === 'human' ? i : -1)).filter((i) => i >= 0);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CARS,
   createRace,
   distanceToCenterline,
   getTrack,
@@ -136,6 +137,55 @@ describe('simulation', () => {
       expect(c.lapsCompleted).toBeGreaterThanOrEqual(2);
       expect(c.bestLapTicks).toBeGreaterThan(60 * 5);
     }
+  });
+
+  it('gives Formula 1 higher acceleration and top speed than Rally', () => {
+    const track = getTrack('meadow');
+    const p = track.samples[0];
+    const speedAfter = (kind: 'rally' | 'f1', ticks: number) => {
+      let s = createRace({
+        trackId: 'meadow',
+        totalLaps: 1,
+        cars: [{ name: 'T', color: '#fff', controller: 'human', kind }],
+      });
+      s.phase = 'racing';
+      s.startTick = 0;
+      for (let i = 0; i < ticks; i++) {
+        s.cars[0].x = p.x;
+        s.cars[0].y = p.y;
+        s = step(s, { 0: { throttle: 1, steer: 0, handbrake: false } });
+      }
+      const c = s.cars[0];
+      return Math.hypot(c.vx, c.vy);
+    };
+    expect(speedAfter('f1', 90)).toBeGreaterThan(speedAfter('rally', 90) * 1.15);
+    expect(speedAfter('f1', 600)).toBeGreaterThan(speedAfter('rally', 600) * 1.15);
+  });
+
+  it('gives Formula 1 more grip and less slide than Rally', () => {
+    expect(CARS.f1.lateralGrip).toBeGreaterThan(CARS.rally.lateralGrip);
+    expect(CARS.f1.slideThreshold).toBeGreaterThan(CARS.rally.slideThreshold);
+    expect(CARS.f1.slideGripFactor).toBeGreaterThan(CARS.rally.slideGripFactor);
+    const lateralAfter = (kind: 'rally' | 'f1', ticks: number) => {
+      let s = createRace({
+        trackId: 'meadow',
+        totalLaps: 1,
+        cars: [{ name: 'T', color: '#fff', controller: 'human', kind }],
+      });
+      s.phase = 'racing';
+      s.startTick = 0;
+      const car = s.cars[0];
+      const a = car.angle;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      car.vx = 400 * ca - 200 * sa;
+      car.vy = 400 * sa + 200 * ca;
+      for (let i = 0; i < ticks; i++) s = step(s, { 0: { throttle: 0, steer: 0, handbrake: false } });
+      const c = s.cars[0];
+      return Math.abs(-c.vx * Math.sin(c.angle) + c.vy * Math.cos(c.angle));
+    };
+    expect(lateralAfter('f1', 1)).toBeLessThan(lateralAfter('rally', 1));
+    expect(lateralAfter('f1', 6)).toBeLessThan(lateralAfter('rally', 6) * 0.6);
   });
 
   it('keeps obstacles off the racing surface', () => {

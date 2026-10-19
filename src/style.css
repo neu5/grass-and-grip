@@ -80,6 +80,10 @@ fieldset {
   border: 0;
 }
 
+fieldset[hidden] {
+  display: none;
+}
+
 legend {
   margin-bottom: 6px;
   font-size: 12px;

@@ -131,6 +131,14 @@ describe('compact snapshots', () => {
     expect(again.tick).toBe(state.tick);
     expect(again.phase).toBe(state.phase);
     expect(again.cars[0].name).toBe('P1');
+    expect(again.cars[0].kind).toBe('rally');
+    const f1 = createRace({
+      trackId: 'meadow',
+      totalLaps: 1,
+      cars: [{ name: 'F', color: '#e33', controller: 'human', kind: 'f1' }],
+      countdownSeconds: 0,
+    });
+    expect(decodeSnapshot(encodeSnapshot(f1)).cars[0].kind).toBe('f1');
     expect(Math.abs(again.cars[0].x - state.cars[0].x)).toBeLessThan(1 / POS_Q + 1e-9);
     expect(Math.abs(again.cars[0].y - state.cars[0].y)).toBeLessThan(1 / POS_Q + 1e-9);
     expect(encodeSnapshot(state).c[0]).not.toHaveProperty('ai');

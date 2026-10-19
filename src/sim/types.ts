@@ -15,6 +15,15 @@ export type TickInputs = Record<number, PlayerInput>;
 
 export type Controller = 'human' | 'ai';
 
+export type CarKind = 'rally' | 'f1';
+
+export const CAR_KINDS = ['rally', 'f1'] as const;
+
+export const CAR_KIND_NAMES: Record<CarKind, string> = {
+  rally: 'Rally',
+  f1: 'Formula 1',
+};
+
 export type Phase = 'countdown' | 'racing' | 'finished';
 
 export interface AiMemory {
@@ -28,6 +37,7 @@ export interface CarState {
   id: number;
   name: string;
   color: string;
+  kind: CarKind;
   controller: Controller;
   x: number;
   y: number;
@@ -61,6 +71,8 @@ export interface CarConfig {
   name: string;
   color: string;
   controller: Controller;
+  /** Defaults to rally. */
+  kind?: CarKind;
 }
 
 export interface RaceConfig {

@@ -89,6 +89,24 @@ describe('ready flow', () => {
     expect(room.phase).toBe('racing');
   });
 
+  it('accepts a repeated car type and rejects an unknown car', () => {
+    const room = roomWith(RED);
+    expect(room.join('b', 'B', BLUE, 'f1')).toBeNull();
+    expect(room.join('c', 'C', YELLOW, 'f1')).toBeNull();
+    expect(room.players.map((p) => p.car)).toEqual(['rally', 'f1', 'f1']);
+    expect(room.join('d', 'D', GREEN, 'truck')).toBe('Unknown car');
+  });
+
+  it('puts each player in their chosen car and fills AI with the other body', () => {
+    const room = new Room('cars');
+    expect(room.join('p0', 'Ada', RED, 'f1')).toBeNull();
+    room.setSettings('p0', { aiCount: 1 });
+    room.setReady('p0', true);
+    expect(room.race!.cars[0].kind).toBe('f1');
+    expect(room.race!.cars[1].kind).toBe('rally');
+    expect(room.race!.cars[1].controller).toBe('ai');
+  });
+
   it('builds the grid from humans plus AI in free colors', () => {
     const room = roomWith(BLUE, GREEN);
     room.setSettings('p0', { aiCount: 2 });

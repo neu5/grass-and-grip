@@ -1,4 +1,7 @@
-import type { Phase, PlayerInput } from '../sim';
+import type { CarKind, Phase, PlayerInput } from '../sim';
+
+export type { CarKind };
+export { CAR_KINDS, CAR_KIND_NAMES } from '../sim';
 
 export const MAX_PLAYERS = 4;
 export const CAR_COLORS = ['#e8443a', '#3a8ee8', '#f2c230', '#3fbf5f'] as const;
@@ -19,6 +22,7 @@ export interface LobbyPlayer {
   id: string;
   name: string;
   color: string;
+  car: CarKind;
   ready: boolean;
   host: boolean;
 }
@@ -34,7 +38,7 @@ export interface LobbyState {
 }
 
 export type ClientMessage =
-  | { t: 'join'; name: string; color: string }
+  | { t: 'join'; name: string; color: string; car?: CarKind }
   | { t: 'ready'; ready: boolean }
   | { t: 'settings'; aiCount?: number; laps?: number }
   | { t: 'input'; seq: number; tick: number; input: PlayerInput }
@@ -52,6 +56,7 @@ export interface CompactCar {
   i: number;
   n: string;
   col: string;
+  knd: CarKind;
   ctl: 'human' | 'ai';
   x: number;
   y: number;
