@@ -59,6 +59,8 @@ On Render, the repo has a `render.yaml` blueprint (free web service, health chec
 
 Press `C` to switch between the follow and overview cameras, `R` to restart the race and `Esc` to go back to the menu.
 
+On a phone (coarse pointer, or a mobile browser with touch) the game locks landscape when it can, or rotates the view and shows a hint if the browser blocks the lock. A transparent right-thumb stick steers and throttles; left-thumb **CAM** and **BRAKE** match `C` and Shift/Space. Keyboard hints hide. Desktop keyboards stay as above — no overlay. `/room` lobby buttons are larger for fingers.
+
 ## Architecture
 
 The sim is pure and deterministic, so the online server runs exactly the same code as local play.
