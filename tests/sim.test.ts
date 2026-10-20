@@ -595,7 +595,7 @@ describe('crash damage', () => {
     expect(s.cars[0].damage).toBe(0);
   });
 
-  it('makes a wrecked car much slower than a healthy car', () => {
+  it('makes a wrecked car slower, but a hurt car is not a crawl', () => {
     const track = getTrack('meadow');
     const p = track.samples[0];
     const speedAfter = (damage: number) => {
@@ -609,9 +609,13 @@ describe('crash damage', () => {
       return Math.hypot(s.cars[0].vx, s.cars[0].vy);
     };
     const wrecked = speedAfter(1);
+    const hurt = speedAfter(0.45);
     const fine = speedAfter(0);
-    expect(wrecked).toBeLessThan(fine * 0.4);
-    expect(wrecked).toBeGreaterThan(fine * 0.08);
+    expect(hurt).toBeLessThan(fine);
+    expect(hurt).toBeGreaterThan(fine * 0.78);
+    expect(wrecked).toBeLessThan(hurt);
+    expect(wrecked).toBeLessThan(fine * 0.72);
+    expect(wrecked).toBeGreaterThan(fine * 0.28);
   });
 
   it('still steers when wrecked', () => {

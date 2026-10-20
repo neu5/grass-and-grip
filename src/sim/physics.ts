@@ -114,17 +114,24 @@ export const FUEL = {
   emptyDrag: 0.45,
 };
 
-/** Crash damage 0–1. Hits add more with closing speed; wrecks crawl but still steer. */
+/** Crash damage 0–1. Hits add more with closing speed; crawl only when almost wrecked. */
 export const DAMAGE = {
   /** Closing speed (px/s) at or below this is a graze. */
   graze: 22,
   /** Squared impact scale. ~400 px/s wall hit ≈ 0.34. */
   scale: 1 / 420000,
   /** At damage=1, remaining engine power. */
-  crawl: 0.18,
+  crawl: 0.4,
   /** Extra first-order drag at damage=1. */
-  drag: 1.2,
+  drag: 0.38,
+  /** >1 so mid damage is a light penalty; crawl only near 1. */
+  curve: 1.7,
 };
+
+function damageAmount(dmg: number): number {
+  const d = clamp(dmg, 0, 1);
+  return d ** DAMAGE.curve;
+}
 
 export function applyCollisionDamage(car: CarState, closingSpeed: number): void {
   const hit = closingSpeed - DAMAGE.graze;
@@ -140,7 +147,8 @@ export function stepCarPhysics(car: CarState, input: PlayerInput, surface: Surfa
   const dmg = clamp(car.damage ?? 0, 0, 1);
   const empty = fuel <= 0;
   const lightMul = 1 + (1 - fuel) * FUEL.lightGain;
-  const dmgMul = 1 - dmg * (1 - DAMAGE.crawl);
+  const dmgAmt = damageAmount(dmg);
+  const dmgMul = 1 - dmgAmt * (1 - DAMAGE.crawl);
   const powerMul = (empty ? FUEL.crawl : lightMul) * dmgMul;
   const gripMul = tyreFactor(wear, TYRE.wornGrip);
   const brakeMul = tyreFactor(wear, TYRE.wornBrake);
@@ -174,7 +182,7 @@ export function stepCarPhysics(car: CarState, input: PlayerInput, surface: Surfa
 
   vF -= vF * s.rolling * dt + vF * Math.abs(vF) * C.airDrag * dt;
   if (empty) vF -= vF * FUEL.emptyDrag * dt;
-  if (dmg > 0) vF -= vF * DAMAGE.drag * dmg * dt;
+  if (dmgAmt > 0) vF -= vF * DAMAGE.drag * dmgAmt * dt;
 
   const slideThresh = C.slideThreshold * tyreFactor(wear, TYRE.wornSlideThreshold);
   let maxLat = C.lateralGrip * s.grip * gripMul;

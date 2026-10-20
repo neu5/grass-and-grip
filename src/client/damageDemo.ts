@@ -78,7 +78,7 @@ export function damageDemoOptions(): GameOptions {
         if (car.damage > lastDamage + 0.04 && car.y < 50) {
           lastDamage = car.damage;
           rams++;
-          phase = car.damage > 0.6 ? 'toPit' : 'back';
+          phase = car.damage > 0.82 ? 'toPit' : 'back';
         }
         return { throttle: rams === 0 ? 0.75 : 1, steer: 0, handbrake: false };
       }

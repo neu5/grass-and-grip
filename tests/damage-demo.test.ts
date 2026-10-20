@@ -26,7 +26,7 @@ describe('damage demo driver', () => {
       s = step(s, { 0: input });
       const car = s.cars[0];
       if (car.damage > 0.16) smoked = true;
-      if (car.damage > 0.6) fired = true;
+      if (car.damage > 0.82) fired = true;
       const inBox = pitBoxIndex(track, car.x, car.y) >= 0;
       const speed = Math.hypot(car.vx, car.vy);
       if (fired && inBox && speed < 24) pitted = true;
