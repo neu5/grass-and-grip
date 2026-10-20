@@ -2,9 +2,11 @@ import * as THREE from 'three';
 import {
   CARS,
   getTrack,
+  heightAt,
   isStoppedInPit,
   needsPitService,
   pitBoxIndex,
+  type Bridge,
   type CarKind,
   type CarState,
   type GameState,
@@ -239,6 +241,7 @@ interface TreeSpot {
   x: number;
   y: number;
   r: number;
+  h?: number;
 }
 
 const TREE_GREENS = ['#2f6e2a', '#3a7d31', '#2a6326'].map((c) => new THREE.Color(c));
@@ -260,7 +263,7 @@ function buildForest(spots: TreeSpot[]): THREE.Group {
   const up = new THREE.Vector3(0, 1, 0);
   spots.forEach((t, i) => {
     q.setFromAxisAngle(up, i * 1.7);
-    m.compose(new THREE.Vector3(t.x, 0, t.y), q, new THREE.Vector3(t.r, t.r, t.r));
+    m.compose(new THREE.Vector3(t.x, t.h ?? 0, t.y), q, new THREE.Vector3(t.r, t.r, t.r));
     trunk.setMatrixAt(i, m);
     tiers.forEach((tier, k) => {
       tier.setMatrixAt(i, m);
@@ -348,7 +351,7 @@ function spawnCrew(track: Track): CrewActor[] {
       const restX = b.x + b.w * (0.28 + slot * 0.44);
       const restY = b.y - 12;
       const mesh = buildCrewPerson(CREW_SHIRTS[(box * 2 + slot) % CREW_SHIRTS.length]);
-      mesh.position.set(restX, 0, restY);
+      mesh.position.set(restX, heightAt(track, restX, restY), restY);
       crew.push({
         mesh,
         restX,
@@ -372,8 +375,9 @@ function spawnCrew(track: Track): CrewActor[] {
 function buildPitDecor(track: Track): THREE.Group {
   const g = new THREE.Group();
   const lane = track.def.pitLane;
+  const curbH = heightAt(track, lane.x + lane.w / 2, lane.y + 2);
   const curb = new THREE.Mesh(new THREE.BoxGeometry(lane.w, 3.2, 4), std('#d5d0c6'));
-  curb.position.set(lane.x + lane.w / 2, 1.6, lane.y + 2);
+  curb.position.set(lane.x + lane.w / 2, curbH + 1.6, lane.y + 2);
   g.add(curb);
   const paint = std('#f6f6f6');
   const t = 1.8;
@@ -387,7 +391,7 @@ function buildPitDecor(track: Track): THREE.Group {
     ];
     for (const [x, z, w, d] of segs) {
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), paint);
-      m.position.set(x, h / 2, z);
+      m.position.set(x, heightAt(track, x, z) + h / 2, z);
       g.add(m);
     }
   }
@@ -431,8 +435,9 @@ function buildCheckpointDebug(track: Track): THREE.Group {
   const H = CHECKPOINT_DEBUG_HEIGHT;
   track.gates.forEach((gate, i) => {
     const pose = checkpointDebugPose(gate, i);
+    const ground = heightAt(track, pose.cx, pose.cz);
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(pose.width, H), pose.finish ? finishPlane : sectorPlane);
-    plane.position.set(pose.cx, H / 2, pose.cz);
+    plane.position.set(pose.cx, ground + H / 2, pose.cz);
     plane.rotation.y = pose.yaw;
     g.add(plane);
     for (const [x, z] of [
@@ -440,7 +445,7 @@ function buildCheckpointDebug(track: Track): THREE.Group {
       [pose.bx, pose.bz],
     ]) {
       const pole = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, H, 6), pose.finish ? finishPole : sectorPole);
-      pole.position.set(x, H / 2, z);
+      pole.position.set(x, ground + H / 2, z);
       g.add(pole);
     }
   });
@@ -456,17 +461,18 @@ function buildGantry(track: Track): THREE.Group {
   const len = Math.sqrt(nx * nx + ny * ny);
   const ux = nx / len;
   const uy = ny / len;
+  const ground = heightAt(track, gate.center.x, gate.center.y);
   const postMat = std('#d9d9d9', { metalness: 0.4, roughness: 0.4 });
   for (const s of [-1, 1]) {
     const post = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 58, 8), postMat);
-    post.position.set(gate.center.x + ux * off * s, 29, gate.center.y + uy * off * s);
+    post.position.set(gate.center.x + ux * off * s, ground + 29, gate.center.y + uy * off * s);
     g.add(post);
   }
   const banner = new THREE.Mesh(
     new THREE.BoxGeometry(off * 2 + 6, 12, 2),
     [std('#c9342b'), std('#c9342b'), std('#c9342b'), std('#c9342b'), std('#fff', { map: checkerTexture() }), std('#fff', { map: checkerTexture() })],
   );
-  banner.position.set(gate.center.x, 56, gate.center.y);
+  banner.position.set(gate.center.x, ground + 56, gate.center.y);
   banner.rotation.y = -Math.atan2(uy, ux);
   g.add(banner);
   return shadowed(g);
@@ -514,6 +520,103 @@ function sceneryTrees(width: number, height: number): TreeSpot[] {
   return spots;
 }
 
+function buildHeightGround(track: Track, map: THREE.Texture): THREE.Mesh {
+  const { width, height } = track.def;
+  const geo = new THREE.PlaneGeometry(width, height, 96, 64);
+  geo.rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const wx = pos.getX(i) + width / 2;
+    const wz = pos.getZ(i) + height / 2;
+    pos.setY(i, heightAt(track, wx, wz));
+  }
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, std('#fff', { map, roughness: 0.95 }));
+  mesh.position.set(width / 2, 0, height / 2);
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+function buildWater(track: Track): THREE.Group {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({
+    color: '#1f6aa0',
+    roughness: 0.18,
+    metalness: 0.35,
+    transparent: true,
+    opacity: 0.88,
+  });
+  for (const r of track.def.water ?? []) {
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.h).rotateX(-Math.PI / 2), mat);
+    mesh.position.set(r.x + r.w / 2, 0.8, r.y + r.h / 2);
+    mesh.receiveShadow = true;
+    g.add(mesh);
+  }
+  return g;
+}
+
+function buildBridges(track: Track): THREE.Group {
+  const g = new THREE.Group();
+  const slabMat = std('#6f6c67', { roughness: 0.85, metalness: 0.1 });
+  const railMat = std('#cfd3d8', { metalness: 0.45, roughness: 0.4 });
+  const postMat = std('#5c5854', { roughness: 0.9 });
+  for (const b of track.def.bridges ?? []) {
+    g.add(buildBridge(b, slabMat, railMat, postMat));
+  }
+  return shadowed(g);
+}
+
+function buildBridge(
+  b: Bridge,
+  slabMat: THREE.Material,
+  railMat: THREE.Material,
+  postMat: THREE.Material,
+): THREE.Group {
+  const g = new THREE.Group();
+  const cx = b.x + b.w / 2;
+  const cz = b.y + b.h / 2;
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(b.w + 10, 8, b.h + 6), slabMat);
+  slab.position.set(cx, b.height - 6, cz);
+  g.add(slab);
+  const ns = b.h >= b.w;
+  const railH = 8;
+  if (ns) {
+    for (const sx of [b.x + 4, b.x + b.w - 4]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(1.8, railH, b.h + 4), railMat);
+      rail.position.set(sx, b.height + railH / 2, cz);
+      g.add(rail);
+    }
+  } else {
+    for (const sz of [b.y + 4, b.y + b.h - 4]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(b.w + 4, railH, 1.8), railMat);
+      rail.position.set(cx, b.height + railH / 2, sz);
+      g.add(rail);
+    }
+  }
+  const cols = ns ? 4 : 3;
+  for (let i = 0; i < cols; i++) {
+    const t = (i + 0.5) / cols;
+    for (const side of [-1, 1]) {
+      const px = ns ? cx + side * (b.w / 2 - 8) : b.x + t * b.w;
+      const pz = ns ? b.y + t * b.h : cz + side * (b.h / 2 - 8);
+      const post = new THREE.Mesh(new THREE.BoxGeometry(9, b.height, 9), postMat);
+      post.position.set(px, b.height / 2, pz);
+      g.add(post);
+    }
+  }
+  return g;
+}
+
+function disposeObject(root: THREE.Object3D) {
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    mesh.geometry?.dispose?.();
+    const mat = mesh.material;
+    if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+    else mat?.dispose?.();
+  });
+}
+
 export class Renderer3D {
   private gl: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
@@ -527,8 +630,9 @@ export class Renderer3D {
   private camHalfHeight = 400;
   private camInitialized = false;
   private track: Track;
-  private skids: SkidMarks;
-  private skidTexture: THREE.CanvasTexture;
+  private world = new THREE.Group();
+  private skids!: SkidMarks;
+  private skidTexture!: THREE.CanvasTexture;
   private skidUploadTick = 0;
   private carMeshes: THREE.Group[] = [];
   private carKeys: string[] = [];
@@ -537,7 +641,7 @@ export class Renderer3D {
   private lastFrame = performance.now();
   private smokePuffs: SmokePuff[] = [];
   private puffWait: number[] = [];
-  private checkpointDebug: THREE.Group;
+  private checkpointDebug!: THREE.Group;
   cameraMode: CameraMode = 'follow';
   finishHint = 'Press R to race again · Esc for menu';
   keyHints = true;
@@ -548,7 +652,6 @@ export class Renderer3D {
     trackId: string,
   ) {
     this.track = getTrack(trackId);
-    const { width, height } = this.track.def;
     this.hud = hudCanvas.getContext('2d')!;
 
     this.gl = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true });
@@ -559,6 +662,7 @@ export class Renderer3D {
     this.scene.background = new THREE.Color('#9fd3f0');
 
     this.scene.add(new THREE.HemisphereLight('#dff1ff', '#3d5a2a', 1.4));
+    const { width, height } = this.track.def;
     const sun = new THREE.DirectionalLight('#fff4e0', 2.2);
     sun.position.set(width / 2 - 500, 1100, height / 2 - 700);
     sun.target.position.set(width / 2, 0, height / 2);
@@ -568,19 +672,41 @@ export class Renderer3D {
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.6;
     this.scene.add(sun, sun.target);
+    this.scene.add(this.world);
+    this.buildWorld();
+  }
+
+  get trackId(): string {
+    return this.track.def.id;
+  }
+
+  setTrack(trackId: string) {
+    if (this.track.def.id === trackId) return;
+    this.track = getTrack(trackId);
+    this.buildWorld();
+    this.resetRace();
+  }
+
+  private buildWorld() {
+    const debugOn = this.checkpointDebug?.visible ?? false;
+    while (this.world.children.length) {
+      const child = this.world.children[0];
+      this.world.remove(child);
+      disposeObject(child);
+    }
+    const { width, height } = this.track.def;
 
     const outer = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000).rotateX(-Math.PI / 2), std('#4b9c40', { roughness: 1 }));
     outer.position.set(width / 2, -0.5, height / 2);
     outer.receiveShadow = true;
-    this.scene.add(outer);
+    this.world.add(outer);
 
     const surfaceTex = new THREE.CanvasTexture(paintTrackSurface(this.track, SURFACE_RES));
     surfaceTex.colorSpace = THREE.SRGBColorSpace;
     surfaceTex.anisotropy = this.gl.capabilities.getMaxAnisotropy();
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(width, height).rotateX(-Math.PI / 2), std('#fff', { map: surfaceTex, roughness: 0.95 }));
-    ground.position.set(width / 2, 0, height / 2);
-    ground.receiveShadow = true;
-    this.scene.add(ground);
+    this.world.add(buildHeightGround(this.track, surfaceTex));
+    this.world.add(buildWater(this.track));
+    this.world.add(buildBridges(this.track));
 
     this.skids = new SkidMarks(width, height);
     this.skidTexture = new THREE.CanvasTexture(this.skids.canvas);
@@ -589,24 +715,26 @@ export class Renderer3D {
       new THREE.PlaneGeometry(width, height).rotateX(-Math.PI / 2),
       new THREE.MeshStandardMaterial({ map: this.skidTexture, transparent: true, depthWrite: false, roughness: 1 }),
     );
-    skidPlane.position.set(width / 2, 0.3, height / 2);
+    skidPlane.position.set(width / 2, 0.35, height / 2);
     skidPlane.receiveShadow = true;
-    this.scene.add(skidPlane);
+    this.world.add(skidPlane);
 
     const trees: TreeSpot[] = sceneryTrees(width, height);
     for (const o of this.track.def.obstacles) {
+      const h = heightAt(this.track, o.x, o.y);
       if (o.kind === 'tree') {
-        trees.push(o);
+        trees.push({ ...o, h });
         continue;
       }
       const mesh = buildTyreStack(o.r);
-      mesh.position.set(o.x, 0, o.y);
-      this.scene.add(mesh);
+      mesh.position.set(o.x, h, o.y);
+      this.world.add(mesh);
     }
     this.crew = spawnCrew(this.track);
-    for (const c of this.crew) this.scene.add(c.mesh);
+    for (const c of this.crew) this.world.add(c.mesh);
     this.checkpointDebug = buildCheckpointDebug(this.track);
-    this.scene.add(buildPitDecor(this.track), buildGantry(this.track), buildWalls(width, height), buildForest(trees), this.checkpointDebug);
+    this.checkpointDebug.visible = debugOn;
+    this.world.add(buildPitDecor(this.track), buildGantry(this.track), buildWalls(width, height), buildForest(trees), this.checkpointDebug);
   }
 
   resetRace() {
@@ -624,7 +752,7 @@ export class Renderer3D {
       actor.y = actor.restY;
       actor.heading = Math.PI / 2;
       actor.phase = 0;
-      actor.mesh.position.set(actor.x, 0, actor.y);
+      actor.mesh.position.set(actor.x, heightAt(this.track, actor.x, actor.y), actor.y);
       actor.mesh.rotation.y = -actor.heading;
     }
   }
@@ -668,7 +796,7 @@ export class Renderer3D {
       actor.rightLeg.rotation.z = -swing;
       actor.leftArm.rotation.z = -swing * 0.7;
       actor.rightArm.rotation.z = swing * 0.7;
-      actor.mesh.position.set(actor.x, 0, actor.y);
+      actor.mesh.position.set(actor.x, heightAt(this.track, actor.x, actor.y), actor.y);
       actor.mesh.rotation.y = -actor.heading;
     }
   }
@@ -743,7 +871,7 @@ export class Renderer3D {
         new THREE.Vector3(width, 0, 0),
         new THREE.Vector3(0, 0, height),
         new THREE.Vector3(width, 0, height),
-        new THREE.Vector3(width / 2, 60, 0),
+        new THREE.Vector3(width / 2, 80, 0),
       ],
       aspect,
       0,
@@ -778,7 +906,7 @@ export class Renderer3D {
     cam.updateMatrixWorld();
   }
 
-  private spawnSmokePuff(x: number, z: number, angle: number, denser: number, kind: CarKind) {
+  private spawnSmokePuff(x: number, z: number, angle: number, denser: number, kind: CarKind, ground = 0) {
     let puff = this.smokePuffs.find((p) => p.age >= p.life);
     if (!puff) {
       if (this.smokePuffs.length >= MAX_SMOKE_PUFFS) return;
@@ -798,7 +926,7 @@ export class Renderer3D {
     puff.vz = -Math.sin(angle) * 6 + (Math.random() - 0.5) * 8;
     puff.vy = 14 + denser * 6 + Math.random() * 6;
     puff.mesh.visible = true;
-    puff.mesh.position.set(x - Math.cos(angle) * rear + (Math.random() - 0.5) * jitter, 9, z - Math.sin(angle) * rear + (Math.random() - 0.5) * jitter);
+    puff.mesh.position.set(x - Math.cos(angle) * rear + (Math.random() - 0.5) * jitter, ground + 9, z - Math.sin(angle) * rear + (Math.random() - 0.5) * jitter);
     puff.mesh.scale.setScalar(puff.base);
     (puff.mesh.material as THREE.MeshBasicMaterial).opacity = puff.fade;
   }
@@ -836,7 +964,7 @@ export class Renderer3D {
       const x = a.x + (b.x - a.x) * alpha;
       const y = a.y + (b.y - a.y) * alpha;
       const angle = lerpAngle(a.angle, b.angle, alpha);
-      this.spawnSmokePuff(x, y, angle, k, b.kind);
+      this.spawnSmokePuff(x, y, angle, k, b.kind, heightAt(this.track, x, y));
     }
   }
 
@@ -853,13 +981,14 @@ export class Renderer3D {
       const x = a.x + (b.x - a.x) * alpha;
       const y = a.y + (b.y - a.y) * alpha;
       const angle = lerpAngle(a.angle, b.angle, alpha);
+      const h = heightAt(this.track, x, y);
       const mesh = this.carMeshes[i];
-      mesh.position.set(x, 0, y);
+      mesh.position.set(x, h, y);
       mesh.rotation.y = -angle;
       mesh.rotation.x = bodyRoll(b);
       const dmg = (a.damage ?? 0) + ((b.damage ?? 0) - (a.damage ?? 0)) * alpha;
       updateFireFx(mesh, dmg, performance.now() / 1000);
-      positions.push(new THREE.Vector3(x, 0, y));
+      positions.push(new THREE.Vector3(x, h, y));
     }
 
     this.updateSmokePuffs(prev, curr, alpha, dt);
@@ -868,7 +997,9 @@ export class Renderer3D {
     this.gl.render(this.scene, this.camera);
 
     const labels: Label[] = humanIds.map((id) => {
-      const p = positions[id].clone().setY(34).project(this.camera);
+      const p = positions[id].clone();
+      p.y += 34;
+      p.project(this.camera);
       return { text: curr.cars[id].name, x: ((p.x + 1) / 2) * w, y: ((1 - p.y) / 2) * h };
     });
     this.hud.clearRect(0, 0, w, h);

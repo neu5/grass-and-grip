@@ -1,10 +1,9 @@
-import { createRace, step, TICK_RATE, type CarConfig, type CarKind, type GameState, type PlayerInput, type TickInputs } from '../sim';
+import { createRace, isTrackId, step, TICK_RATE, type CarConfig, type CarKind, type GameState, type PlayerInput, type TickInputs } from '../sim';
 import { CAR_COLORS, CAR_KINDS, LAP_OPTIONS, MAX_PLAYERS, type LobbyState, type RoomPhase } from './protocol';
 
 export const COUNTDOWN_SECONDS = 5;
 export const RESULTS_TICKS = 6 * TICK_RATE;
 export const MAX_RACE_TICKS = 15 * 60 * TICK_RATE;
-const TRACK_ID = 'meadow';
 const AI_NAMES = ['Rosa', 'Viktor', 'Kenji'];
 const MAX_NAME_LENGTH = 16;
 
@@ -29,6 +28,7 @@ export class Room {
   readonly players: RoomPlayer[] = [];
   aiCount = 3;
   laps = 3;
+  trackId = 'meadow';
   phase: RoomPhase = 'lobby';
   race: GameState | null = null;
   /** Player id -> car id for the current race. */
@@ -89,7 +89,7 @@ export class Room {
     return null;
   }
 
-  setSettings(id: string, s: { aiCount?: number; laps?: number }): string | null {
+  setSettings(id: string, s: { aiCount?: number; laps?: number; trackId?: string }): string | null {
     if (id !== this.hostId) return 'Only the host can change settings';
     if (this.phase !== 'lobby') return 'Race in progress';
     if (s.aiCount !== undefined) {
@@ -100,6 +100,10 @@ export class Room {
     if (s.laps !== undefined) {
       if (!(LAP_OPTIONS as readonly number[]).includes(Number(s.laps))) return 'Invalid lap count';
       this.laps = Number(s.laps);
+    }
+    if (s.trackId !== undefined) {
+      if (!isTrackId(s.trackId)) return 'Unknown track';
+      this.trackId = s.trackId;
     }
     this.changed();
     return null;
@@ -142,6 +146,7 @@ export class Room {
       players: this.players.map((p) => ({ ...p, host: p.id === this.hostId })),
       aiCount: this.aiCount,
       laps: this.laps,
+      trackId: this.trackId,
       cars: Object.fromEntries(this.carOf),
     };
   }
@@ -165,7 +170,7 @@ export class Room {
     this.lastSeq.clear();
     this.players.forEach((p, i) => this.carOf.set(p.id, i));
     this.inputs = {};
-    this.race = createRace({ trackId: TRACK_ID, totalLaps: this.laps, cars, countdownSeconds: COUNTDOWN_SECONDS });
+    this.race = createRace({ trackId: this.trackId, totalLaps: this.laps, cars, countdownSeconds: COUNTDOWN_SECONDS });
     this.phase = 'racing';
     this.changed();
   }

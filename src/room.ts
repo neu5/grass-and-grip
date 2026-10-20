@@ -3,7 +3,7 @@ import { BINDINGS_SOLO, Keyboard, mergeInputs, NO_PLAYER_INPUT } from './client/
 import { drawNetDebug } from './client/netDebug';
 import { Renderer3D } from './client/renderer3d';
 import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
-import { SNAPSHOT_HZ, CAR_COLORS, CAR_KINDS, CAR_KIND_NAMES, COLOR_NAMES, LAP_OPTIONS, MAX_PLAYERS, type ClientMessage, type CompactSnapshot, type LobbyState, type ServerMessage } from './net/protocol';
+import { SNAPSHOT_HZ, CAR_COLORS, CAR_KINDS, CAR_KIND_NAMES, COLOR_NAMES, LAP_OPTIONS, MAX_PLAYERS, TRACK_IDS, TRACK_NAMES, type ClientMessage, type CompactSnapshot, type LobbyState, type ServerMessage, type TrackId } from './net/protocol';
 import { SnapshotBuffer, mergeOwn } from './net/interpolate';
 import { InputQueue, lerpCar, reconcile, replaceCar } from './net/prediction';
 import { decodeSnapshot } from './net/snapshot';
@@ -66,6 +66,7 @@ radios($('#colors'), 'color', CAR_COLORS, (c) => COLOR_NAMES[c], (c) => `backgro
 radios($('#cars'), 'car', CAR_KINDS, (k) => CAR_KIND_NAMES[k as keyof typeof CAR_KIND_NAMES]);
 radios($('#ai'), 'ai', [0, 1, 2, 3], (v) => v);
 radios($('#laps'), 'laps', LAP_OPTIONS, (v) => v);
+radios($('#track'), 'track', TRACK_IDS, (v) => TRACK_NAMES[v as TrackId] ?? v);
 joinForm.querySelector<HTMLInputElement>('input[name=car][value=rally]')!.checked = true;
 
 function send(msg: ClientMessage) {
@@ -148,10 +149,14 @@ function renderLobby() {
     input.checked = Number(input.value) === lobby.laps;
     input.disabled = !isHost;
   }
+  for (const input of lobbyEl.querySelectorAll<HTMLInputElement>('input[name=track]')) {
+    input.checked = input.value === lobby.trackId;
+    input.disabled = !isHost;
+  }
   const waiting = lobby.players.filter((p) => !p.ready).length;
   $('#status').textContent = `${lobby.players.length} human${lobby.players.length > 1 ? 's' : ''} + ${lobby.aiCount} AI. ${
     waiting ? `Waiting for ${waiting} driver${waiting > 1 ? 's' : ''} to get ready.` : ''
-  }${isHost ? '' : ' The host picks AI and laps.'}`;
+  }${isHost ? '' : ' The host picks AI, laps and track.'}`;
   readyBtn.textContent = me.ready ? 'Ready! (click to cancel)' : 'Ready';
   readyBtn.classList.toggle('on', me.ready);
 }
@@ -175,6 +180,7 @@ lobbyEl.addEventListener('change', (e) => {
   const input = e.target as HTMLInputElement;
   if (input.name === 'ai') send({ t: 'settings', aiCount: Number(input.value) });
   if (input.name === 'laps') send({ t: 'settings', laps: Number(input.value) });
+  if (input.name === 'track') send({ t: 'settings', trackId: input.value });
 });
 
 function myCarId(): number | undefined {
@@ -187,6 +193,7 @@ function onSnapshot(raw: CompactSnapshot) {
   while (snapTimes[0] < now - 1000) snapTimes.shift();
   lastAck = raw.ack;
   const state = decodeSnapshot(raw, remotes.latest ?? predicted ?? undefined);
+  renderer.setTrack(state.trackId);
   if (remotes.length === 0) renderer.resetRace();
   remotes.push(state, now);
   renderer.onTick(state);

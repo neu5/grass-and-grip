@@ -2,6 +2,7 @@ import './style.css';
 import { Game, type GameOptions } from './client/game';
 import { Keyboard } from './client/input';
 import { damageDemoOptions } from './client/damageDemo';
+import { mapDemoOptions } from './client/mapDemo';
 import { pitDemoOptions } from './client/pitDemo';
 import { Renderer3D } from './client/renderer3d';
 import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
@@ -43,9 +44,10 @@ updateControlsHint();
 
 {
   const demo = new URLSearchParams(location.search).get('demo');
-  if (demo === 'pit' || demo === 'damage') {
+  if (demo === 'pit' || demo === 'damage' || demo === 'map') {
     menu.hidden = true;
-    game = new Game(renderer, keyboard, demo === 'damage' ? damageDemoOptions() : pitDemoOptions());
+    const options = demo === 'damage' ? damageDemoOptions() : demo === 'map' ? mapDemoOptions(renderer) : pitDemoOptions();
+    game = new Game(renderer, keyboard, options);
     (window as unknown as { race: Game }).race = game;
     canvas.focus();
     game.start();
@@ -58,6 +60,7 @@ form.addEventListener('submit', (e) => {
     humans: selected('humans') === '2' ? 2 : 1,
     aiCount: Number(selected('ai')),
     laps: Number(selected('laps')),
+    trackId: selected('track') || 'meadow',
     p1Car: selected('p1car') === 'f1' ? 'f1' : 'rally',
     p2Car: selected('p2car') === 'f1' ? 'f1' : 'rally',
   };

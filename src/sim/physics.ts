@@ -11,6 +11,10 @@ export interface SurfaceParams {
 export const SURFACES: Record<Surface, SurfaceParams> = {
   asphalt: { grip: 1, engine: 1, rolling: 0.4 },
   grass: { grip: 0.42, engine: 0.7, rolling: 1.8 },
+  /** Looser than grass: more slide, slower than asphalt, not the same drag. */
+  sand: { grip: 0.22, engine: 0.58, rolling: 2.5 },
+  /** Strong drag. Off the bridge into a lake is a crawl, not grass. */
+  water: { grip: 0.1, engine: 0.2, rolling: 9.2 },
 };
 
 export interface CarStats {
@@ -94,6 +98,7 @@ export const TYRE = {
   handbrake: 0.11,
   slip: 0.00022,
   grass: 0.045,
+  sand: 0.07,
   rolling: 0.0035,
   corner: 0.028,
   wornGrip: 0.38,
@@ -214,6 +219,7 @@ export function stepCarPhysics(car: CarState, input: PlayerInput, surface: Surfa
     if (hb) wearRate += TYRE.handbrake * spd;
     wearRate += TYRE.slip * car.slip;
     if (surface === 'grass') wearRate += TYRE.grass * spd;
+    if (surface === 'sand') wearRate += TYRE.sand * spd;
   }
   car.tyreWear = clamp(wear + wearRate * dt, 0, 1);
 

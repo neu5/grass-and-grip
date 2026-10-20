@@ -2,7 +2,19 @@ import { datan2, normalizeAngle } from './dmath';
 
 export type Vec2 = { x: number; y: number };
 
-export type Surface = 'asphalt' | 'grass';
+export type Surface = 'asphalt' | 'grass' | 'sand' | 'water';
+
+export const TRACK_IDS = ['meadow', 'harbor'] as const;
+export type TrackId = (typeof TRACK_IDS)[number];
+
+export const TRACK_NAMES: Record<TrackId, string> = {
+  meadow: 'Meadow Ring',
+  harbor: 'Harbor Bridge',
+};
+
+export function isTrackId(id: string | undefined): id is TrackId {
+  return !!id && (TRACK_IDS as readonly string[]).includes(id);
+}
 
 /** Axis-aligned rectangle in world units. */
 export interface Rect {
@@ -10,6 +22,16 @@ export interface Rect {
   y: number;
   w: number;
   h: number;
+}
+
+/** Elevated asphalt deck over water. */
+export interface Bridge {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Deck height in world units. */
+  height: number;
 }
 
 export interface Obstacle {
@@ -33,6 +55,14 @@ export interface TrackDef {
   pitLane: Rect;
   /** Marked stalls. Service only while a car is stopped inside one. */
   pitBoxes: Rect[];
+  /** Off-track sand (beaches, runoff). Track/bridge still win. */
+  sand?: Rect[];
+  /** Lakes / rivers. Bridge and racing line stay asphalt. */
+  water?: Rect[];
+  /** Elevated decks over water. */
+  bridges?: Bridge[];
+  /** Height at each control point (same length). Default 0. */
+  controlHeights?: number[];
 }
 
 export interface Gate {
@@ -54,36 +84,43 @@ export interface Track {
   segmentLengths: number[];
   /** Local curvature (1/radius) at each sample. */
   curvature: number[];
+  /** Height at each sample, matching `samples`. */
+  sampleHeights: number[];
   /** gates[0] is the start/finish line. */
   gates: Gate[];
 }
 
 const SAMPLES_PER_SEGMENT = 16;
 
-function catmullRom(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, t: number): Vec2 {
+function catmullRom1(p0: number, p1: number, p2: number, p3: number, t: number): number {
   const t2 = t * t;
   const t3 = t2 * t;
-  return {
-    x:
-      0.5 *
-      (2 * p1.x + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
-    y:
-      0.5 *
-      (2 * p1.y + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3),
-  };
+  return 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
+}
+
+function catmullRom(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, t: number): Vec2 {
+  return { x: catmullRom1(p0.x, p1.x, p2.x, p3.x, t), y: catmullRom1(p0.y, p1.y, p2.y, p3.y, t) };
 }
 
 export function buildTrack(def: TrackDef): Track {
   const cp = def.controlPoints;
   const n = cp.length;
+  const hz = def.controlHeights ?? cp.map(() => 0);
   const samples: Vec2[] = [];
+  const sampleHeights: number[] = [];
   for (let i = 0; i < n; i++) {
     const p0 = cp[(i - 1 + n) % n];
     const p1 = cp[i];
     const p2 = cp[(i + 1) % n];
     const p3 = cp[(i + 2) % n];
+    const h0 = hz[(i - 1 + n) % n];
+    const h1 = hz[i];
+    const h2 = hz[(i + 1) % n];
+    const h3 = hz[(i + 2) % n];
     for (let s = 0; s < SAMPLES_PER_SEGMENT; s++) {
-      samples.push(catmullRom(p0, p1, p2, p3, s / SAMPLES_PER_SEGMENT));
+      const t = s / SAMPLES_PER_SEGMENT;
+      samples.push(catmullRom(p0, p1, p2, p3, t));
+      sampleHeights.push(catmullRom1(h0, h1, h2, h3, t));
     }
   }
   const m = samples.length;
@@ -126,7 +163,7 @@ export function buildTrack(def: TrackDef): Track {
       ty: -nrm.x,
     });
   }
-  return { def, samples, tangentAngles, normals, segmentLengths, curvature, gates };
+  return { def, samples, tangentAngles, normals, segmentLengths, curvature, sampleHeights, gates };
 }
 
 export function distToSegmentSq(px: number, py: number, a: Vec2, b: Vec2): number {
@@ -166,10 +203,54 @@ export function inPitLane(track: Track, x: number, y: number): boolean {
   return pointInRect(x, y, track.def.pitLane) || pitBoxIndex(track, x, y) >= 0;
 }
 
-export function surfaceAt(track: Track, x: number, y: number): Surface {
-  if (inPitLane(track, x, y)) return 'asphalt';
-  return distanceToCenterline(track, x, y) <= track.def.halfWidth ? 'asphalt' : 'grass';
+function inAnyRect(x: number, y: number, rects: Rect[] | undefined): boolean {
+  if (!rects) return false;
+  for (const r of rects) if (pointInRect(x, y, r)) return true;
+  return false;
 }
+
+export function inWater(track: Track, x: number, y: number): boolean {
+  return inAnyRect(x, y, track.def.water);
+}
+
+export function inSand(track: Track, x: number, y: number): boolean {
+  return inAnyRect(x, y, track.def.sand);
+}
+
+export function bridgeAt(track: Track, x: number, y: number): Bridge | null {
+  const bridges = track.def.bridges;
+  if (!bridges) return null;
+  for (const b of bridges) if (pointInRect(x, y, b)) return b;
+  return null;
+}
+
+export function inBridge(track: Track, x: number, y: number): boolean {
+  return bridgeAt(track, x, y) !== null;
+}
+
+export function onRacingSurface(track: Track, x: number, y: number): boolean {
+  return inPitLane(track, x, y) || inBridge(track, x, y) || distanceToCenterline(track, x, y) <= track.def.halfWidth;
+}
+
+export function surfaceAt(track: Track, x: number, y: number): Surface {
+  if (onRacingSurface(track, x, y)) return 'asphalt';
+  if (inWater(track, x, y)) return 'water';
+  if (inSand(track, x, y)) return 'sand';
+  return 'grass';
+}
+
+/** Ground height under a point. Bridge deck sits above water. */
+export function heightAt(track: Track, x: number, y: number): number {
+  const bridge = bridgeAt(track, x, y);
+  if (bridge) return bridge.height;
+  if (onRacingSurface(track, x, y) || !inWater(track, x, y)) {
+    return track.sampleHeights[nearestSampleIndex(track, x, y)];
+  }
+  return 0;
+}
+
+/** Cars this far apart in height do not collide (bridge vs water). */
+export const HEIGHT_SEPARATION = 22;
 
 export function nearestSampleIndex(track: Track, x: number, y: number): number {
   const s = track.samples;
@@ -254,6 +335,59 @@ export const TRACKS: Record<string, TrackDef> = {
     pitBoxes: [
       { x: 500, y: 32, w: 90, h: 54 },
       { x: 612, y: 32, w: 90, h: 54 },
+    ],
+  },
+  harbor: {
+    id: 'harbor',
+    name: 'Harbor Bridge',
+    width: 1600,
+    height: 1050,
+    halfWidth: 54,
+    checkpointCount: 8,
+    controlPoints: [
+      { x: 400, y: 210 },
+      { x: 780, y: 190 },
+      { x: 1140, y: 215 },
+      { x: 1360, y: 310 },
+      { x: 1460, y: 430 },
+      { x: 1475, y: 545 },
+      { x: 1435, y: 670 },
+      { x: 1260, y: 810 },
+      { x: 940, y: 905 },
+      { x: 600, y: 910 },
+      { x: 300, y: 820 },
+      { x: 155, y: 620 },
+      { x: 165, y: 400 },
+      { x: 250, y: 255 },
+    ],
+    controlHeights: [24, 28, 22, 16, 40, 52, 40, 12, 6, 8, 10, 14, 18, 22],
+    water: [
+      { x: 360, y: 390, w: 640, h: 300 },
+      { x: 980, y: 405, w: 600, h: 285 },
+    ],
+    bridges: [{ x: 1395, y: 445, w: 155, h: 230, height: 52 }],
+    sand: [
+      { x: 1080, y: 720, w: 380, h: 155 },
+      { x: 180, y: 730, w: 270, h: 130 },
+    ],
+    obstacles: [
+      { x: 620, y: 430, r: 16, kind: 'tyres' },
+      { x: 860, y: 360, r: 18, kind: 'tyres' },
+      { x: 1180, y: 360, r: 16, kind: 'tyres' },
+      { x: 1540, y: 180, r: 16, kind: 'tree' },
+      { x: 120, y: 120, r: 15, kind: 'tree' },
+      { x: 90, y: 980, r: 18, kind: 'tree' },
+      { x: 1520, y: 980, r: 16, kind: 'tree' },
+      { x: 430, y: 340, r: 15, kind: 'tree' },
+      { x: 980, y: 980, r: 17, kind: 'tree' },
+      { x: 250, y: 980, r: 14, kind: 'tree' },
+      { x: 700, y: 140, r: 16, kind: 'tree' },
+      { x: 1550, y: 780, r: 15, kind: 'tree' },
+    ],
+    pitLane: { x: 430, y: 12, w: 290, h: 180 },
+    pitBoxes: [
+      { x: 480, y: 32, w: 90, h: 54 },
+      { x: 592, y: 32, w: 90, h: 54 },
     ],
   },
 };

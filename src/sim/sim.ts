@@ -1,7 +1,7 @@
 import { aiInput } from './ai';
 import { collideBounds, collideCars, collideCircle, NO_INPUT, stepCarPhysics } from './physics';
 import { applyPitService } from './pits';
-import { getTrack, segmentsIntersect, surfaceAt, type Track } from './track';
+import { HEIGHT_SEPARATION, getTrack, heightAt, segmentsIntersect, surfaceAt, type Track } from './track';
 import type { CarState, GameState, PlayerInput, RaceConfig, TickInputs } from './types';
 
 export const TICK_RATE = 60;
@@ -107,11 +107,18 @@ export function step(prev: GameState, inputs: TickInputs): GameState {
   }
 
   const cars = state.cars;
+  const heights = cars.map((c) => heightAt(track, c.x, c.y));
   for (let i = 0; i < cars.length; i++) {
-    for (let j = i + 1; j < cars.length; j++) collideCars(cars[i], cars[j]);
+    for (let j = i + 1; j < cars.length; j++) {
+      if (Math.abs(heights[i] - heights[j]) > HEIGHT_SEPARATION) continue;
+      collideCars(cars[i], cars[j]);
+    }
   }
-  for (const car of cars) {
-    for (const o of track.def.obstacles) collideCircle(car, o.x, o.y, o.r);
+  for (let i = 0; i < cars.length; i++) {
+    const car = cars[i];
+    if (heights[i] <= HEIGHT_SEPARATION) {
+      for (const o of track.def.obstacles) collideCircle(car, o.x, o.y, o.r);
+    }
     collideBounds(car, track.def.width, track.def.height);
   }
 
@@ -144,7 +151,9 @@ export function stepOwnCar(prev: GameState, carId: number, input: PlayerInput): 
     applyPitService(car, track, DT);
     updateCheckpoints(state, car, track, px, py);
   }
-  for (const o of track.def.obstacles) collideCircle(car, o.x, o.y, o.r);
+  if (heightAt(track, car.x, car.y) <= HEIGHT_SEPARATION) {
+    for (const o of track.def.obstacles) collideCircle(car, o.x, o.y, o.r);
+  }
   collideBounds(car, track.def.width, track.def.height);
   return state;
 }

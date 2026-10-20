@@ -6,6 +6,7 @@ export interface GameOptions {
   humans: 1 | 2;
   aiCount: number;
   laps: number;
+  trackId?: string;
   p1Car?: CarKind;
   p2Car?: CarKind;
   countdownSeconds?: number;
@@ -62,8 +63,10 @@ export class Game {
     const humans = HUMAN_CARS.slice(0, this.options.humans).map((c, i) => ({ ...c, kind: humanKinds[i] }));
     const ai = AI_CARS.slice(0, this.options.aiCount).map((c, i) => ({ ...c, kind: aiKind(i, humanKinds) }));
     const cars = [...humans, ...ai];
+    const trackId = this.options.trackId ?? 'meadow';
+    this.renderer.setTrack(trackId);
     this.curr = createRace({
-      trackId: 'meadow',
+      trackId,
       totalLaps: this.options.laps,
       cars,
       countdownSeconds: this.options.countdownSeconds,
