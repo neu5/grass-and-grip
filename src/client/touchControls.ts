@@ -1,6 +1,7 @@
 import type { PlayerInput } from '../sim';
 import {
   STEER_GAIN,
+  THROTTLE_GAIN,
   isLandscapeView,
   isMobileLike,
   mapPointersToControls,
@@ -18,7 +19,7 @@ export {
   isMobileLike,
   isPortraitView,
   mapPointersToControls,
-  mapSteerAxis,
+  mapStickToDrive,
   overlayInsets,
   readBrowserMobileFlags,
   shouldBlockPortrait,
@@ -26,7 +27,6 @@ export {
 } from './touchMap';
 
 const ZERO: PlayerInput = { throttle: 0, steer: 0, handbrake: false };
-const AUTO: PlayerInput = { throttle: 1, steer: 0, handbrake: false };
 
 type LockableOrientation = { lock?: (mode: string) => Promise<void>; type?: string };
 
@@ -108,7 +108,7 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
       <button type="button" id="mc-brake" class="mc-btn mc-brake" aria-label="Brake">BRAKE</button>
     </div>
     <div class="mc-right">
-      <div id="mc-steer" class="mc-steer" aria-label="Steer">
+      <div id="mc-steer" class="mc-steer" aria-label="Drive stick">
         <div id="mc-knob" class="mc-knob"></div>
       </div>
     </div>
@@ -138,7 +138,7 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
   let visible = false;
   let blocked = false;
 
-  const input: PlayerInput = { ...AUTO };
+  const input: PlayerInput = { ...ZERO };
 
   const resetKnob = () => {
     knob.style.transform = 'translate(-50%, -50%)';
@@ -163,8 +163,8 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
     cameraHeld = mapped.camera;
 
     const box = steerEl.getBoundingClientRect();
-    const max = Math.max(8, box.width / 2 - 36);
-    knob.style.transform = `translate(calc(-50% + ${(mapped.steer / STEER_GAIN) * max}px), -50%)`;
+    const max = Math.max(8, Math.min(box.width, box.height) / 2 - 36);
+    knob.style.transform = `translate(calc(-50% + ${(mapped.steer / STEER_GAIN) * max}px), calc(-50% + ${(-mapped.throttle / THROTTLE_GAIN) * max}px))`;
   };
 
   const setPointer = (e: PointerEvent) => {
@@ -208,7 +208,7 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
     if (steerId === e.pointerId) steerId = null;
     apply();
     if (pointers.size === 0) {
-      input.throttle = blocked ? 0 : 1;
+      input.throttle = 0;
       input.steer = 0;
       input.handbrake = false;
       cameraHeld = false;
@@ -274,7 +274,7 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
         input.handbrake = false;
         resetKnob();
       } else {
-        input.throttle = 1;
+        input.throttle = 0;
         input.steer = 0;
         input.handbrake = false;
         requestChrome();

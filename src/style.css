@@ -338,9 +338,9 @@ fieldset input:disabled + span {
 
 .mc-steer {
   pointer-events: auto;
-  width: min(200px, 34vw);
-  height: 88px;
-  border-radius: 44px;
+  width: 148px;
+  height: 148px;
+  border-radius: 50%;
   background: rgba(10, 14, 20, 0.3);
   border: 2px solid rgba(255, 255, 255, 0.42);
   position: relative;

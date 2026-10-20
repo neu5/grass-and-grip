@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { mergeInputs } from '../src/client/input';
 import {
   STEER_GAIN,
+  THROTTLE_GAIN,
   cameraHudHint,
   isLandscapeView,
   isMobileLike,
   isPortraitView,
   mapPointersToControls,
-  mapSteerAxis,
+  mapStickToDrive,
   overlayInsets,
   pointInRect,
   readBrowserMobileFlags,
@@ -17,7 +18,7 @@ import {
 } from '../src/client/touchMap';
 
 const layout: TouchLayout = {
-  steer: { left: 620, top: 250, right: 820, bottom: 340 },
+  steer: { left: 620, top: 200, right: 820, bottom: 400 },
   brake: { left: 80, top: 250, right: 160, bottom: 330 },
   camera: { left: 80, top: 140, right: 160, bottom: 220 },
 };
@@ -78,43 +79,48 @@ describe('readBrowserMobileFlags', () => {
   });
 });
 
-describe('mapSteerAxis', () => {
-  const pad = { left: 0, top: 0, right: 200, bottom: 80 };
+describe('mapStickToDrive', () => {
+  const pad = { left: 0, top: 0, right: 200, bottom: 200 };
 
   it('is idle at the center and inside the deadzone', () => {
-    expect(mapSteerAxis(100, pad)).toBe(0);
-    expect(mapSteerAxis(120, pad)).toBe(0);
+    expect(mapStickToDrive({ x: 100, y: 100 }, pad)).toEqual({ throttle: 0, steer: 0 });
+    expect(mapStickToDrive({ x: 112, y: 104 }, pad)).toEqual({ throttle: 0, steer: 0 });
   });
 
-  it('steers right/left only, with low sensitivity and a capped gain', () => {
-    const right = mapSteerAxis(200, pad);
-    const left = mapSteerAxis(0, pad);
-    const midRight = mapSteerAxis(160, pad);
-    expect(right).toBeCloseTo(STEER_GAIN);
-    expect(left).toBeCloseTo(-STEER_GAIN);
-    expect(Math.abs(midRight)).toBeLessThan(Math.abs(right));
-    expect(Math.abs(midRight)).toBeLessThan(0.25);
+  it('maps up to forward and down to reverse', () => {
+    const up = mapStickToDrive({ x: 100, y: 0 }, pad);
+    const down = mapStickToDrive({ x: 100, y: 200 }, pad);
+    expect(up.throttle).toBeCloseTo(THROTTLE_GAIN);
+    expect(up.steer).toBeCloseTo(0);
+    expect(down.throttle).toBeCloseTo(-THROTTLE_GAIN);
+    expect(down.steer).toBeCloseTo(0);
   });
 
-  it('ignores vertical motion (x only)', () => {
-    expect(mapSteerAxis(100, { ...pad, top: 400, bottom: 500 })).toBe(0);
+  it('maps left/right to steer with a capped gain', () => {
+    const right = mapStickToDrive({ x: 200, y: 100 }, pad);
+    const left = mapStickToDrive({ x: 0, y: 100 }, pad);
+    expect(right.steer).toBeCloseTo(STEER_GAIN);
+    expect(right.throttle).toBeCloseTo(0);
+    expect(left.steer).toBeCloseTo(-STEER_GAIN);
   });
 });
 
 describe('mapPointersToControls', () => {
-  it('auto-throttles and maps a right-thumb steer', () => {
+  it('maps a right-thumb stick to steer and throttle, with no auto-gas', () => {
     const idle = mapPointersToControls([], layout);
-    expect(idle.throttle).toBe(1);
+    expect(idle.throttle).toBe(0);
     expect(idle.steer).toBe(0);
 
-    const drive = mapPointersToControls([{ x: 820, y: 295 }], layout);
-    expect(drive.steer).toBeCloseTo(STEER_GAIN);
-    expect(drive.throttle).toBe(1);
-    expect(drive.handbrake).toBe(false);
-    expect(drive.camera).toBe(false);
+    const right = mapPointersToControls([{ x: 820, y: 300 }], layout);
+    expect(right.steer).toBeCloseTo(STEER_GAIN);
+    expect(right.throttle).toBeCloseTo(0);
+
+    const reverse = mapPointersToControls([{ x: 720, y: 400 }], layout);
+    expect(reverse.throttle).toBeCloseTo(-THROTTLE_GAIN);
+    expect(reverse.steer).toBeCloseTo(0);
   });
 
-  it('maps BRAKE to handbrake (same as Shift) and cuts auto-throttle', () => {
+  it('maps BRAKE to handbrake (same as Shift) without adding gas', () => {
     const r = mapPointersToControls([{ x: 120, y: 290 }], layout);
     expect(r.handbrake).toBe(true);
     expect(r.throttle).toBe(0);
@@ -126,35 +132,33 @@ describe('mapPointersToControls', () => {
     const r = mapPointersToControls([{ x: 120, y: 180 }], layout);
     expect(r.camera).toBe(true);
     expect(r.handbrake).toBe(false);
-    expect(r.throttle).toBe(1);
+    expect(r.throttle).toBe(0);
   });
 
-  it('can steer and hold brake at once from two pointers', () => {
+  it('can reverse and hold brake at once from two pointers', () => {
     const r = mapPointersToControls(
       [
-        { x: 820, y: 295 },
+        { x: 720, y: 400 },
         { x: 120, y: 290 },
       ],
       layout,
     );
-    expect(r.steer).toBeCloseTo(STEER_GAIN);
+    expect(r.throttle).toBeCloseTo(-THROTTLE_GAIN);
     expect(r.handbrake).toBe(true);
-    expect(r.throttle).toBe(0);
     expect(r.camera).toBe(false);
   });
 
-  it('keeps a captured steer from becoming a button when dragged left', () => {
+  it('keeps a captured stick from becoming a button when dragged left', () => {
     const dragged = { x: 120, y: 180 };
     const r = mapPointersToControls([], layout, { capturedSteer: dragged });
     expect(r.camera).toBe(false);
     expect(r.handbrake).toBe(false);
     expect(r.steer).toBeLessThan(0);
-    expect(r.throttle).toBe(1);
   });
 
-  it('still auto-throttles when a pointer misses every control, and snaps steer to 0', () => {
+  it('idles when a pointer misses every control (no auto-gas)', () => {
     expect(mapPointersToControls([{ x: 400, y: 40 }], layout)).toEqual({
-      throttle: 1,
+      throttle: 0,
       steer: 0,
       handbrake: false,
       camera: false,
