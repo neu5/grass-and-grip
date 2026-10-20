@@ -10,6 +10,7 @@ import {
   type GameState,
   type Track,
 } from '../sim';
+import { checkpointDebugPose } from './checkpointDebug';
 import { drawHud, type Label } from './hud';
 import { paintTrackSurface, SkidMarks } from './trackTexture';
 
@@ -406,6 +407,46 @@ function crewTarget(actor: CrewActor, car: CarState | null, serving: boolean): {
   return { x: car.x - ca * 18 + rx * 8, y: car.y - sa * 18 + ry * 8 };
 }
 
+const CHECKPOINT_DEBUG_HEIGHT = 48;
+
+function checkpointDebugMat(color: string, opacity: number) {
+  return new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+}
+
+/** Translucent planes + poles on the exact sim checkpoint lines. Hidden until U. */
+function buildCheckpointDebug(track: Track): THREE.Group {
+  const g = new THREE.Group();
+  g.name = 'checkpointDebug';
+  g.visible = false;
+  const finishPlane = checkpointDebugMat('#f4f7ff', 0.42);
+  const sectorPlane = checkpointDebugMat('#3ec8ff', 0.34);
+  const finishPole = checkpointDebugMat('#fff7e0', 0.85);
+  const sectorPole = checkpointDebugMat('#b9ecff', 0.7);
+  const H = CHECKPOINT_DEBUG_HEIGHT;
+  track.gates.forEach((gate, i) => {
+    const pose = checkpointDebugPose(gate, i);
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(pose.width, H), pose.finish ? finishPlane : sectorPlane);
+    plane.position.set(pose.cx, H / 2, pose.cz);
+    plane.rotation.y = pose.yaw;
+    g.add(plane);
+    for (const [x, z] of [
+      [pose.ax, pose.az],
+      [pose.bx, pose.bz],
+    ]) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, H, 6), pose.finish ? finishPole : sectorPole);
+      pole.position.set(x, H / 2, z);
+      g.add(pole);
+    }
+  });
+  return g;
+}
+
 function buildGantry(track: Track): THREE.Group {
   const g = new THREE.Group();
   const gate = track.gates[0];
@@ -496,6 +537,7 @@ export class Renderer3D {
   private lastFrame = performance.now();
   private smokePuffs: SmokePuff[] = [];
   private puffWait: number[] = [];
+  private checkpointDebug: THREE.Group;
   cameraMode: CameraMode = 'follow';
   finishHint = 'Press R to race again · Esc for menu';
   keyHints = true;
@@ -563,7 +605,8 @@ export class Renderer3D {
     }
     this.crew = spawnCrew(this.track);
     for (const c of this.crew) this.scene.add(c.mesh);
-    this.scene.add(buildPitDecor(this.track), buildGantry(this.track), buildWalls(width, height), buildForest(trees));
+    this.checkpointDebug = buildCheckpointDebug(this.track);
+    this.scene.add(buildPitDecor(this.track), buildGantry(this.track), buildWalls(width, height), buildForest(trees), this.checkpointDebug);
   }
 
   resetRace() {
@@ -588,6 +631,10 @@ export class Renderer3D {
 
   toggleCamera() {
     this.cameraMode = this.cameraMode === 'follow' ? 'overview' : 'follow';
+  }
+
+  toggleCheckpointDebug() {
+    this.checkpointDebug.visible = !this.checkpointDebug.visible;
   }
 
   private updateCrew(state: GameState, dt: number) {

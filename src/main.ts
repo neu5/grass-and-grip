@@ -74,6 +74,7 @@ window.addEventListener('keydown', (e) => {
   if (!game || !menu.hidden) return;
   if (e.code === 'KeyR') game.reset();
   if (e.code === 'KeyC') renderer.toggleCamera();
+  if (e.code === 'KeyU') renderer.toggleCheckpointDebug();
   if (e.code === 'Escape') {
     game.stop();
     game = null;
