@@ -476,4 +476,156 @@ describe('pit stops', () => {
     expect(s.cars[0].fuel).toBeCloseTo(d, 8);
     expect(s.cars[0].tyreWear).toBeCloseTo(1 - d, 8);
   });
+
+  it('repairs damage over ticks while stopped in a pit box', () => {
+    let s = racingSolo();
+    parkInBox(s, 1, 0);
+    s.cars[0].damage = 0.8;
+    const ticks = (n: number) => {
+      for (let i = 0; i < n; i++) s = step(s, { 0: { throttle: 0, steer: 0, handbrake: false } });
+    };
+    ticks(20);
+    expect(s.cars[0].damage).toBeLessThan(0.8);
+    expect(s.cars[0].damage).toBeGreaterThan(0.5);
+    const mid = s.cars[0].damage;
+    ticks(20);
+    expect(s.cars[0].damage).toBeLessThan(mid);
+    ticks(200);
+    expect(s.cars[0].damage).toBe(0);
+  });
+
+  it('repairs damage at the published pit rate', () => {
+    let s = racingSolo();
+    parkInBox(s, 1, 0);
+    s.cars[0].damage = 1;
+    s = step(s, { 0: { throttle: 0, steer: 0, handbrake: false } });
+    const d = PIT.refillPerSecond / 60;
+    expect(s.cars[0].damage).toBeCloseTo(1 - d, 8);
+  });
+});
+
+describe('crash damage', () => {
+  function racingSolo(): GameState {
+    const s = createRace({
+      trackId: 'meadow',
+      totalLaps: 1,
+      cars: [{ name: 'T', color: '#fff', controller: 'human', kind: 'f1' }],
+      countdownSeconds: 0,
+    });
+    s.phase = 'racing';
+    s.startTick = 0;
+    return s;
+  }
+
+  it('starts every car undamaged', () => {
+    const s = createRace(humanVsAi);
+    for (const c of s.cars) expect(c.damage).toBe(0);
+  });
+
+  it('raises damage when a car hits a solid object', () => {
+    const track = getTrack('meadow');
+    const tree = track.def.obstacles.find((o) => o.kind === 'tree')!;
+    let s = racingSolo();
+    const car = s.cars[0];
+    car.x = tree.x - 20;
+    car.y = tree.y;
+    car.angle = 0;
+    car.vx = 320;
+    car.vy = 0;
+    s = step(s, { 0: { throttle: 0, steer: 0, handbrake: false } });
+    expect(s.cars[0].damage).toBeGreaterThan(0.05);
+  });
+
+  it('adds more damage from a hard hit than a graze', () => {
+    const track = getTrack('meadow');
+    const tree = track.def.obstacles.find((o) => o.kind === 'tree')!;
+    const hit = (speed: number) => {
+      let s = racingSolo();
+      s.cars[0].x = tree.x - 20;
+      s.cars[0].y = tree.y;
+      s.cars[0].angle = 0;
+      s.cars[0].vx = speed;
+      s.cars[0].vy = 0;
+      s = step(s, { 0: { throttle: 0, steer: 0, handbrake: false } });
+      return s.cars[0].damage;
+    };
+    const graze = hit(70);
+    const hard = hit(380);
+    expect(graze).toBeGreaterThan(0);
+    expect(graze).toBeLessThan(0.04);
+    expect(hard).toBeGreaterThan(graze * 4);
+  });
+
+  it('raises damage when two cars collide', () => {
+    let s = createRace({
+      trackId: 'meadow',
+      totalLaps: 1,
+      cars: [
+        { name: 'A', color: '#e33', controller: 'human' },
+        { name: 'B', color: '#36f', controller: 'human' },
+      ],
+      countdownSeconds: 0,
+    });
+    s.phase = 'racing';
+    s.startTick = 0;
+    s.cars[0].x = 400;
+    s.cars[0].y = 400;
+    s.cars[0].angle = 0;
+    s.cars[0].vx = 260;
+    s.cars[0].vy = 0;
+    s.cars[1].x = 418;
+    s.cars[1].y = 400;
+    s.cars[1].angle = Math.PI;
+    s.cars[1].vx = -260;
+    s.cars[1].vy = 0;
+    s = step(s, {});
+    expect(s.cars[0].damage).toBeGreaterThan(0.05);
+    expect(s.cars[1].damage).toBeGreaterThan(0.05);
+  });
+
+  it('does not raise damage when nothing is hit', () => {
+    const track = getTrack('meadow');
+    const p = track.samples[0];
+    let s = racingSolo();
+    for (let i = 0; i < 90; i++) {
+      s.cars[0].x = p.x;
+      s.cars[0].y = p.y;
+      s = step(s, { 0: { throttle: 1, steer: 0, handbrake: false } });
+    }
+    expect(s.cars[0].damage).toBe(0);
+  });
+
+  it('makes a wrecked car slower, but a hurt car is not a crawl', () => {
+    const track = getTrack('meadow');
+    const p = track.samples[0];
+    const speedAfter = (damage: number) => {
+      let s = racingSolo();
+      s.cars[0].damage = damage;
+      for (let i = 0; i < 120; i++) {
+        s.cars[0].x = p.x;
+        s.cars[0].y = p.y;
+        s = step(s, { 0: { throttle: 1, steer: 0, handbrake: false } });
+      }
+      return Math.hypot(s.cars[0].vx, s.cars[0].vy);
+    };
+    const wrecked = speedAfter(1);
+    const hurt = speedAfter(0.45);
+    const fine = speedAfter(0);
+    expect(hurt).toBeLessThan(fine);
+    expect(hurt).toBeGreaterThan(fine * 0.78);
+    expect(wrecked).toBeLessThan(hurt);
+    expect(wrecked).toBeLessThan(fine * 0.72);
+    expect(wrecked).toBeGreaterThan(fine * 0.28);
+  });
+
+  it('still steers when wrecked', () => {
+    let s = racingSolo();
+    const car = s.cars[0];
+    car.damage = 1;
+    const a = car.angle;
+    car.vx = 90 * Math.cos(a);
+    car.vy = 90 * Math.sin(a);
+    s = step(s, { 0: { throttle: 0.3, steer: 1, handbrake: false } });
+    expect(Math.abs(s.cars[0].angle - a)).toBeGreaterThan(0.01);
+  });
 });

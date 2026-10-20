@@ -47,7 +47,59 @@ const glassMat = std('#1b2633', { roughness: 0.25, metalness: 0.3 });
 const carbon = std('#1a1a1a', { roughness: 0.35, metalness: 0.45 });
 
 function buildCarMesh(color: string, kind: CarKind = 'rally'): THREE.Group {
-  return kind === 'f1' ? buildF1Mesh(color) : buildRallyMesh(color);
+  const g = kind === 'f1' ? buildF1Mesh(color) : buildRallyMesh(color);
+  attachDamageFx(g, kind);
+  return g;
+}
+
+const SMOKE_START = 0.16;
+const FIRE_START = 0.82;
+const MAX_SMOKE_PUFFS = 18;
+const puffGeo = new THREE.SphereGeometry(4.4, 6, 5);
+
+function fxMat(color: string, opacity: number) {
+  return new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
+}
+
+/** Tiny engine fire on very wrecked cars. Smoke puffs are spawned in the renderer. */
+function attachDamageFx(car: THREE.Group, kind: CarKind): void {
+  const L = CARS[kind].length;
+  const fire = new THREE.Group();
+  fire.name = 'dmgFire';
+  const fireMat = fxMat('#ff6418', 0.92);
+  const coreMat = fxMat('#ffdd66', 0.9);
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(2.6, 10, 5), fireMat);
+  flame.position.set(0, 10, 0);
+  const core = new THREE.Mesh(new THREE.ConeGeometry(1.45, 7, 5), coreMat);
+  core.position.set(0, 8.6, 0);
+  fire.add(flame, core);
+  fire.position.set(-L * 0.38, 6.5, 0);
+  fire.visible = false;
+  car.add(fire);
+}
+
+function updateFireFx(mesh: THREE.Group, damage: number, time: number) {
+  const fire = mesh.getObjectByName('dmgFire') as THREE.Group | undefined;
+  if (!fire) return;
+  const dmg = Math.min(1, Math.max(0, damage));
+  const burning = dmg >= FIRE_START;
+  fire.visible = burning;
+  if (burning) {
+    const k = (dmg - FIRE_START) / (1 - FIRE_START);
+    const flicker = 0.85 + Math.sin(time * 20) * 0.12;
+    fire.scale.set(0.85 + k * 0.25, (0.9 + k * 0.35) * flicker, 0.85 + k * 0.25);
+  }
+}
+
+interface SmokePuff {
+  mesh: THREE.Mesh;
+  age: number;
+  life: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  base: number;
+  fade: number;
 }
 
 function buildRallyMesh(color: string): THREE.Group {
@@ -442,6 +494,8 @@ export class Renderer3D {
   private crew: CrewActor[] = [];
   private hud: CanvasRenderingContext2D;
   private lastFrame = performance.now();
+  private smokePuffs: SmokePuff[] = [];
+  private puffWait: number[] = [];
   cameraMode: CameraMode = 'follow';
   finishHint = 'Press R to race again · Esc for menu';
   keyHints = true;
@@ -517,6 +571,11 @@ export class Renderer3D {
     ctx.clearRect(0, 0, this.skids.canvas.width, this.skids.canvas.height);
     this.skidTexture.needsUpdate = true;
     this.camInitialized = false;
+    this.puffWait = [];
+    for (const p of this.smokePuffs) {
+      p.age = p.life;
+      p.mesh.visible = false;
+    }
     for (const actor of this.crew) {
       actor.x = actor.restX;
       actor.y = actor.restY;
@@ -672,11 +731,74 @@ export class Renderer3D {
     cam.updateMatrixWorld();
   }
 
+  private spawnSmokePuff(x: number, z: number, angle: number, denser: number, kind: CarKind) {
+    let puff = this.smokePuffs.find((p) => p.age >= p.life);
+    if (!puff) {
+      if (this.smokePuffs.length >= MAX_SMOKE_PUFFS) return;
+      const mesh = new THREE.Mesh(puffGeo, fxMat('#3a3a3a', 0.42));
+      this.scene.add(mesh);
+      puff = { mesh, age: 0, life: 1, vx: 0, vy: 0, vz: 0, base: 1, fade: 0.42 };
+      this.smokePuffs.push(puff);
+    }
+    const L = CARS[kind === 'f1' ? 'f1' : 'rally'].length;
+    const rear = L * 0.38;
+    const jitter = 2.2;
+    puff.age = 0;
+    puff.life = 1.35 + Math.random() * 0.5;
+    puff.base = 0.85 + denser * 0.4 + Math.random() * 0.1;
+    puff.fade = 0.42 + denser * 0.16;
+    puff.vx = -Math.cos(angle) * 6 + (Math.random() - 0.5) * 8;
+    puff.vz = -Math.sin(angle) * 6 + (Math.random() - 0.5) * 8;
+    puff.vy = 14 + denser * 6 + Math.random() * 6;
+    puff.mesh.visible = true;
+    puff.mesh.position.set(x - Math.cos(angle) * rear + (Math.random() - 0.5) * jitter, 9, z - Math.sin(angle) * rear + (Math.random() - 0.5) * jitter);
+    puff.mesh.scale.setScalar(puff.base);
+    (puff.mesh.material as THREE.MeshBasicMaterial).opacity = puff.fade;
+  }
+
+  private updateSmokePuffs(prev: GameState, curr: GameState, alpha: number, dt: number) {
+    const stepDt = Math.min(0.08, Math.max(0, dt));
+    for (const p of this.smokePuffs) {
+      if (p.age >= p.life) {
+        p.mesh.visible = false;
+        continue;
+      }
+      p.age += stepDt;
+      const t = Math.min(1, p.age / p.life);
+      p.mesh.position.x += p.vx * stepDt;
+      p.mesh.position.y += p.vy * stepDt;
+      p.mesh.position.z += p.vz * stepDt;
+      p.mesh.scale.setScalar(p.base * (1 + t * 0.7));
+      (p.mesh.material as THREE.MeshBasicMaterial).opacity = p.fade * (1 - t);
+      p.mesh.visible = t < 1;
+    }
+    while (this.puffWait.length < curr.cars.length) this.puffWait.push(0.2);
+    for (let i = 0; i < curr.cars.length; i++) {
+      const a = prev.cars[i] ?? curr.cars[i];
+      const b = curr.cars[i];
+      const dmg = (a.damage ?? 0) + ((b.damage ?? 0) - (a.damage ?? 0)) * alpha;
+      if (dmg < SMOKE_START) {
+        this.puffWait[i] = 0.25;
+        continue;
+      }
+      const k = Math.min(1, (dmg - SMOKE_START) / (1 - SMOKE_START));
+      const interval = 2.2 - k * 1.5;
+      this.puffWait[i] -= stepDt;
+      if (this.puffWait[i] > 0) continue;
+      this.puffWait[i] = interval;
+      const x = a.x + (b.x - a.x) * alpha;
+      const y = a.y + (b.y - a.y) * alpha;
+      const angle = lerpAngle(a.angle, b.angle, alpha);
+      this.spawnSmokePuff(x, y, angle, k, b.kind);
+    }
+  }
+
   /** `frameDt` overrides wall-clock camera smoothing, e.g. for offline capture. */
   render(prev: GameState, curr: GameState, alpha: number, humanIds: number[], frameDt?: number) {
     this.syncCars(curr);
     const { w, h } = this.resize();
     const positions: THREE.Vector3[] = [];
+    const dt = frameDt ?? Math.min(0.1, (performance.now() - this.lastFrame) / 1000);
 
     for (let i = 0; i < curr.cars.length; i++) {
       const a = prev.cars[i] ?? curr.cars[i];
@@ -688,10 +810,13 @@ export class Renderer3D {
       mesh.position.set(x, 0, y);
       mesh.rotation.y = -angle;
       mesh.rotation.x = bodyRoll(b);
+      const dmg = (a.damage ?? 0) + ((b.damage ?? 0) - (a.damage ?? 0)) * alpha;
+      updateFireFx(mesh, dmg, performance.now() / 1000);
       positions.push(new THREE.Vector3(x, 0, y));
     }
 
-    this.updateCrew(curr, frameDt ?? Math.min(0.1, (performance.now() - this.lastFrame) / 1000));
+    this.updateSmokePuffs(prev, curr, alpha, dt);
+    this.updateCrew(curr, dt);
     this.updateCamera(positions, humanIds, w / Math.max(1, h), frameDt);
     this.gl.render(this.scene, this.camera);
 

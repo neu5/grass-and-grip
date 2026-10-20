@@ -35,7 +35,7 @@ export function drawHud(
   ctx.textAlign = 'left';
 
   const panelW = 230;
-  const panelH = 154;
+  const panelH = 171;
   humanIds.forEach((id, k) => {
     const car = state.cars[id];
     const pos = order.findIndex((c) => c.id === id) + 1;
@@ -70,14 +70,16 @@ export function drawHud(
     });
     const tyreLeft = 1 - Math.min(1, Math.max(0, car.tyreWear ?? 0));
     const fuelLeft = Math.min(1, Math.max(0, car.fuel ?? 1));
+    const bodyLeft = 1 - Math.min(1, Math.max(0, car.damage ?? 0));
     drawRemainBar(ctx, 'Tyres', tyreLeft, x, y + 48 + 4 * 17, panelW);
     drawRemainBar(ctx, 'Fuel', fuelLeft, x, y + 48 + 5 * 17, panelW);
+    drawRemainBar(ctx, 'Damage', bodyLeft, x, y + 48 + 6 * 17, panelW);
   });
 
-  const boardX = humanIds.length > 1 ? cw / 2 - 105 : cw - 222;
+  const boardX = humanIds.length > 1 ? cw / 2 - 124 : cw - 260;
   ctx.fillStyle = 'rgba(10,14,20,0.6)';
   ctx.beginPath();
-  ctx.roundRect(boardX, 12, 210, 30 + order.length * 18, 10);
+  ctx.roundRect(boardX, 12, 248, 30 + order.length * 18, 10);
   ctx.fill();
   ctx.font = '600 12px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.6)';
@@ -90,12 +92,15 @@ export function drawHud(
     ctx.textAlign = 'right';
     const wearPct = Math.round((1 - Math.min(1, Math.max(0, c.tyreWear ?? 0))) * 100);
     const fuelPct = Math.round(Math.min(1, Math.max(0, c.fuel ?? 1)) * 100);
+    const bodyPct = Math.round((1 - Math.min(1, Math.max(0, c.damage ?? 0))) * 100);
     ctx.fillStyle = wearPct > 60 ? '#6ee07a' : wearPct > 30 ? '#ffd54a' : '#ff6b4a';
-    ctx.fillText(`${wearPct}%`, boardX + 128, 51 + i * 18);
+    ctx.fillText(`${wearPct}%`, boardX + 118, 51 + i * 18);
     ctx.fillStyle = fuelPct > 60 ? '#6ee07a' : fuelPct > 30 ? '#ffd54a' : '#ff6b4a';
-    ctx.fillText(`${fuelPct}%`, boardX + 168, 51 + i * 18);
+    ctx.fillText(`${fuelPct}%`, boardX + 152, 51 + i * 18);
+    ctx.fillStyle = bodyPct > 60 ? '#6ee07a' : bodyPct > 30 ? '#ffd54a' : '#ff6b4a';
+    ctx.fillText(`${bodyPct}%`, boardX + 186, 51 + i * 18);
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.fillText(c.finishTick !== null ? 'FIN' : `L${Math.min(c.lapsCompleted + 1, state.totalLaps)}`, boardX + 198, 51 + i * 18);
+    ctx.fillText(c.finishTick !== null ? 'FIN' : `L${Math.min(c.lapsCompleted + 1, state.totalLaps)}`, boardX + 236, 51 + i * 18);
     ctx.textAlign = 'left';
   });
 

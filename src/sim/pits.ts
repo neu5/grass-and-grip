@@ -2,11 +2,11 @@ import { clamp } from './dmath';
 import { pitBoxIndex, type Track } from './track';
 import type { CarState } from './types';
 
-/** GeneRally-style service: tyres + fuel together, only while stopped in a box. */
+/** GeneRally-style service: tyres + fuel + body together, only while stopped in a box. */
 export const PIT = {
   /** Must be slower than this (px/s) to take service. */
   stopSpeed: 24,
-  /** Remaining fuel climbs and tyre wear drops at this rate. ~2.4s empty→full. */
+  /** Remaining fuel/body climb and tyre wear drops at this rate. ~2.4s empty→full. */
   refillPerSecond: 0.42,
 };
 
@@ -19,11 +19,13 @@ export function isStoppedInPit(track: Track, car: CarState): boolean {
 }
 
 export function needsPitService(car: CarState): boolean {
-  return (car.fuel ?? 1) < 0.999 || (car.tyreWear ?? 0) > 0.001;
+  return (car.fuel ?? 1) < 0.999 || (car.tyreWear ?? 0) > 0.001 || (car.damage ?? 0) > 0.001;
 }
 
 export function applyPitService(car: CarState, track: Track, dt: number): void {
   if (!isStoppedInPit(track, car)) return;
-  car.fuel = clamp((car.fuel ?? 1) + PIT.refillPerSecond * dt, 0, 1);
-  car.tyreWear = clamp((car.tyreWear ?? 0) - PIT.refillPerSecond * dt, 0, 1);
+  const d = PIT.refillPerSecond * dt;
+  car.fuel = clamp((car.fuel ?? 1) + d, 0, 1);
+  car.tyreWear = clamp((car.tyreWear ?? 0) - d, 0, 1);
+  car.damage = clamp((car.damage ?? 0) - d, 0, 1);
 }
