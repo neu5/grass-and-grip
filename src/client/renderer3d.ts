@@ -6,6 +6,8 @@ import {
   isStoppedInPit,
   needsPitService,
   pitBoxIndex,
+  terrainHeightAt,
+  WATER_SURFACE,
   type Bridge,
   type CarKind,
   type CarState,
@@ -351,7 +353,7 @@ function spawnCrew(track: Track): CrewActor[] {
       const restX = b.x + b.w * (0.28 + slot * 0.44);
       const restY = b.y - 12;
       const mesh = buildCrewPerson(CREW_SHIRTS[(box * 2 + slot) % CREW_SHIRTS.length]);
-      mesh.position.set(restX, heightAt(track, restX, restY), restY);
+      mesh.position.set(restX, terrainHeightAt(track, restX, restY), restY);
       crew.push({
         mesh,
         restX,
@@ -375,7 +377,7 @@ function spawnCrew(track: Track): CrewActor[] {
 function buildPitDecor(track: Track): THREE.Group {
   const g = new THREE.Group();
   const lane = track.def.pitLane;
-  const curbH = heightAt(track, lane.x + lane.w / 2, lane.y + 2);
+  const curbH = terrainHeightAt(track, lane.x + lane.w / 2, lane.y + 2);
   const curb = new THREE.Mesh(new THREE.BoxGeometry(lane.w, 3.2, 4), std('#d5d0c6'));
   curb.position.set(lane.x + lane.w / 2, curbH + 1.6, lane.y + 2);
   g.add(curb);
@@ -391,7 +393,7 @@ function buildPitDecor(track: Track): THREE.Group {
     ];
     for (const [x, z, w, d] of segs) {
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), paint);
-      m.position.set(x, heightAt(track, x, z) + h / 2, z);
+      m.position.set(x, terrainHeightAt(track, x, z) + h / 2, z);
       g.add(m);
     }
   }
@@ -435,7 +437,7 @@ function buildCheckpointDebug(track: Track): THREE.Group {
   const H = CHECKPOINT_DEBUG_HEIGHT;
   track.gates.forEach((gate, i) => {
     const pose = checkpointDebugPose(gate, i);
-    const ground = heightAt(track, pose.cx, pose.cz);
+    const ground = terrainHeightAt(track, pose.cx, pose.cz);
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(pose.width, H), pose.finish ? finishPlane : sectorPlane);
     plane.position.set(pose.cx, ground + H / 2, pose.cz);
     plane.rotation.y = pose.yaw;
@@ -461,7 +463,7 @@ function buildGantry(track: Track): THREE.Group {
   const len = Math.sqrt(nx * nx + ny * ny);
   const ux = nx / len;
   const uy = ny / len;
-  const ground = heightAt(track, gate.center.x, gate.center.y);
+  const ground = terrainHeightAt(track, gate.center.x, gate.center.y);
   const postMat = std('#d9d9d9', { metalness: 0.4, roughness: 0.4 });
   for (const s of [-1, 1]) {
     const post = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 58, 8), postMat);
@@ -522,13 +524,13 @@ function sceneryTrees(width: number, height: number): TreeSpot[] {
 
 function buildHeightGround(track: Track, map: THREE.Texture): THREE.Mesh {
   const { width, height } = track.def;
-  const geo = new THREE.PlaneGeometry(width, height, 96, 64);
+  const geo = new THREE.PlaneGeometry(width, height, 160, 104);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const wx = pos.getX(i) + width / 2;
     const wz = pos.getZ(i) + height / 2;
-    pos.setY(i, heightAt(track, wx, wz));
+    pos.setY(i, terrainHeightAt(track, wx, wz));
   }
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, std('#fff', { map, roughness: 0.95 }));
@@ -540,15 +542,16 @@ function buildHeightGround(track: Track, map: THREE.Texture): THREE.Mesh {
 function buildWater(track: Track): THREE.Group {
   const g = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({
-    color: '#1f6aa0',
-    roughness: 0.18,
-    metalness: 0.35,
+    color: '#1c6aa6',
+    roughness: 0.16,
+    metalness: 0.28,
     transparent: true,
-    opacity: 0.88,
+    opacity: 0.58,
+    depthWrite: false,
   });
   for (const r of track.def.water ?? []) {
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.h).rotateX(-Math.PI / 2), mat);
-    mesh.position.set(r.x + r.w / 2, 0.8, r.y + r.h / 2);
+    mesh.position.set(r.x + r.w / 2, WATER_SURFACE, r.y + r.h / 2);
     mesh.receiveShadow = true;
     g.add(mesh);
   }
@@ -721,7 +724,7 @@ export class Renderer3D {
 
     const trees: TreeSpot[] = sceneryTrees(width, height);
     for (const o of this.track.def.obstacles) {
-      const h = heightAt(this.track, o.x, o.y);
+      const h = terrainHeightAt(this.track, o.x, o.y);
       if (o.kind === 'tree') {
         trees.push({ ...o, h });
         continue;
@@ -752,7 +755,7 @@ export class Renderer3D {
       actor.y = actor.restY;
       actor.heading = Math.PI / 2;
       actor.phase = 0;
-      actor.mesh.position.set(actor.x, heightAt(this.track, actor.x, actor.y), actor.y);
+      actor.mesh.position.set(actor.x, terrainHeightAt(this.track, actor.x, actor.y), actor.y);
       actor.mesh.rotation.y = -actor.heading;
     }
   }
@@ -796,7 +799,7 @@ export class Renderer3D {
       actor.rightLeg.rotation.z = -swing;
       actor.leftArm.rotation.z = -swing * 0.7;
       actor.rightArm.rotation.z = swing * 0.7;
-      actor.mesh.position.set(actor.x, heightAt(this.track, actor.x, actor.y), actor.y);
+      actor.mesh.position.set(actor.x, terrainHeightAt(this.track, actor.x, actor.y), actor.y);
       actor.mesh.rotation.y = -actor.heading;
     }
   }
@@ -986,6 +989,7 @@ export class Renderer3D {
       mesh.position.set(x, h, y);
       mesh.rotation.y = -angle;
       mesh.rotation.x = bodyRoll(b);
+      mesh.rotation.z = slopePitch(this.track, x, y, angle);
       const dmg = (a.damage ?? 0) + ((b.damage ?? 0) - (a.damage ?? 0)) * alpha;
       updateFireFx(mesh, dmg, performance.now() / 1000);
       positions.push(new THREE.Vector3(x, h, y));
@@ -1021,4 +1025,12 @@ export class Renderer3D {
 function bodyRoll(car: CarState): number {
   const lateral = -car.vx * Math.sin(car.angle) + car.vy * Math.cos(car.angle);
   return Math.max(-0.14, Math.min(0.14, lateral / 1800));
+}
+
+function slopePitch(track: Track, x: number, y: number, angle: number): number {
+  const ca = Math.cos(angle);
+  const sa = Math.sin(angle);
+  const hF = heightAt(track, x + 12 * ca, y + 12 * sa);
+  const hB = heightAt(track, x - 12 * ca, y - 12 * sa);
+  return Math.max(-0.42, Math.min(0.42, Math.atan2(hB - hF, 24)));
 }

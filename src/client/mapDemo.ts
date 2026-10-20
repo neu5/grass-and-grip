@@ -41,7 +41,15 @@ function chaseSample(car: CarState, track: Track, targetIdx: number, look: numbe
 export function mapDemoOptions(renderer: Renderer3D): GameOptions {
   const track = getTrack('harbor');
   const approachIdx = 18;
-  const bridgeIdx = 90;
+  let bridgeIdx = 0;
+  let bestH = -Infinity;
+  track.samples.forEach((p, i) => {
+    const h = heightAt(track, p.x, p.y);
+    if (h > bestH) {
+      bestH = h;
+      bridgeIdx = i;
+    }
+  });
   const water = { x: 1340, y: 680 };
   const sand = { x: 1200, y: 740 };
   type Phase = 'show' | 'toBridge' | 'onBridge' | 'toWater' | 'inWater' | 'toSand';

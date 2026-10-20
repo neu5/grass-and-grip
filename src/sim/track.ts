@@ -239,14 +239,54 @@ export function surfaceAt(track: Track, x: number, y: number): Surface {
   return 'grass';
 }
 
-/** Ground height under a point. Bridge deck sits above water. */
-export function heightAt(track: Track, x: number, y: number): number {
-  const bridge = bridgeAt(track, x, y);
-  if (bridge) return bridge.height;
-  if (onRacingSurface(track, x, y) || !inWater(track, x, y)) {
-    return track.sampleHeights[nearestSampleIndex(track, x, y)];
+/** Lake surface (world Y). Cars in water sit below this so hull/wheels are in it. */
+export const WATER_SURFACE = 0;
+/** Visual lake bed. */
+export const WATER_BED = -16;
+/** Car origin while swimming: wheels/hull in the surface, not hovering on it. */
+export const WATER_FLOAT = -7;
+
+function centerlineHeight(track: Track, x: number, y: number): number {
+  const s = track.samples;
+  const hs = track.sampleHeights;
+  const n = s.length;
+  const i = nearestSampleIndex(track, x, y);
+  let best = Infinity;
+  let height = hs[i];
+  for (const idx of [i, (i - 1 + n) % n]) {
+    const a = s[idx];
+    const b = s[(idx + 1) % n];
+    const abx = b.x - a.x;
+    const aby = b.y - a.y;
+    const len2 = abx * abx + aby * aby;
+    let t = len2 > 0 ? ((x - a.x) * abx + (y - a.y) * aby) / len2 : 0;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const dx = a.x + abx * t - x;
+    const dy = a.y + aby * t - y;
+    const d = dx * dx + dy * dy;
+    if (d < best) {
+      best = d;
+      height = hs[idx] + (hs[(idx + 1) % n] - hs[idx]) * t;
+    }
   }
-  return 0;
+  return height;
+}
+
+/** Ground height under a point. Smooth along the road; water sits below the surface. */
+export function heightAt(track: Track, x: number, y: number): number {
+  if (surfaceAt(track, x, y) === 'water') return WATER_FLOAT;
+  return centerlineHeight(track, x, y);
+}
+
+/** Visual terrain, including a sloped lake bed. Cars use `heightAt`. */
+export function terrainHeightAt(track: Track, x: number, y: number): number {
+  const h = centerlineHeight(track, x, y);
+  if (onRacingSurface(track, x, y)) return h;
+  if (!inWater(track, x, y)) return h;
+  const d = distanceToCenterline(track, x, y);
+  const t = Math.min(1, Math.max(0, (d - track.def.halfWidth) / 56));
+  const s = t * t * (3 - 2 * t);
+  return h + (WATER_BED - h) * s;
 }
 
 /** Cars this far apart in height do not collide (bridge vs water). */
@@ -347,12 +387,17 @@ export const TRACKS: Record<string, TrackDef> = {
     controlPoints: [
       { x: 400, y: 210 },
       { x: 780, y: 190 },
-      { x: 1140, y: 215 },
-      { x: 1360, y: 310 },
-      { x: 1460, y: 430 },
-      { x: 1475, y: 545 },
-      { x: 1435, y: 670 },
-      { x: 1260, y: 810 },
+      { x: 1100, y: 210 },
+      { x: 1280, y: 260 },
+      { x: 1380, y: 320 },
+      { x: 1435, y: 385 },
+      { x: 1462, y: 455 },
+      { x: 1474, y: 520 },
+      { x: 1472, y: 575 },
+      { x: 1455, y: 640 },
+      { x: 1410, y: 705 },
+      { x: 1325, y: 770 },
+      { x: 1180, y: 845 },
       { x: 940, y: 905 },
       { x: 600, y: 910 },
       { x: 300, y: 820 },
@@ -360,12 +405,13 @@ export const TRACKS: Record<string, TrackDef> = {
       { x: 165, y: 400 },
       { x: 250, y: 255 },
     ],
-    controlHeights: [24, 28, 22, 16, 40, 52, 40, 12, 6, 8, 10, 14, 18, 22],
+    // Long shallow ramps onto the deck — no step-cliffs.
+    controlHeights: [8, 8, 9, 12, 18, 28, 40, 50, 52, 50, 40, 26, 14, 8, 8, 8, 8, 8, 8],
     water: [
       { x: 360, y: 390, w: 640, h: 300 },
       { x: 980, y: 405, w: 600, h: 285 },
     ],
-    bridges: [{ x: 1395, y: 445, w: 155, h: 230, height: 52 }],
+    bridges: [{ x: 1408, y: 488, w: 130, h: 120, height: 52 }],
     sand: [
       { x: 1080, y: 720, w: 380, h: 155 },
       { x: 180, y: 730, w: 270, h: 130 },

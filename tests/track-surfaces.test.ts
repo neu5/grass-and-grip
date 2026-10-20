@@ -4,6 +4,8 @@ import { Room } from '../src/net/room';
 import { CAR_COLORS } from '../src/net/protocol';
 import {
   SURFACES,
+  WATER_FLOAT,
+  WATER_SURFACE,
   createRace,
   getTrack,
   heightAt,
@@ -73,7 +75,7 @@ describe('harbor layout', () => {
     const by = b.y + b.h / 2;
     expect(inBridge(track, bx, by)).toBe(true);
     expect(surfaceAt(track, bx, by)).toBe('asphalt');
-    expect(heightAt(track, bx, by)).toBeGreaterThan(40);
+    expect(heightAt(track, bx, by)).toBeGreaterThan(45);
     const box = track.def.pitBoxes[0];
     expect(surfaceAt(track, box.x + box.w / 2, box.y + box.h / 2)).toBe('asphalt');
   });
@@ -84,7 +86,17 @@ describe('harbor layout', () => {
     const y = b.y + b.h / 2;
     expect(surfaceAt(track, x, y)).toBe('asphalt');
     expect(surfaceAt(track, x, y)).not.toBe('water');
-    expect(heightAt(track, x, y)).toBe(b.height);
+    expect(heightAt(track, x, y)).toBeGreaterThan(45);
+  });
+
+  it('ramps onto the bridge without cliff steps', () => {
+    let maxStep = 0;
+    for (let i = 1; i < track.samples.length; i++) {
+      const dh = Math.abs(track.sampleHeights[i] - track.sampleHeights[i - 1]);
+      if (dh > maxStep) maxStep = dh;
+    }
+    const wrap = Math.abs(track.sampleHeights[0] - track.sampleHeights[track.samples.length - 1]);
+    expect(Math.max(maxStep, wrap)).toBeLessThan(3.2);
   });
 });
 
@@ -121,9 +133,18 @@ describe('surfaces', () => {
     const s = topSpeed('harbor', sand.x, sand.y);
     const g = topSpeed('meadow', grass.x, grass.y);
     const a = topSpeed('meadow', asphalt.x, asphalt.y);
-    expect(w).toBeLessThan(s * 0.55);
-    expect(w).toBeLessThan(g * 0.45);
-    expect(w).toBeLessThan(a * 0.25);
+    expect(w).toBeGreaterThan(30);
+    expect(w).toBeLessThan(s * 0.65);
+    expect(w).toBeLessThan(g * 0.55);
+    expect(w).toBeLessThan(a * 0.3);
+  });
+
+  it('sits a car in the water below the surface, not hovering on it', () => {
+    expect(surfaceAt(harbor, water.x, water.y)).toBe('water');
+    expect(heightAt(harbor, water.x, water.y)).toBe(WATER_FLOAT);
+    expect(heightAt(harbor, water.x, water.y)).toBeLessThan(WATER_SURFACE);
+    const land = meadow.samples[0];
+    expect(heightAt(harbor, water.x, water.y)).toBeLessThan(heightAt(meadow, land.x, land.y) - 4);
   });
 
   it('gives sand different grip from grass', () => {

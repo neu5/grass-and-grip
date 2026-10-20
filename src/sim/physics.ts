@@ -13,8 +13,8 @@ export const SURFACES: Record<Surface, SurfaceParams> = {
   grass: { grip: 0.42, engine: 0.7, rolling: 1.8 },
   /** Looser than grass: more slide, slower than asphalt, not the same drag. */
   sand: { grip: 0.22, engine: 0.58, rolling: 2.5 },
-  /** Strong drag. Off the bridge into a lake is a crawl, not grass. */
-  water: { grip: 0.1, engine: 0.2, rolling: 9.2 },
+  /** Strong drag vs land, but still driveable — not a crawl. */
+  water: { grip: 0.16, engine: 0.38, rolling: 4.2 },
 };
 
 export interface CarStats {
