@@ -2,6 +2,7 @@ import './style.css';
 import { Game, type GameOptions } from './client/game';
 import { Keyboard } from './client/input';
 import { Renderer3D } from './client/renderer3d';
+import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const hud = document.querySelector<HTMLCanvasElement>('#hud')!;
@@ -9,6 +10,19 @@ const renderer = new Renderer3D(canvas, hud, 'meadow');
 const menu = document.querySelector<HTMLDivElement>('#menu')!;
 const form = document.querySelector<HTMLFormElement>('#menu-form')!;
 const keyboard = new Keyboard(window);
+const mobile = detectMobile();
+applyTouchMenuHints(mobile);
+if (mobile) {
+  renderer.keyHints = false;
+  renderer.finishHint = 'Race over';
+}
+const touch = mobile
+  ? mountTouchControls({
+      onCamera: () => {
+        if (game && menu.hidden) renderer.toggleCamera();
+      },
+    })
+  : null;
 let game: Game | null = null;
 
 function selected(name: string): string {
@@ -17,8 +31,8 @@ function selected(name: string): string {
 
 function updateControlsHint() {
   const two = selected('humans') === '2';
-  document.querySelector('#hint-solo')!.toggleAttribute('hidden', two);
-  document.querySelector('#hint-duo')!.toggleAttribute('hidden', !two);
+  document.querySelector('#hint-solo')!.toggleAttribute('hidden', mobile || two);
+  document.querySelector('#hint-duo')!.toggleAttribute('hidden', mobile || !two);
   document.querySelector('#p2-car')!.toggleAttribute('hidden', !two);
 }
 
@@ -35,9 +49,10 @@ form.addEventListener('submit', (e) => {
     p2Car: selected('p2car') === 'f1' ? 'f1' : 'rally',
   };
   game?.stop();
-  game = new Game(renderer, keyboard, options);
+  game = new Game(renderer, keyboard, options, touch ?? undefined);
   (window as unknown as { race: Game }).race = game;
   menu.hidden = true;
+  touch?.setVisible(true);
   canvas.focus();
   game.start();
 });
@@ -49,6 +64,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape') {
     game.stop();
     game = null;
+    touch?.setVisible(false);
     menu.hidden = false;
   }
 });

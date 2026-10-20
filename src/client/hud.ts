@@ -1,4 +1,5 @@
 import { standings, ticksToTime, TICK_RATE, type GameState } from '../sim';
+import { cameraHudHint } from './touchMap';
 
 export interface Label {
   text: string;
@@ -16,6 +17,7 @@ export function drawHud(
   labels: Label[],
   cameraName: string,
   finishHint: string,
+  keyHints = true,
 ) {
   const order = standings(state);
   const tickNow = state.tick + alpha;
@@ -99,8 +101,8 @@ export function drawHud(
 
   ctx.font = '500 12px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.75)';
-  ctx.textAlign = 'right';
-  ctx.fillText(`Camera: ${cameraName} (C to switch)`, cw - 12, ch - 12);
+  ctx.textAlign = keyHints ? 'right' : 'center';
+  ctx.fillText(cameraHudHint(cameraName, keyHints), keyHints ? cw - 12 : cw / 2, ch - 12);
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';

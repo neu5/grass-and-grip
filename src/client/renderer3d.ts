@@ -313,6 +313,7 @@ export class Renderer3D {
   private lastFrame = performance.now();
   cameraMode: CameraMode = 'follow';
   finishHint = 'Press R to race again · Esc for menu';
+  keyHints = true;
 
   constructor(
     private glCanvas: HTMLCanvasElement,
@@ -521,7 +522,18 @@ export class Renderer3D {
       return { text: curr.cars[id].name, x: ((p.x + 1) / 2) * w, y: ((1 - p.y) / 2) * h };
     });
     this.hud.clearRect(0, 0, w, h);
-    drawHud(this.hud, curr, humanIds, w, h, alpha, labels, this.cameraMode === 'follow' ? 'Follow' : 'Overview', this.finishHint);
+    drawHud(
+      this.hud,
+      curr,
+      humanIds,
+      w,
+      h,
+      alpha,
+      labels,
+      this.cameraMode === 'follow' ? 'Follow' : 'Overview',
+      this.finishHint,
+      this.keyHints,
+    );
   }
 }
 

@@ -63,3 +63,13 @@ export class Keyboard {
     };
   }
 }
+
+export function mergeInputs(a: PlayerInput, b: PlayerInput): PlayerInput {
+  return {
+    throttle: Math.max(-1, Math.min(1, a.throttle + b.throttle)),
+    steer: Math.max(-1, Math.min(1, a.steer + b.steer)),
+    handbrake: a.handbrake || b.handbrake,
+  };
+}
+
+export const NO_PLAYER_INPUT: PlayerInput = { throttle: 0, steer: 0, handbrake: false };

@@ -1,5 +1,5 @@
-import { createRace, DT, step, type CarConfig, type CarKind, type GameState, type TickInputs } from '../sim';
-import { BINDINGS_P1, BINDINGS_P2, BINDINGS_SOLO, Keyboard } from './input';
+import { createRace, DT, step, type CarConfig, type CarKind, type GameState, type PlayerInput, type TickInputs } from '../sim';
+import { BINDINGS_P1, BINDINGS_P2, BINDINGS_SOLO, Keyboard, mergeInputs, NO_PLAYER_INPUT } from './input';
 import type { Renderer3D } from './renderer3d';
 
 export interface GameOptions {
@@ -43,6 +43,7 @@ export class Game {
     private renderer: Renderer3D,
     private keyboard: Keyboard,
     private options: GameOptions,
+    private extraInput?: { sample(): PlayerInput },
   ) {
     this.reset();
   }
@@ -67,8 +68,9 @@ export class Game {
   }
 
   private sampleInputs(): TickInputs {
-    if (this.options.humans === 1) return { 0: this.keyboard.sample(BINDINGS_SOLO) };
-    return { 0: this.keyboard.sample(BINDINGS_P1), 1: this.keyboard.sample(BINDINGS_P2) };
+    const extra = this.extraInput?.sample() ?? NO_PLAYER_INPUT;
+    if (this.options.humans === 1) return { 0: mergeInputs(this.keyboard.sample(BINDINGS_SOLO), extra) };
+    return { 0: mergeInputs(this.keyboard.sample(BINDINGS_P1), extra), 1: this.keyboard.sample(BINDINGS_P2) };
   }
 
   start() {

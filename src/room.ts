@@ -1,7 +1,8 @@
 import './style.css';
-import { BINDINGS_SOLO, Keyboard } from './client/input';
+import { BINDINGS_SOLO, Keyboard, mergeInputs, NO_PLAYER_INPUT } from './client/input';
 import { drawNetDebug } from './client/netDebug';
 import { Renderer3D } from './client/renderer3d';
+import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
 import { SNAPSHOT_HZ, CAR_COLORS, CAR_KINDS, CAR_KIND_NAMES, COLOR_NAMES, LAP_OPTIONS, MAX_PLAYERS, type ClientMessage, type CompactSnapshot, type LobbyState, type ServerMessage } from './net/protocol';
 import { SnapshotBuffer, mergeOwn } from './net/interpolate';
 import { InputQueue, lerpCar, reconcile, replaceCar } from './net/prediction';
@@ -17,6 +18,16 @@ const hudCanvas = $<HTMLCanvasElement>('#hud');
 const renderer = new Renderer3D(canvas, hudCanvas, 'meadow');
 renderer.finishHint = 'Back to the room in a few seconds…';
 const keyboard = new Keyboard(window);
+const mobile = detectMobile();
+applyTouchMenuHints(mobile);
+if (mobile) renderer.keyHints = false;
+const touch = mobile
+  ? mountTouchControls({
+      onCamera: () => {
+        if (menu.hidden) renderer.toggleCamera();
+      },
+    })
+  : null;
 const menu = $<HTMLDivElement>('#menu');
 const joinForm = $<HTMLFormElement>('#join-form');
 const lobbyEl = $<HTMLDivElement>('#lobby');
@@ -103,6 +114,7 @@ function renderLobby() {
   const me = lobby?.players.find((p) => p.id === myId);
   const inRace = !!lobby && lobby.phase !== 'lobby';
   menu.hidden = inRace;
+  touch?.setVisible(inRace);
   if (!inRace) resetRaceNet();
   joinForm.hidden = !lobby || !!me;
   lobbyEl.hidden = !lobby || !me;
@@ -190,7 +202,7 @@ function predictTicks(now: number) {
   acc += Math.min(0.25, (now - lastFrame) / 1000);
   let steps = 0;
   while (acc >= DT && steps < MAX_STEPS_PER_FRAME) {
-    const input: PlayerInput = keyboard.sample(BINDINGS_SOLO);
+    const input: PlayerInput = mergeInputs(keyboard.sample(BINDINGS_SOLO), touch?.sample() ?? NO_PLAYER_INPUT);
     const item = inputs.push(predicted.tick, input);
     send({ t: 'input', seq: item.seq, tick: item.tick, input: item.input });
     prevPredicted = predicted;
