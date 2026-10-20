@@ -18,15 +18,23 @@ body {
   overflow: hidden;
 }
 
+#stage {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+
 #game {
   display: block;
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   outline: none;
 }
 
 #hud {
-  position: fixed;
+  position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
@@ -261,26 +269,26 @@ fieldset input:disabled + span {
 }
 
 #mobile-controls[hidden],
-#rotate-hint[hidden] {
+#rotate-gate[hidden] {
   display: none;
 }
 
 .mc-left,
 .mc-right {
   position: absolute;
-  bottom: max(18px, env(safe-area-inset-bottom));
+  bottom: max(var(--mc-inset-bottom, 20px), env(safe-area-inset-bottom, 0px));
   display: flex;
   pointer-events: none;
 }
 
 .mc-left {
-  left: max(16px, env(safe-area-inset-left));
+  left: max(var(--mc-inset-left, 120px), env(safe-area-inset-left, 0px));
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
 }
 
 .mc-right {
-  right: max(16px, env(safe-area-inset-right));
+  right: max(var(--mc-inset-right, 104px), env(safe-area-inset-right, 0px));
 }
 
 .mc-btn {
@@ -300,21 +308,70 @@ fieldset input:disabled + span {
   -webkit-user-select: none;
 }
 
+.mc-cam {
+  width: 46px;
+  height: 46px;
+  font-size: 11px;
+}
+
+.mc-drive {
+  width: 96px;
+  height: 64px;
+  border-radius: 18px;
+  font-size: 15px;
+}
+
+.mc-brake {
+  width: 96px;
+  height: 56px;
+  border-radius: 18px;
+  font-size: 13px;
+}
+
 .mc-btn:hover {
   filter: none;
 }
 
-.mc-btn.on,
-.mc-brake.on {
-  background: rgba(239, 81, 70, 0.45);
+.mc-btn.on {
   border-color: rgba(255, 255, 255, 0.7);
 }
 
-.mc-stick {
+.mc-cam.on {
+  background: rgba(239, 81, 70, 0.45);
+}
+
+.mc-drive.on {
+  background: rgba(76, 196, 106, 0.48);
+}
+
+#mc-rev.on,
+.mc-brake.on {
+  background: rgba(239, 81, 70, 0.45);
+}
+
+.mc-full {
   pointer-events: auto;
-  width: 156px;
-  height: 156px;
-  border-radius: 50%;
+  position: absolute;
+  top: max(var(--mc-inset-top, 10px), env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  width: auto;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.38);
+  background: rgba(10, 14, 20, 0.4);
+  color: rgba(255, 255, 255, 0.92);
+  font: 700 12px system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  touch-action: manipulation;
+}
+
+.mc-steer {
+  pointer-events: auto;
+  width: 200px;
+  height: 86px;
+  border-radius: 43px;
   background: rgba(10, 14, 20, 0.3);
   border: 2px solid rgba(255, 255, 255, 0.42);
   position: relative;
@@ -325,8 +382,8 @@ fieldset input:disabled + span {
 
 .mc-knob {
   position: absolute;
-  width: 68px;
-  height: 68px;
+  width: 56px;
+  height: 56px;
   left: 50%;
   top: 50%;
   border-radius: 50%;
@@ -337,20 +394,39 @@ fieldset input:disabled + span {
   pointer-events: none;
 }
 
-#rotate-hint {
+#rotate-gate {
   position: fixed;
-  top: max(10px, env(safe-area-inset-top));
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 8;
-  padding: 8px 14px;
-  border-radius: 999px;
-  background: rgba(10, 14, 20, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  pointer-events: none;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: #122016;
+  pointer-events: auto;
+}
+
+.rotate-gate-card {
+  text-align: center;
+  padding: 28px 32px;
+  border-radius: 16px;
+  background: rgba(14, 20, 16, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.rotate-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.rotate-sub {
+  margin: 8px 0 18px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+#rotate-full {
+  width: auto;
+  min-width: 160px;
+  padding: 12px 20px;
 }
 
 html.gg-touch #menu {
@@ -381,9 +457,22 @@ html.gg-touch button:not(.mc-btn) {
 }
 
 html.gg-touch .mc-btn {
-  width: 80px;
   padding: 0;
   min-height: 0;
+}
+
+html.gg-touch .mc-cam {
+  width: 46px;
+}
+
+html.gg-touch .mc-drive {
+  width: 96px;
+  min-height: 64px;
+}
+
+html.gg-touch .mc-brake {
+  width: 96px;
+  min-height: 56px;
 }
 
 html.gg-touch #players li {
@@ -395,16 +484,6 @@ html.gg-touch .card {
   width: min(560px, 100%);
 }
 
-html.gg-rotate,
-html.gg-rotate body {
-  width: 100vh;
-  height: 100vw;
-}
-
-html.gg-rotate body {
-  transform: rotate(90deg);
-  transform-origin: top left;
-  position: absolute;
-  top: 0;
-  left: 100vw;
+html.gg-portrait-block #stage {
+  filter: brightness(0.35);
 }

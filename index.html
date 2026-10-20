@@ -7,8 +7,10 @@
     <title>Grass &amp; Grip — top-down racing</title>
   </head>
   <body>
-    <canvas id="game" tabindex="0"></canvas>
-    <canvas id="hud"></canvas>
+    <div id="stage">
+      <canvas id="game" tabindex="0"></canvas>
+      <canvas id="hud"></canvas>
+    </div>
     <div id="menu">
       <form id="menu-form" class="card">
         <h1>Grass <span>&amp;</span> Grip</h1>
@@ -57,9 +59,9 @@
           </div>
           <div class="muted" data-kb-hint>C switches camera · R restarts · Esc returns to this menu</div>
           <div data-touch-hint hidden>
-            <b>Drive</b> right stick &nbsp;·&nbsp; <b>Brake</b> left BRAKE &nbsp;·&nbsp; <b>Camera</b> CAM
+            <b>Drive</b> hold FWD / REV &nbsp;·&nbsp; <b>Brake</b> BRAKE &nbsp;·&nbsp; <b>Steer</b> right stick &nbsp;·&nbsp; <b>Camera</b> CAM
           </div>
-          <div class="muted" data-touch-hint hidden>Landscape · thumbs: stick right, buttons left</div>
+          <div class="muted" data-touch-hint hidden>Landscape only · rotate phone · FULL hides browser chrome</div>
         </div>
 
         <button type="submit">Start race</button>
