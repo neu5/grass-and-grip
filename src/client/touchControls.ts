@@ -8,7 +8,6 @@ import {
   overlayInsets,
   readBrowserMobileFlags,
   shouldForceCssLandscape,
-  shouldShowRotateHint,
   type Point,
   type Rect,
   type TouchLayout,
@@ -191,7 +190,7 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
     const deviceLandscape = deviceIsLandscape(window);
     const force = visible && shouldForceCssLandscape({ mobile, viewPortrait, orientationLocked: locked, deviceLandscape });
     document.documentElement.classList.toggle('gg-rotate', force);
-    hint.hidden = !visible || !shouldShowRotateHint(!viewPortrait, force);
+    hint.hidden = true;
     applyOverlayInsets(force);
   };
 
