@@ -5,7 +5,10 @@ import {
   distanceToCenterline,
   getTrack,
   hashState,
+  PIT,
+  pitBoxIndex,
   step,
+  stepOwnCar,
   surfaceAt,
   TRACKS,
   type GameState,
@@ -337,5 +340,140 @@ describe('simulation', () => {
     for (const o of TRACKS.meadow.obstacles) {
       expect(distanceToCenterline(track, o.x, o.y)).toBeGreaterThan(track.def.halfWidth + o.r);
     }
+  });
+});
+
+describe('pit stops', () => {
+  const track = getTrack('meadow');
+  const box = track.def.pitBoxes[0];
+  const boxX = box.x + box.w / 2;
+  const boxY = box.y + box.h / 2;
+
+  function racingSolo(): GameState {
+    const s = createRace({
+      trackId: 'meadow',
+      totalLaps: 1,
+      cars: [{ name: 'T', color: '#fff', controller: 'human' }],
+      countdownSeconds: 0,
+    });
+    s.phase = 'racing';
+    s.startTick = 0;
+    return s;
+  }
+
+  function parkInBox(s: GameState, fuel: number, tyreWear: number, vx = 0, vy = 0) {
+    const car = s.cars[0];
+    car.x = boxX;
+    car.y = boxY;
+    car.vx = vx;
+    car.vy = vy;
+    car.angle = 0;
+    car.fuel = fuel;
+    car.tyreWear = tyreWear;
+  }
+
+  it('has two marked pit boxes off the racing line but on asphalt', () => {
+    expect(track.def.pitBoxes).toHaveLength(2);
+    for (const b of track.def.pitBoxes) {
+      const cx = b.x + b.w / 2;
+      const cy = b.y + b.h / 2;
+      expect(distanceToCenterline(track, cx, cy)).toBeGreaterThan(track.def.halfWidth);
+      expect(surfaceAt(track, cx, cy)).toBe('asphalt');
+      expect(pitBoxIndex(track, cx, cy)).toBeGreaterThanOrEqual(0);
+    }
+    expect(surfaceAt(track, 30, 30)).toBe('grass');
+  });
+
+  it('refills fuel and tyres over ticks while stopped in a pit box', () => {
+    let s = racingSolo();
+    parkInBox(s, 0.2, 0.8);
+    const ticks = (n: number) => {
+      for (let i = 0; i < n; i++) s = step(s, { 0: { throttle: 0, steer: 0, handbrake: false } });
+    };
+    ticks(20);
+    expect(s.cars[0].fuel).toBeGreaterThan(0.2);
+    expect(s.cars[0].fuel).toBeLessThan(0.55);
+    expect(s.cars[0].tyreWear).toBeLessThan(0.8);
+    expect(s.cars[0].tyreWear).toBeGreaterThan(0.45);
+    const midFuel = s.cars[0].fuel;
+    const midWear = s.cars[0].tyreWear;
+    ticks(20);
+    expect(s.cars[0].fuel).toBeGreaterThan(midFuel);
+    expect(s.cars[0].tyreWear).toBeLessThan(midWear);
+    ticks(200);
+    expect(s.cars[0].fuel).toBe(1);
+    expect(s.cars[0].tyreWear).toBe(0);
+  });
+
+  it('does not refill while moving in a pit box', () => {
+    let s = racingSolo();
+    parkInBox(s, 0.2, 0.8, 90, 0);
+    for (let i = 0; i < 30; i++) {
+      s.cars[0].x = boxX;
+      s.cars[0].y = boxY;
+      s.cars[0].vx = 90;
+      s.cars[0].vy = 0;
+      s = step(s, { 0: { throttle: 0, steer: 0, handbrake: false } });
+    }
+    expect(s.cars[0].fuel).toBeLessThanOrEqual(0.2);
+    expect(s.cars[0].tyreWear).toBeGreaterThanOrEqual(0.8 - 1e-6);
+  });
+
+  it('does not refill when stopped off the pit boxes', () => {
+    let s = racingSolo();
+    const p = track.samples[0];
+    const car = s.cars[0];
+    car.x = p.x;
+    car.y = p.y;
+    car.vx = 0;
+    car.vy = 0;
+    car.fuel = 0.2;
+    car.tyreWear = 0.8;
+    for (let i = 0; i < 40; i++) s = step(s, { 0: { throttle: 0, steer: 0, handbrake: false } });
+    expect(s.cars[0].fuel).toBeCloseTo(0.2, 5);
+    expect(s.cars[0].tyreWear).toBeCloseTo(0.8, 5);
+    expect(pitBoxIndex(track, s.cars[0].x, s.cars[0].y)).toBe(-1);
+  });
+
+  it('stops refill after leaving the box mid-stop', () => {
+    let s = racingSolo();
+    parkInBox(s, 0.2, 0.8);
+    for (let i = 0; i < 30; i++) s = step(s, { 0: { throttle: 0, steer: 0, handbrake: false } });
+    const fuel = s.cars[0].fuel;
+    const wear = s.cars[0].tyreWear;
+    expect(fuel).toBeGreaterThan(0.2);
+    expect(wear).toBeLessThan(0.8);
+    const p = track.samples[0];
+    s.cars[0].x = p.x;
+    s.cars[0].y = p.y;
+    s.cars[0].vx = 0;
+    s.cars[0].vy = 0;
+    for (let i = 0; i < 40; i++) s = step(s, { 0: { throttle: 0, steer: 0, handbrake: false } });
+    expect(s.cars[0].fuel).toBeCloseTo(fuel, 5);
+    expect(s.cars[0].tyreWear).toBeCloseTo(wear, 5);
+  });
+
+  it('applies the same service in stepOwnCar as in step', () => {
+    const a0 = racingSolo();
+    parkInBox(a0, 0.25, 0.7);
+    const b0: GameState = JSON.parse(JSON.stringify(a0));
+    const input: PlayerInput = { throttle: 0, steer: 0, handbrake: false };
+    let a = a0;
+    let b = b0;
+    for (let i = 0; i < 45; i++) {
+      a = step(a, { 0: input });
+      b = stepOwnCar(b, 0, input);
+    }
+    expect(b.cars[0].fuel).toBeCloseTo(a.cars[0].fuel, 10);
+    expect(b.cars[0].tyreWear).toBeCloseTo(a.cars[0].tyreWear, 10);
+  });
+
+  it('refills both resources at the published pit rate', () => {
+    let s = racingSolo();
+    parkInBox(s, 0, 1);
+    s = step(s, { 0: { throttle: 0, steer: 0, handbrake: false } });
+    const d = PIT.refillPerSecond / 60;
+    expect(s.cars[0].fuel).toBeCloseTo(d, 8);
+    expect(s.cars[0].tyreWear).toBeCloseTo(1 - d, 8);
   });
 });

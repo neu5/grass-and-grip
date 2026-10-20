@@ -1,5 +1,15 @@
 import * as THREE from 'three';
-import { CARS, getTrack, type CarKind, type CarState, type GameState, type Track } from '../sim';
+import {
+  CARS,
+  getTrack,
+  isStoppedInPit,
+  needsPitService,
+  pitBoxIndex,
+  type CarKind,
+  type CarState,
+  type GameState,
+  type Track,
+} from '../sim';
 import { drawHud, type Label } from './hud';
 import { paintTrackSurface, SkidMarks } from './trackTexture';
 
@@ -224,6 +234,126 @@ function checkerTexture(): THREE.CanvasTexture {
   return t;
 }
 
+function buildCrewPerson(shirt: string): THREE.Group {
+  const g = new THREE.Group();
+  g.rotation.order = 'YXZ';
+  const skin = std('#e6c8a8');
+  const pants = std('#2a2c34');
+  const cloth = std(shirt);
+
+  const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(2.1, 5.2, 2.3), pants);
+  leftLeg.position.set(0, 2.6, -1.25);
+  leftLeg.name = 'leftLeg';
+  const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(2.1, 5.2, 2.3), pants);
+  rightLeg.position.set(0, 2.6, 1.25);
+  rightLeg.name = 'rightLeg';
+  g.add(leftLeg, rightLeg);
+
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(3.5, 5, 4.1), cloth);
+  torso.position.set(0, 7.9, 0);
+  g.add(torso);
+
+  const leftArm = new THREE.Mesh(new THREE.BoxGeometry(1.7, 4.8, 1.7), cloth);
+  leftArm.position.set(0, 7.5, -3);
+  leftArm.name = 'leftArm';
+  const rightArm = new THREE.Mesh(new THREE.BoxGeometry(1.7, 4.8, 1.7), cloth);
+  rightArm.position.set(0, 7.5, 3);
+  rightArm.name = 'rightArm';
+  g.add(leftArm, rightArm);
+
+  const head = new THREE.Mesh(new THREE.BoxGeometry(3.1, 3.1, 3.1), skin);
+  head.position.set(0, 12, 0);
+  g.add(head);
+  const lid = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.3, 3.4), std('#f3f3f3'));
+  lid.position.set(0, 13.4, 0);
+  g.add(lid);
+  return shadowed(g);
+}
+
+const CREW_SHIRTS = ['#f2f2f2', '#d32f2f', '#1e88e5', '#f9a825'];
+
+interface CrewActor {
+  mesh: THREE.Group;
+  restX: number;
+  restY: number;
+  x: number;
+  y: number;
+  heading: number;
+  box: number;
+  slot: number;
+  phase: number;
+  leftLeg: THREE.Object3D;
+  rightLeg: THREE.Object3D;
+  leftArm: THREE.Object3D;
+  rightArm: THREE.Object3D;
+}
+
+function spawnCrew(track: Track): CrewActor[] {
+  const crew: CrewActor[] = [];
+  track.def.pitBoxes.forEach((b, box) => {
+    for (let slot = 0; slot < 2; slot++) {
+      const restX = b.x + b.w * (0.28 + slot * 0.44);
+      const restY = b.y - 12;
+      const mesh = buildCrewPerson(CREW_SHIRTS[(box * 2 + slot) % CREW_SHIRTS.length]);
+      mesh.position.set(restX, 0, restY);
+      crew.push({
+        mesh,
+        restX,
+        restY,
+        x: restX,
+        y: restY,
+        heading: Math.PI / 2,
+        box,
+        slot,
+        phase: 0,
+        leftLeg: mesh.getObjectByName('leftLeg')!,
+        rightLeg: mesh.getObjectByName('rightLeg')!,
+        leftArm: mesh.getObjectByName('leftArm')!,
+        rightArm: mesh.getObjectByName('rightArm')!,
+      });
+    }
+  });
+  return crew;
+}
+
+function buildPitDecor(track: Track): THREE.Group {
+  const g = new THREE.Group();
+  const lane = track.def.pitLane;
+  const curb = new THREE.Mesh(new THREE.BoxGeometry(lane.w, 3.2, 4), std('#d5d0c6'));
+  curb.position.set(lane.x + lane.w / 2, 1.6, lane.y + 2);
+  g.add(curb);
+  const paint = std('#f6f6f6');
+  const t = 1.8;
+  const h = 0.7;
+  for (const b of track.def.pitBoxes) {
+    const segs: [number, number, number, number][] = [
+      [b.x + b.w / 2, b.y, b.w, t],
+      [b.x + b.w / 2, b.y + b.h, b.w, t],
+      [b.x, b.y + b.h / 2, t, b.h],
+      [b.x + b.w, b.y + b.h / 2, t, b.h],
+    ];
+    for (const [x, z, w, d] of segs) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), paint);
+      m.position.set(x, h / 2, z);
+      g.add(m);
+    }
+  }
+  return shadowed(g);
+}
+
+function crewTarget(actor: CrewActor, car: CarState | null, serving: boolean): { x: number; y: number } {
+  if (!car || !serving) return { x: actor.restX, y: actor.restY };
+  const ca = Math.cos(car.angle);
+  const sa = Math.sin(car.angle);
+  // Wall side of the stalls is -y, which is to the car's right when heading +x.
+  const rx = sa;
+  const ry = -ca;
+  if (actor.slot === 0) {
+    return { x: car.x + rx * 16, y: car.y + ry * 16 };
+  }
+  return { x: car.x - ca * 18 + rx * 8, y: car.y - sa * 18 + ry * 8 };
+}
+
 function buildGantry(track: Track): THREE.Group {
   const g = new THREE.Group();
   const gate = track.gates[0];
@@ -309,6 +439,7 @@ export class Renderer3D {
   private skidUploadTick = 0;
   private carMeshes: THREE.Group[] = [];
   private carKeys: string[] = [];
+  private crew: CrewActor[] = [];
   private hud: CanvasRenderingContext2D;
   private lastFrame = performance.now();
   cameraMode: CameraMode = 'follow';
@@ -376,7 +507,9 @@ export class Renderer3D {
       mesh.position.set(o.x, 0, o.y);
       this.scene.add(mesh);
     }
-    this.scene.add(buildGantry(this.track), buildWalls(width, height), buildForest(trees));
+    this.crew = spawnCrew(this.track);
+    for (const c of this.crew) this.scene.add(c.mesh);
+    this.scene.add(buildPitDecor(this.track), buildGantry(this.track), buildWalls(width, height), buildForest(trees));
   }
 
   resetRace() {
@@ -384,10 +517,54 @@ export class Renderer3D {
     ctx.clearRect(0, 0, this.skids.canvas.width, this.skids.canvas.height);
     this.skidTexture.needsUpdate = true;
     this.camInitialized = false;
+    for (const actor of this.crew) {
+      actor.x = actor.restX;
+      actor.y = actor.restY;
+      actor.heading = Math.PI / 2;
+      actor.phase = 0;
+      actor.mesh.position.set(actor.x, 0, actor.y);
+      actor.mesh.rotation.y = -actor.heading;
+    }
   }
 
   toggleCamera() {
     this.cameraMode = this.cameraMode === 'follow' ? 'overview' : 'follow';
+  }
+
+  private updateCrew(state: GameState, dt: number) {
+    const occupants: (CarState | null)[] = this.track.def.pitBoxes.map(() => null);
+    for (const car of state.cars) {
+      if (!isStoppedInPit(this.track, car) || !needsPitService(car)) continue;
+      const idx = pitBoxIndex(this.track, car.x, car.y);
+      if (idx >= 0 && !occupants[idx]) occupants[idx] = car;
+    }
+    const stepDt = Math.min(0.08, Math.max(0, dt));
+    for (const actor of this.crew) {
+      const car = occupants[actor.box];
+      const serving = !!car;
+      const goal = crewTarget(actor, car, serving);
+      const dx = goal.x - actor.x;
+      const dy = goal.y - actor.y;
+      const dist = Math.hypot(dx, dy);
+      const speed = serving ? 125 : 70;
+      if (dist > 1) {
+        const step = Math.min(dist, speed * stepDt);
+        actor.x += (dx / dist) * step;
+        actor.y += (dy / dist) * step;
+        actor.heading = Math.atan2(dy, dx);
+        actor.phase += step * 0.55;
+      } else {
+        actor.phase *= 0.72;
+        if (car) actor.heading = Math.atan2(car.y - actor.y, car.x - actor.x);
+      }
+      const swing = Math.sin(actor.phase) * Math.min(0.7, dist / 8 + Math.abs(actor.phase) * 0.08);
+      actor.leftLeg.rotation.z = swing;
+      actor.rightLeg.rotation.z = -swing;
+      actor.leftArm.rotation.z = -swing * 0.7;
+      actor.rightArm.rotation.z = swing * 0.7;
+      actor.mesh.position.set(actor.x, 0, actor.y);
+      actor.mesh.rotation.y = -actor.heading;
+    }
   }
 
   /** Called once per simulated tick. */
@@ -514,6 +691,7 @@ export class Renderer3D {
       positions.push(new THREE.Vector3(x, 0, y));
     }
 
+    this.updateCrew(curr, frameDt ?? Math.min(0.1, (performance.now() - this.lastFrame) / 1000));
     this.updateCamera(positions, humanIds, w / Math.max(1, h), frameDt);
     this.gl.render(this.scene, this.camera);
 

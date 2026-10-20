@@ -20,6 +20,8 @@ export function paintTrackSurface(track: Track, res: number): HTMLCanvasElement 
   ctx.fillStyle = '#52a546';
   for (let x = 0; x < width; x += 80) ctx.fillRect(x, 0, 40, height);
 
+  paintPitLane(ctx, track);
+
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
   tracePath(ctx, track);
@@ -61,7 +63,37 @@ export function paintTrackSurface(track: Track, res: number): HTMLCanvasElement 
       ctx.fill();
     }
   }
+  paintPitBoxes(ctx, track);
   return c;
+}
+
+function paintPitLane(ctx: CanvasRenderingContext2D, track: Track) {
+  const lane = track.def.pitLane;
+  ctx.fillStyle = '#6a6d73';
+  ctx.fillRect(lane.x, lane.y, lane.w, lane.h);
+  ctx.strokeStyle = '#cfd3d8';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(lane.x + 1.5, lane.y + 1.5, lane.w - 3, lane.h - 3);
+}
+
+function paintPitBoxes(ctx: CanvasRenderingContext2D, track: Track) {
+  track.def.pitBoxes.forEach((b, i) => {
+    ctx.fillStyle = '#575a60';
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.strokeStyle = '#f4f4f4';
+    ctx.lineWidth = 3.5;
+    ctx.strokeRect(b.x + 2, b.y + 2, b.w - 4, b.h - 4);
+    ctx.setLineDash([7, 5]);
+    ctx.strokeStyle = '#f0d24a';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(b.x + 9, b.y + 9, b.w - 18, b.h - 18);
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.font = '700 26px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(i + 1), b.x + b.w / 2, b.y + b.h / 2);
+  });
 }
 
 /** Accumulates tyre marks from sliding cars onto a transparent canvas. */

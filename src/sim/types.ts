@@ -46,9 +46,9 @@ export interface CarState {
   angle: number;
   /** Lateral slip speed this tick, for skid marks / audio. */
   slip: number;
-  /** 0 = fresh, 1 = fully worn. Starts at 0; no pits in v1. */
+  /** 0 = fresh, 1 = fully worn. Starts at 0; pit boxes restore it. */
   tyreWear: number;
-  /** Remaining fuel 0–1 (1 = 100%). Starts full; no refuel in v1. */
+  /** Remaining fuel 0–1 (1 = 100%). Starts full; pit boxes refill it. */
   fuel: number;
   onGrass: boolean;
   handbrake: boolean;

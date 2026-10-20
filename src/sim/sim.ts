@@ -1,5 +1,6 @@
 import { aiInput } from './ai';
 import { collideBounds, collideCars, collideCircle, NO_INPUT, stepCarPhysics } from './physics';
+import { applyPitService } from './pits';
 import { getTrack, segmentsIntersect, surfaceAt, type Track } from './track';
 import type { CarState, GameState, PlayerInput, RaceConfig, TickInputs } from './types';
 
@@ -98,7 +99,10 @@ export function step(prev: GameState, inputs: TickInputs): GameState {
     const px = car.x;
     const py = car.y;
     stepCarPhysics(car, input, surfaceAt(track, car.x, car.y), DT);
-    if (canDrive) updateCheckpoints(state, car, track, px, py);
+    if (canDrive) {
+      applyPitService(car, track, DT);
+      updateCheckpoints(state, car, track, px, py);
+    }
   }
 
   const cars = state.cars;
@@ -135,7 +139,10 @@ export function stepOwnCar(prev: GameState, carId: number, input: PlayerInput): 
   const px = car.x;
   const py = car.y;
   stepCarPhysics(car, use, surfaceAt(track, car.x, car.y), DT);
-  if (canDrive) updateCheckpoints(state, car, track, px, py);
+  if (canDrive) {
+    applyPitService(car, track, DT);
+    updateCheckpoints(state, car, track, px, py);
+  }
   for (const o of track.def.obstacles) collideCircle(car, o.x, o.y, o.r);
   collideBounds(car, track.def.width, track.def.height);
   return state;
