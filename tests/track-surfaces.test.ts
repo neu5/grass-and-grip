@@ -10,6 +10,7 @@ import {
   getTrack,
   heightAt,
   inBridge,
+  slopeAttitude,
   step,
   surfaceAt,
   TRACKS,
@@ -96,7 +97,37 @@ describe('harbor layout', () => {
       if (dh > maxStep) maxStep = dh;
     }
     const wrap = Math.abs(track.sampleHeights[0] - track.sampleHeights[track.samples.length - 1]);
-    expect(Math.max(maxStep, wrap)).toBeLessThan(3.2);
+    expect(Math.max(maxStep, wrap)).toBeLessThan(1.2);
+  });
+
+  it('has a smooth 2d height field without stair-steps or z pops', () => {
+    let maxDh = 0;
+    for (const p of track.samples) {
+      const h = heightAt(track, p.x, p.y);
+      for (const [dx, dy] of [
+        [3, 0],
+        [0, 3],
+        [2, 2],
+        [-3, 1],
+      ] as const) {
+        const dh = Math.abs(heightAt(track, p.x + dx, p.y + dy) - h);
+        if (dh > maxDh) maxDh = dh;
+      }
+    }
+    expect(maxDh).toBeLessThan(1.0);
+  });
+
+  it('keeps car pitch continuous along the ramp', () => {
+    let maxDPitch = 0;
+    let prev = slopeAttitude(track, track.samples[0].x, track.samples[0].y, track.tangentAngles[0]).pitch;
+    for (let i = 1; i < track.samples.length; i++) {
+      const p = track.samples[i];
+      const pitch = slopeAttitude(track, p.x, p.y, track.tangentAngles[i]).pitch;
+      const dp = Math.abs(pitch - prev);
+      if (dp > maxDPitch) maxDPitch = dp;
+      prev = pitch;
+    }
+    expect(maxDPitch).toBeLessThan(0.05);
   });
 });
 

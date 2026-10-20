@@ -6,6 +6,7 @@ import {
   isStoppedInPit,
   needsPitService,
   pitBoxIndex,
+  slopeAttitude,
   terrainHeightAt,
   WATER_SURFACE,
   type Bridge,
@@ -524,7 +525,7 @@ function sceneryTrees(width: number, height: number): TreeSpot[] {
 
 function buildHeightGround(track: Track, map: THREE.Texture): THREE.Mesh {
   const { width, height } = track.def;
-  const geo = new THREE.PlaneGeometry(width, height, 160, 104);
+  const geo = new THREE.PlaneGeometry(width, height, 400, 262);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
@@ -639,6 +640,8 @@ export class Renderer3D {
   private skidUploadTick = 0;
   private carMeshes: THREE.Group[] = [];
   private carKeys: string[] = [];
+  private carPitch: number[] = [];
+  private carRoll: number[] = [];
   private crew: CrewActor[] = [];
   private hud: CanvasRenderingContext2D;
   private lastFrame = performance.now();
@@ -746,6 +749,8 @@ export class Renderer3D {
     this.skidTexture.needsUpdate = true;
     this.camInitialized = false;
     this.puffWait = [];
+    this.carPitch = this.carPitch.map(() => 0);
+    this.carRoll = this.carRoll.map(() => 0);
     for (const p of this.smokePuffs) {
       p.age = p.life;
       p.mesh.visible = false;
@@ -821,6 +826,8 @@ export class Renderer3D {
     this.carMeshes = state.cars.map((c) => buildCarMesh(c.color, c.kind === 'f1' ? 'f1' : 'rally'));
     for (const m of this.carMeshes) this.scene.add(m);
     this.carKeys = keys;
+    this.carPitch = this.carMeshes.map(() => 0);
+    this.carRoll = this.carMeshes.map(() => 0);
   }
 
   private resize(): { w: number; h: number } {
@@ -986,10 +993,20 @@ export class Renderer3D {
       const angle = lerpAngle(a.angle, b.angle, alpha);
       const h = heightAt(this.track, x, y);
       const mesh = this.carMeshes[i];
+      const slope = slopeAttitude(this.track, x, y, angle);
+      const follow = 1 - Math.exp(-dt * 12);
+      const targetRoll = slope.roll + bodyRoll(b);
+      if (this.carPitch[i] == null) {
+        this.carPitch[i] = slope.pitch;
+        this.carRoll[i] = targetRoll;
+      } else {
+        this.carPitch[i] += (slope.pitch - this.carPitch[i]) * follow;
+        this.carRoll[i] += (targetRoll - this.carRoll[i]) * follow;
+      }
       mesh.position.set(x, h, y);
       mesh.rotation.y = -angle;
-      mesh.rotation.x = bodyRoll(b);
-      mesh.rotation.z = slopePitch(this.track, x, y, angle);
+      mesh.rotation.x = this.carRoll[i];
+      mesh.rotation.z = this.carPitch[i];
       const dmg = (a.damage ?? 0) + ((b.damage ?? 0) - (a.damage ?? 0)) * alpha;
       updateFireFx(mesh, dmg, performance.now() / 1000);
       positions.push(new THREE.Vector3(x, h, y));
@@ -1025,12 +1042,4 @@ export class Renderer3D {
 function bodyRoll(car: CarState): number {
   const lateral = -car.vx * Math.sin(car.angle) + car.vy * Math.cos(car.angle);
   return Math.max(-0.14, Math.min(0.14, lateral / 1800));
-}
-
-function slopePitch(track: Track, x: number, y: number, angle: number): number {
-  const ca = Math.cos(angle);
-  const sa = Math.sin(angle);
-  const hF = heightAt(track, x + 12 * ca, y + 12 * sa);
-  const hB = heightAt(track, x - 12 * ca, y - 12 * sa);
-  return Math.max(-0.42, Math.min(0.42, Math.atan2(hB - hF, 24)));
 }

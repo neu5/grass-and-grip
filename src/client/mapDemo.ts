@@ -40,7 +40,6 @@ function chaseSample(car: CarState, track: Track, targetIdx: number, look: numbe
 /** Auto-drive Harbor Bridge for `?demo=map`: overview, bridge, water crawl, sand. */
 export function mapDemoOptions(renderer: Renderer3D): GameOptions {
   const track = getTrack('harbor');
-  const approachIdx = 18;
   let bridgeIdx = 0;
   let bestH = -Infinity;
   track.samples.forEach((p, i) => {
@@ -50,6 +49,7 @@ export function mapDemoOptions(renderer: Renderer3D): GameOptions {
       bridgeIdx = i;
     }
   });
+  const approachIdx = Math.max(0, bridgeIdx - Math.floor(track.samples.length * 0.2));
   const water = { x: 1340, y: 680 };
   const sand = { x: 1200, y: 740 };
   type Phase = 'show' | 'toBridge' | 'onBridge' | 'toWater' | 'inWater' | 'toSand';
@@ -80,14 +80,15 @@ export function mapDemoOptions(renderer: Renderer3D): GameOptions {
       const car = state.cars[0];
       if (phase === 'show') {
         hold++;
-        if (hold === 55) renderer.cameraMode = 'follow';
-        if (hold > 75) {
+        if (hold >= 50) renderer.cameraMode = 'follow';
+        if (hold > 70) {
           phase = 'toBridge';
           hold = 0;
         }
         return { throttle: 0, steer: 0, handbrake: false };
       }
       if (phase === 'toBridge') {
+        renderer.cameraMode = 'follow';
         if (heightAt(track, car.x, car.y) > 48) {
           phase = 'onBridge';
           hold = 0;
