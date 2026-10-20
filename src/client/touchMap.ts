@@ -1,9 +1,8 @@
 const MOBILE_UA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|Silk/i;
 
-export const STEER_DEADZONE = 0.22;
-export const STEER_GAIN = 0.65;
-export const THROTTLE_GAIN = 1;
-export const STEER_EXPO = 1.8;
+export const STEER_DEADZONE = 0.3;
+export const STEER_GAIN = 0.6;
+export const STEER_EXPO = 2;
 
 export interface MobileFlags {
   pointerCoarse?: boolean;
@@ -34,7 +33,8 @@ export interface SteerPad {
 
 export interface TouchLayout {
   steer: SteerPad;
-  brake: Rect;
+  forward: Rect;
+  reverse: Rect;
   camera: Rect;
 }
 
@@ -76,37 +76,27 @@ export function pointInRect(p: Point, r: Rect): boolean {
   return p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom;
 }
 
-export function padCenter(pad: SteerPad): { cx: number; cy: number; radius: number } {
-  return {
-    cx: (pad.left + pad.right) / 2,
-    cy: (pad.top + pad.bottom) / 2,
-    radius: Math.max(1, Math.min(pad.right - pad.left, pad.bottom - pad.top) / 2),
-  };
+export function steerCenter(pad: SteerPad): { cx: number; halfW: number } {
+  return { cx: (pad.left + pad.right) / 2, halfW: Math.max(1, (pad.right - pad.left) / 2) };
 }
 
 /**
- * 2-axis stick. Screen up = throttle +1 (forward), down = throttle -1 (reverse),
- * right = steer +1. Radial deadzone + expo so it is not twitchy.
+ * Horizontal-only steer. Big deadzone + expo. Screen right is steer +1.
+ * Vertical motion is ignored (gas lives on FWD/REV buttons).
  */
-export function mapStickToDrive(
-  p: Point,
+export function mapSteerAxis(
+  x: number,
   pad: SteerPad,
   deadzone = STEER_DEADZONE,
-): { throttle: number; steer: number } {
-  const { cx, cy, radius } = padCenter(pad);
-  const nx = (p.x - cx) / radius;
-  const ny = (p.y - cy) / radius;
-  const mag = Math.hypot(nx, ny);
-  if (mag < deadzone) return { throttle: 0, steer: 0 };
-  const clip = mag > 1 ? 1 / mag : 1;
-  const t = (Math.min(mag, 1) - deadzone) / (1 - deadzone);
-  const eased = t ** STEER_EXPO;
-  const ux = (nx * clip) / Math.min(mag, 1);
-  const uy = (ny * clip) / Math.min(mag, 1);
-  return {
-    steer: clamp(ux * eased * STEER_GAIN, -1, 1),
-    throttle: clamp(-uy * eased * THROTTLE_GAIN, -1, 1),
-  };
+  gain = STEER_GAIN,
+  expo = STEER_EXPO,
+): number {
+  const { cx, halfW } = steerCenter(pad);
+  const n = clamp((x - cx) / halfW, -1, 1);
+  const a = Math.abs(n);
+  if (a < deadzone) return 0;
+  const t = (a - deadzone) / (1 - deadzone);
+  return Math.sign(n) * gain * t ** expo;
 }
 
 export interface MapPointersOpts {
@@ -116,20 +106,17 @@ export interface MapPointersOpts {
 }
 
 /**
- * Assign pointers to stick / brake / camera.
- * Stick is 2-axis (no auto-gas). BRAKE is handbrake only.
+ * Right stick = steer only. Left FWD/REV hold throttle. No auto-gas. No handbrake overlay.
  */
 export function mapPointersToControls(pointers: Point[], layout: TouchLayout, opts: MapPointersOpts = {}): MappedControls {
-  let throttle = 0;
   let steer = 0;
-  let handbrake = false;
+  let forward = false;
+  let reverse = false;
   let camera = false;
   let stickUsed = false;
 
   if (opts.capturedSteer) {
-    const drive = mapStickToDrive(opts.capturedSteer, layout.steer, opts.deadzone);
-    throttle = drive.throttle;
-    steer = drive.steer;
+    steer = mapSteerAxis(opts.capturedSteer.x, layout.steer, opts.deadzone);
     stickUsed = true;
   }
 
@@ -139,19 +126,22 @@ export function mapPointersToControls(pointers: Point[], layout: TouchLayout, op
       camera = true;
       continue;
     }
-    if (pointInRect(p, layout.brake)) {
-      handbrake = true;
+    if (pointInRect(p, layout.forward)) {
+      forward = true;
+      continue;
+    }
+    if (pointInRect(p, layout.reverse)) {
+      reverse = true;
       continue;
     }
     if (!stickUsed && pointInRect(p, layout.steer)) {
-      const drive = mapStickToDrive(p, layout.steer, opts.deadzone);
-      throttle = drive.throttle;
-      steer = drive.steer;
+      steer = mapSteerAxis(p.x, layout.steer, opts.deadzone);
       stickUsed = true;
     }
   }
 
-  return { throttle, steer, handbrake, camera };
+  const throttle = reverse && !forward ? -1 : forward && !reverse ? 1 : 0;
+  return { throttle, steer, handbrake: false, camera };
 }
 
 export function isPortraitView(width: number, height: number, orientationType?: string): boolean {
@@ -181,7 +171,7 @@ export interface OverlayInsets {
 }
 
 /**
- * Keep CAM / BRAKE / steer inside the visible game area, clear of notches
+ * Keep CAM / FWD / REV / steer inside the visible game area, clear of notches
  * and in-app browser chrome (Instagram side bars, address bars).
  */
 export function overlayInsets(

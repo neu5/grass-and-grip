@@ -1,11 +1,11 @@
 import type { PlayerInput } from '../sim';
 import {
   STEER_GAIN,
-  THROTTLE_GAIN,
   isLandscapeView,
   isMobileLike,
   mapPointersToControls,
   overlayInsets,
+  pointInRect,
   readBrowserMobileFlags,
   shouldBlockPortrait,
   type Point,
@@ -19,7 +19,7 @@ export {
   isMobileLike,
   isPortraitView,
   mapPointersToControls,
-  mapStickToDrive,
+  mapSteerAxis,
   overlayInsets,
   readBrowserMobileFlags,
   shouldBlockPortrait,
@@ -70,8 +70,8 @@ function rectOf(el: HTMLElement): Rect {
   return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
 }
 
-function layoutOf(steer: HTMLElement, brake: HTMLElement, camera: HTMLElement): TouchLayout {
-  return { steer: rectOf(steer), brake: rectOf(brake), camera: rectOf(camera) };
+function layoutOf(steer: HTMLElement, forward: HTMLElement, reverse: HTMLElement, camera: HTMLElement): TouchLayout {
+  return { steer: rectOf(steer), forward: rectOf(forward), reverse: rectOf(reverse), camera: rectOf(camera) };
 }
 
 function applyOverlayInsets() {
@@ -104,11 +104,12 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
   overlay.innerHTML = `
     <button type="button" id="mc-full" class="mc-full" aria-label="Fullscreen">FULL</button>
     <div class="mc-left">
-      <button type="button" id="mc-cam" class="mc-btn" aria-label="Camera">CAM</button>
-      <button type="button" id="mc-brake" class="mc-btn mc-brake" aria-label="Brake">BRAKE</button>
+      <button type="button" id="mc-cam" class="mc-btn mc-cam" aria-label="Camera">CAM</button>
+      <button type="button" id="mc-fwd" class="mc-btn mc-drive" aria-label="Forward">FWD</button>
+      <button type="button" id="mc-rev" class="mc-btn mc-drive" aria-label="Reverse">REV</button>
     </div>
     <div class="mc-right">
-      <div id="mc-steer" class="mc-steer" aria-label="Drive stick">
+      <div id="mc-steer" class="mc-steer" aria-label="Steer">
         <div id="mc-knob" class="mc-knob"></div>
       </div>
     </div>
@@ -126,7 +127,8 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
   host.append(overlay, gate);
 
   const camBtn = overlay.querySelector<HTMLButtonElement>('#mc-cam')!;
-  const brakeBtn = overlay.querySelector<HTMLButtonElement>('#mc-brake')!;
+  const fwdBtn = overlay.querySelector<HTMLButtonElement>('#mc-fwd')!;
+  const revBtn = overlay.querySelector<HTMLButtonElement>('#mc-rev')!;
   const fullBtn = overlay.querySelector<HTMLButtonElement>('#mc-full')!;
   const gateFull = gate.querySelector<HTMLButtonElement>('#rotate-full')!;
   const steerEl = overlay.querySelector<HTMLElement>('#mc-steer')!;
@@ -144,6 +146,8 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
     knob.style.transform = 'translate(-50%, -50%)';
   };
 
+  const currentLayout = () => layoutOf(steerEl, fwdBtn, revBtn, camBtn);
+
   const apply = () => {
     if (blocked) {
       input.throttle = 0;
@@ -153,18 +157,24 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
     }
     const pts = [...pointers.entries()].filter(([id]) => id !== steerId).map(([, p]) => p);
     const captured = steerId !== null ? pointers.get(steerId) ?? null : null;
-    const mapped = mapPointersToControls(pts, layoutOf(steerEl, brakeBtn, camBtn), { capturedSteer: captured });
+    const mapped = mapPointersToControls(pts, currentLayout(), { capturedSteer: captured });
     input.throttle = mapped.throttle;
     input.steer = mapped.steer;
     input.handbrake = mapped.handbrake;
     camBtn.classList.toggle('on', mapped.camera);
-    brakeBtn.classList.toggle('on', mapped.handbrake);
+    fwdBtn.classList.toggle('on', mapped.throttle > 0);
+    revBtn.classList.toggle('on', mapped.throttle < 0);
     if (mapped.camera && !cameraHeld) opts.onCamera();
     cameraHeld = mapped.camera;
 
     const box = steerEl.getBoundingClientRect();
-    const max = Math.max(8, Math.min(box.width, box.height) / 2 - 36);
-    knob.style.transform = `translate(calc(-50% + ${(mapped.steer / STEER_GAIN) * max}px), calc(-50% + ${(-mapped.throttle / THROTTLE_GAIN) * max}px))`;
+    const max = Math.max(8, box.width / 2 - 32);
+    if (captured) {
+      const dx = Math.max(-max, Math.min(max, captured.x - (box.left + box.width / 2)));
+      knob.style.transform = `translate(calc(-50% + ${dx}px), -50%)`;
+    } else {
+      knob.style.transform = `translate(calc(-50% + ${(mapped.steer / STEER_GAIN) * max}px), -50%)`;
+    }
   };
 
   const setPointer = (e: PointerEvent) => {
@@ -191,8 +201,7 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
     requestChrome();
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     setPointer(e);
-    const lay = layoutOf(steerEl, brakeBtn, camBtn);
-    if (pointInSteer({ x: e.clientX, y: e.clientY }, lay.steer)) steerId = e.pointerId;
+    if (pointInRect({ x: e.clientX, y: e.clientY }, currentLayout().steer)) steerId = e.pointerId;
     apply();
   };
 
@@ -214,7 +223,8 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
       cameraHeld = false;
       resetKnob();
       camBtn.classList.remove('on');
-      brakeBtn.classList.remove('on');
+      fwdBtn.classList.remove('on');
+      revBtn.classList.remove('on');
     }
   };
 
@@ -291,10 +301,6 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
       gate.remove();
     },
   };
-}
-
-function pointInSteer(p: Point, r: Rect): boolean {
-  return p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom;
 }
 
 export function applyTouchMenuHints(mobile: boolean, root: ParentNode = document) {

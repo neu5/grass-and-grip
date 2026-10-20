@@ -308,14 +308,37 @@ fieldset input:disabled + span {
   -webkit-user-select: none;
 }
 
+.mc-cam {
+  width: 46px;
+  height: 46px;
+  font-size: 11px;
+}
+
+.mc-drive {
+  width: 96px;
+  height: 70px;
+  border-radius: 18px;
+  font-size: 15px;
+}
+
 .mc-btn:hover {
   filter: none;
 }
 
-.mc-btn.on,
-.mc-brake.on {
-  background: rgba(239, 81, 70, 0.45);
+.mc-btn.on {
   border-color: rgba(255, 255, 255, 0.7);
+}
+
+.mc-cam.on {
+  background: rgba(239, 81, 70, 0.45);
+}
+
+.mc-drive.on {
+  background: rgba(76, 196, 106, 0.48);
+}
+
+#mc-rev.on {
+  background: rgba(239, 81, 70, 0.45);
 }
 
 .mc-full {
@@ -338,9 +361,9 @@ fieldset input:disabled + span {
 
 .mc-steer {
   pointer-events: auto;
-  width: 148px;
-  height: 148px;
-  border-radius: 50%;
+  width: 200px;
+  height: 86px;
+  border-radius: 43px;
   background: rgba(10, 14, 20, 0.3);
   border: 2px solid rgba(255, 255, 255, 0.42);
   position: relative;
@@ -351,8 +374,8 @@ fieldset input:disabled + span {
 
 .mc-knob {
   position: absolute;
-  width: 64px;
-  height: 64px;
+  width: 56px;
+  height: 56px;
   left: 50%;
   top: 50%;
   border-radius: 50%;
@@ -426,9 +449,17 @@ html.gg-touch button:not(.mc-btn) {
 }
 
 html.gg-touch .mc-btn {
-  width: 80px;
   padding: 0;
   min-height: 0;
+}
+
+html.gg-touch .mc-cam {
+  width: 46px;
+}
+
+html.gg-touch .mc-drive {
+  width: 96px;
+  min-height: 70px;
 }
 
 html.gg-touch #players li {
