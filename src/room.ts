@@ -258,6 +258,7 @@ function frame(now: number) {
 
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyC' && menu.hidden) renderer.toggleCamera();
+  if (e.code === 'KeyU') renderer.toggleCheckpointDebug();
   if (e.code === 'F3') {
     e.preventDefault();
     debugOn = !debugOn;

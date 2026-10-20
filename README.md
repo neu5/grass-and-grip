@@ -57,7 +57,7 @@ On Render, the repo has a `render.yaml` blueprint (free web service, health chec
 | 2 players, P1 | Arrows | Right Shift / Enter |
 | 2 players, P2 | WASD | Left Shift / Space |
 
-Press `C` to switch between the follow and overview cameras, `R` to restart the race and `Esc` to go back to the menu.
+Press `C` to switch between the follow and overview cameras, `U` to toggle checkpoint-gate debug, `R` to restart the race and `Esc` to go back to the menu.
 
 On a phone (coarse pointer, or a mobile browser with touch) play is landscape-only. The game tries to lock orientation and enter fullscreen (first tap, **CAM**, or **FULL**). If the lock fails, a blocking **Rotate phone** screen stays up until the device is actually landscape — portrait is not playable. Left thumb holds **FWD** (throttle), **REV** (reverse), or **BRAKE** (handbrake, same as Shift) — no auto-gas. Right thumb is a horizontal stick: left/right steer only, with a large deadzone so it is not twitchy. **CAM** (small, above the drive buttons) cycles the camera like `C`. Controls sit inward from the edges (safe-area + in-app browser chrome); the steer pad sits a bit closer to the right than the left cluster. Desktop keyboards stay as above — no overlay. `/room` lobby buttons are larger for fingers.
 
