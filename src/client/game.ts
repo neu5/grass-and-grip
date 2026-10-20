@@ -8,6 +8,9 @@ export interface GameOptions {
   laps: number;
   p1Car?: CarKind;
   p2Car?: CarKind;
+  countdownSeconds?: number;
+  setup?: (state: GameState) => void;
+  scriptedInput?: (state: GameState) => PlayerInput;
 }
 
 const HUMAN_CARS: CarConfig[] = [
@@ -59,7 +62,13 @@ export class Game {
     const humans = HUMAN_CARS.slice(0, this.options.humans).map((c, i) => ({ ...c, kind: humanKinds[i] }));
     const ai = AI_CARS.slice(0, this.options.aiCount).map((c, i) => ({ ...c, kind: aiKind(i, humanKinds) }));
     const cars = [...humans, ...ai];
-    this.curr = createRace({ trackId: 'meadow', totalLaps: this.options.laps, cars });
+    this.curr = createRace({
+      trackId: 'meadow',
+      totalLaps: this.options.laps,
+      cars,
+      countdownSeconds: this.options.countdownSeconds,
+    });
+    this.options.setup?.(this.curr);
     this.prev = this.curr;
     this.humanIds = cars.map((c, i) => (c.controller === 'human' ? i : -1)).filter((i) => i >= 0);
     this.inputLog = [];
@@ -68,6 +77,7 @@ export class Game {
   }
 
   private sampleInputs(): TickInputs {
+    if (this.options.scriptedInput) return { 0: this.options.scriptedInput(this.curr) };
     const extra = this.extraInput?.sample() ?? NO_PLAYER_INPUT;
     if (this.options.humans === 1) return { 0: mergeInputs(this.keyboard.sample(BINDINGS_SOLO), extra) };
     return { 0: mergeInputs(this.keyboard.sample(BINDINGS_P1), extra), 1: this.keyboard.sample(BINDINGS_P2) };

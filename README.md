@@ -1,6 +1,6 @@
 # Grass & Grip
 
-A small 3D isometric racing game in the browser, in the spirit of GeneRally. It is rendered with Three.js: low-poly cars, real-time shadows, tyre stacks and trees, with a follow camera and a whole-track overview camera. You race on one track. Asphalt and grass have different grip, the cars slide and drift, and you can race up to three AI opponents. One or two players share a keyboard. Pick **Rally** (default, slides more) or **Formula 1** (faster, more grip); colors stay unique, car type can repeat. Hard braking, slides and grass wear tyres (HUD 100% fresh → 0% worn); worn tyres grip and brake less. Fuel starts at 100% and burns with throttle (idle/coast less); a lighter tank is a bit quicker, empty fuel is slower (no pits).
+A small 3D isometric racing game in the browser, in the spirit of GeneRally. It is rendered with Three.js: low-poly cars, real-time shadows, tyre stacks and trees, with a follow camera and a whole-track overview camera. You race on one track. Asphalt and grass have different grip, the cars slide and drift, and you can race up to three AI opponents. One or two players share a keyboard. Pick **Rally** (default, slides more) or **Formula 1** (faster, more grip); colors stay unique, car type can repeat. Hard braking, slides and grass wear tyres (HUD 100% fresh → 0% worn); worn tyres grip and brake less. Fuel starts at 100% and burns with throttle (idle/coast less); a lighter tank is a bit quicker, empty fuel is slower. Stop in a pit box (two marked stalls off the start/finish straight) to refill fuel and tyres together over a couple of seconds; crew run in while you sit still.
 
 ## Run it
 
@@ -70,7 +70,8 @@ src/sim/      pure, DOM-free simulation (can run on a server as-is)
   types.ts    GameState, CarState, PlayerInput, TickInputs (plain JSON data)
   sim.ts      createRace(), step(state, inputs) -> new state, standings(), hashState()
   physics.ts  car model (grip, slip, drift, tyre wear, fuel), collisions
-  track.ts    track definitions, spline centerline, surfaces, checkpoint gates, obstacles (tyres, trees)
+  pits.ts     pit-box service: stopped-in-box check, incremental fuel + tyre refill
+  track.ts    track definitions, spline centerline, surfaces, checkpoint gates, obstacles, pit boxes
   ai.ts       AI driver that outputs PlayerInput just like a human
   dmath.ts    deterministic sin/cos/atan2
 src/client/   browser-only code

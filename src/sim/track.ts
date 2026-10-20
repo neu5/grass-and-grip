@@ -4,6 +4,14 @@ export type Vec2 = { x: number; y: number };
 
 export type Surface = 'asphalt' | 'grass';
 
+/** Axis-aligned rectangle in world units. */
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface Obstacle {
   x: number;
   y: number;
@@ -21,6 +29,10 @@ export interface TrackDef {
   halfWidth: number;
   checkpointCount: number;
   obstacles: Obstacle[];
+  /** Paved apron connecting the racing surface to the stall boxes. */
+  pitLane: Rect;
+  /** Marked stalls. Service only while a car is stopped inside one. */
+  pitBoxes: Rect[];
 }
 
 export interface Gate {
@@ -138,7 +150,24 @@ export function distanceToCenterline(track: Track, x: number, y: number): number
   return Math.sqrt(best);
 }
 
+export function pointInRect(x: number, y: number, r: Rect): boolean {
+  return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+}
+
+export function pitBoxIndex(track: Track, x: number, y: number): number {
+  const boxes = track.def.pitBoxes;
+  for (let i = 0; i < boxes.length; i++) {
+    if (pointInRect(x, y, boxes[i])) return i;
+  }
+  return -1;
+}
+
+export function inPitLane(track: Track, x: number, y: number): boolean {
+  return pointInRect(x, y, track.def.pitLane) || pitBoxIndex(track, x, y) >= 0;
+}
+
 export function surfaceAt(track: Track, x: number, y: number): Surface {
+  if (inPitLane(track, x, y)) return 'asphalt';
   return distanceToCenterline(track, x, y) <= track.def.halfWidth ? 'asphalt' : 'grass';
 }
 
@@ -178,45 +207,53 @@ export const TRACKS: Record<string, TrackDef> = {
     id: 'meadow',
     name: 'Meadow Ring',
     width: 1600,
-    height: 1000,
+    height: 1050,
     halfWidth: 58,
     checkpointCount: 8,
+    // Shifted south a bit vs the original layout so two pit stalls fit
+    // off the racing line, outside the start/finish straight.
     controlPoints: [
-      { x: 420, y: 170 },
-      { x: 800, y: 150 },
-      { x: 1150, y: 165 },
-      { x: 1420, y: 260 },
-      { x: 1440, y: 450 },
-      { x: 1250, y: 530 },
-      { x: 990, y: 470 },
-      { x: 790, y: 540 },
-      { x: 800, y: 720 },
-      { x: 1080, y: 720 },
-      { x: 1380, y: 770 },
-      { x: 1330, y: 890 },
-      { x: 1000, y: 890 },
-      { x: 560, y: 870 },
-      { x: 260, y: 800 },
-      { x: 150, y: 560 },
-      { x: 190, y: 290 },
+      { x: 420, y: 220 },
+      { x: 800, y: 200 },
+      { x: 1150, y: 215 },
+      { x: 1420, y: 310 },
+      { x: 1440, y: 500 },
+      { x: 1250, y: 580 },
+      { x: 990, y: 520 },
+      { x: 790, y: 590 },
+      { x: 800, y: 770 },
+      { x: 1080, y: 770 },
+      { x: 1380, y: 820 },
+      { x: 1330, y: 940 },
+      { x: 1000, y: 940 },
+      { x: 560, y: 920 },
+      { x: 260, y: 850 },
+      { x: 150, y: 610 },
+      { x: 190, y: 340 },
     ],
     obstacles: [
-      { x: 520, y: 520, r: 20, kind: 'tyres' },
-      { x: 600, y: 450, r: 16, kind: 'tyres' },
-      { x: 1180, y: 360, r: 18, kind: 'tyres' },
-      { x: 1580, y: 600, r: 18, kind: 'tyres' },
-      { x: 1480, y: 100, r: 16, kind: 'tree' },
-      { x: 130, y: 940, r: 18, kind: 'tree' },
-      { x: 100, y: 160, r: 15, kind: 'tree' },
-      { x: 430, y: 310, r: 17, kind: 'tree' },
-      { x: 1510, y: 880, r: 16, kind: 'tree' },
-      { x: 400, y: 640, r: 18, kind: 'tree' },
-      { x: 310, y: 520, r: 15, kind: 'tree' },
-      { x: 1390, y: 640, r: 16, kind: 'tree' },
-      { x: 730, y: 340, r: 17, kind: 'tree' },
-      { x: 640, y: 670, r: 15, kind: 'tree' },
-      { x: 1300, y: 70, r: 14, kind: 'tree' },
-      { x: 970, y: 340, r: 16, kind: 'tree' },
+      { x: 520, y: 570, r: 20, kind: 'tyres' },
+      { x: 600, y: 500, r: 16, kind: 'tyres' },
+      { x: 1180, y: 410, r: 18, kind: 'tyres' },
+      { x: 1580, y: 650, r: 18, kind: 'tyres' },
+      { x: 1480, y: 150, r: 16, kind: 'tree' },
+      { x: 130, y: 990, r: 18, kind: 'tree' },
+      { x: 100, y: 210, r: 15, kind: 'tree' },
+      { x: 430, y: 360, r: 17, kind: 'tree' },
+      { x: 1510, y: 930, r: 16, kind: 'tree' },
+      { x: 400, y: 690, r: 18, kind: 'tree' },
+      { x: 310, y: 570, r: 15, kind: 'tree' },
+      { x: 1390, y: 690, r: 16, kind: 'tree' },
+      { x: 730, y: 390, r: 17, kind: 'tree' },
+      { x: 640, y: 720, r: 15, kind: 'tree' },
+      { x: 1300, y: 120, r: 14, kind: 'tree' },
+      { x: 970, y: 390, r: 16, kind: 'tree' },
+    ],
+    // After the S/F line (x≈420), outside the racing line (smaller y).
+    pitLane: { x: 450, y: 12, w: 290, h: 180 },
+    pitBoxes: [
+      { x: 500, y: 32, w: 90, h: 54 },
+      { x: 612, y: 32, w: 90, h: 54 },
     ],
   },
 };
