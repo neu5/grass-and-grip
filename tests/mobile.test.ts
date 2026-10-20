@@ -12,6 +12,7 @@ import {
   readBrowserMobileFlags,
   shouldForceCssLandscape,
   shouldShowRotateHint,
+  deviceIsLandscape,
   type TouchLayout,
 } from '../src/client/touchMap';
 
@@ -174,11 +175,19 @@ describe('layout helpers', () => {
     expect(isPortraitView(844, 390, 'portrait-primary')).toBe(true);
   });
 
-  it('forces a CSS landscape fallback when lock is blocked in portrait', () => {
-    expect(shouldForceCssLandscape(true, true, false)).toBe(true);
-    expect(shouldForceCssLandscape(true, true, true)).toBe(false);
-    expect(shouldForceCssLandscape(true, false, false)).toBe(false);
-    expect(shouldForceCssLandscape(false, true, false)).toBe(false);
+  it('CSS-rotates only when the page is portrait but the device is already landscape', () => {
+    expect(shouldForceCssLandscape({ mobile: true, viewPortrait: true, orientationLocked: false, deviceLandscape: true })).toBe(true);
+    expect(shouldForceCssLandscape({ mobile: true, viewPortrait: true, orientationLocked: false, deviceLandscape: false })).toBe(false);
+    expect(shouldForceCssLandscape({ mobile: true, viewPortrait: true, orientationLocked: true, deviceLandscape: true })).toBe(false);
+    expect(shouldForceCssLandscape({ mobile: true, viewPortrait: false, orientationLocked: false, deviceLandscape: true })).toBe(false);
+    expect(shouldForceCssLandscape({ mobile: false, viewPortrait: true, orientationLocked: false, deviceLandscape: true })).toBe(false);
+  });
+
+  it('reads device landscape from orientation type or window.orientation', () => {
+    expect(deviceIsLandscape({ screen: { orientation: { type: 'landscape-primary' } } })).toBe(true);
+    expect(deviceIsLandscape({ screen: { orientation: { type: 'portrait-primary' } } })).toBe(false);
+    expect(deviceIsLandscape({ orientation: 90 })).toBe(true);
+    expect(deviceIsLandscape({ orientation: 0, screen: { width: 390, height: 844 } })).toBe(false);
   });
 
   it('hides Rotate phone when already landscape or after CSS rotate', () => {

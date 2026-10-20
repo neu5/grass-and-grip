@@ -144,8 +144,29 @@ export function isPortraitView(width: number, height: number, orientationType?: 
   return height > width;
 }
 
-export function shouldForceCssLandscape(mobile: boolean, portrait: boolean, orientationLocked: boolean): boolean {
-  return mobile && portrait && !orientationLocked;
+/**
+ * Only CSS-rotate when the device is already landscape but the page is still
+ * a tall portrait layout (in-app browsers). True portrait stays upright so
+ * the game is not sideways and thumbs stay on the physical left/right.
+ */
+export function shouldForceCssLandscape(opts: {
+  mobile: boolean;
+  viewPortrait: boolean;
+  orientationLocked: boolean;
+  deviceLandscape: boolean;
+}): boolean {
+  return opts.mobile && opts.viewPortrait && opts.deviceLandscape && !opts.orientationLocked;
+}
+
+export function deviceIsLandscape(win: {
+  screen?: { width?: number; height?: number; orientation?: { type?: string } };
+  orientation?: number;
+}): boolean {
+  const type = win.screen?.orientation?.type;
+  if (type?.startsWith('landscape')) return true;
+  if (type?.startsWith('portrait')) return false;
+  if (typeof win.orientation === 'number') return Math.abs(win.orientation) === 90;
+  return (win.screen?.width ?? 0) > (win.screen?.height ?? 0);
 }
 
 /** Hide the banner once the phone is landscape or the CSS rotate fallback is on. */

@@ -1,6 +1,7 @@
 import type { PlayerInput } from '../sim';
 import {
   STEER_GAIN,
+  deviceIsLandscape,
   isMobileLike,
   isPortraitView,
   mapPointersToControls,
@@ -15,6 +16,7 @@ import {
 
 export {
   cameraHudHint,
+  deviceIsLandscape,
   isMobileLike,
   isPortraitView,
   mapPointersToControls,
@@ -54,7 +56,7 @@ function layoutOf(steer: HTMLElement, brake: HTMLElement, camera: HTMLElement): 
   return { steer: rectOf(steer), brake: rectOf(brake), camera: rectOf(camera) };
 }
 
-function applyOverlayInsets() {
+function applyOverlayInsets(rotated = false) {
   const vv = window.visualViewport;
   const view = {
     offsetLeft: vv?.offsetLeft ?? 0,
@@ -63,6 +65,7 @@ function applyOverlayInsets() {
     height: vv?.height ?? window.innerHeight,
   };
   const pad = overlayInsets(view, { width: window.innerWidth, height: window.innerHeight });
+  if (rotated) pad.right = Math.max(pad.right, 168);
   const root = document.documentElement;
   root.style.setProperty('--mc-inset-left', `${pad.left}px`);
   root.style.setProperty('--mc-inset-right', `${pad.right}px`);
@@ -183,13 +186,13 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
       return;
     }
     if (visible) locked = (await tryLockLandscape()) || locked;
-    const ori = (window.screen as Screen & { orientation?: LockableOrientation }).orientation?.type;
     const vv = window.visualViewport;
-    const portrait = isPortraitView(vv?.width ?? window.innerWidth, vv?.height ?? window.innerHeight, ori);
-    const force = visible && shouldForceCssLandscape(mobile, portrait, locked);
+    const viewPortrait = isPortraitView(vv?.width ?? window.innerWidth, vv?.height ?? window.innerHeight);
+    const deviceLandscape = deviceIsLandscape(window);
+    const force = visible && shouldForceCssLandscape({ mobile, viewPortrait, orientationLocked: locked, deviceLandscape });
     document.documentElement.classList.toggle('gg-rotate', force);
-    hint.hidden = !shouldShowRotateHint(!portrait, force);
-    applyOverlayInsets();
+    hint.hidden = !visible || !shouldShowRotateHint(!viewPortrait, force);
+    applyOverlayInsets(force);
   };
 
   const onResize = () => {
