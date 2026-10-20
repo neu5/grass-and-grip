@@ -114,14 +114,34 @@ export const FUEL = {
   emptyDrag: 0.45,
 };
 
+/** Crash damage 0–1. Hits add more with closing speed; wrecks crawl but still steer. */
+export const DAMAGE = {
+  /** Closing speed (px/s) at or below this is a graze. */
+  graze: 22,
+  /** Squared impact scale. ~400 px/s wall hit ≈ 0.34. */
+  scale: 1 / 420000,
+  /** At damage=1, remaining engine power. */
+  crawl: 0.18,
+  /** Extra first-order drag at damage=1. */
+  drag: 1.2,
+};
+
+export function applyCollisionDamage(car: CarState, closingSpeed: number): void {
+  const hit = closingSpeed - DAMAGE.graze;
+  if (hit <= 0) return;
+  car.damage = clamp((car.damage ?? 0) + DAMAGE.scale * hit * hit, 0, 1);
+}
+
 export function stepCarPhysics(car: CarState, input: PlayerInput, surface: Surface, dt: number): void {
   const C = statsFor(car.kind);
   const s = SURFACES[surface];
   const wear = clamp(car.tyreWear ?? 0, 0, 1);
   const fuel = clamp(car.fuel ?? 1, 0, 1);
+  const dmg = clamp(car.damage ?? 0, 0, 1);
   const empty = fuel <= 0;
   const lightMul = 1 + (1 - fuel) * FUEL.lightGain;
-  const powerMul = empty ? FUEL.crawl : lightMul;
+  const dmgMul = 1 - dmg * (1 - DAMAGE.crawl);
+  const powerMul = (empty ? FUEL.crawl : lightMul) * dmgMul;
   const gripMul = tyreFactor(wear, TYRE.wornGrip);
   const brakeMul = tyreFactor(wear, TYRE.wornBrake);
   const ca = dcos(car.angle);
@@ -154,6 +174,7 @@ export function stepCarPhysics(car: CarState, input: PlayerInput, surface: Surfa
 
   vF -= vF * s.rolling * dt + vF * Math.abs(vF) * C.airDrag * dt;
   if (empty) vF -= vF * FUEL.emptyDrag * dt;
+  if (dmg > 0) vF -= vF * DAMAGE.drag * dmg * dt;
 
   const slideThresh = C.slideThreshold * tyreFactor(wear, TYRE.wornSlideThreshold);
   let maxLat = C.lateralGrip * s.grip * gripMul;
@@ -214,6 +235,8 @@ export function collideCars(a: CarState, b: CarState): void {
   b.y += ny * push;
   const rel = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
   if (rel < 0) {
+    applyCollisionDamage(a, -rel);
+    applyCollisionDamage(b, -rel);
     const j = (-(1 + RESTITUTION) * rel) / 2;
     a.vx -= j * nx;
     a.vy -= j * ny;
@@ -235,6 +258,7 @@ export function collideCircle(car: CarState, ox: number, oy: number, r: number):
   car.y = oy + ny * min;
   const vn = car.vx * nx + car.vy * ny;
   if (vn < 0) {
+    applyCollisionDamage(car, -vn);
     car.vx -= (1 + RESTITUTION) * vn * nx;
     car.vy -= (1 + RESTITUTION) * vn * ny;
   }
@@ -243,17 +267,25 @@ export function collideCircle(car: CarState, ox: number, oy: number, r: number):
 export function collideBounds(car: CarState, width: number, height: number): void {
   const m = statsFor(car.kind).radius;
   if (car.x < m) {
+    const closing = car.vx < 0 ? -car.vx : 0;
     car.x = m;
     if (car.vx < 0) car.vx = -car.vx * RESTITUTION;
+    applyCollisionDamage(car, closing);
   } else if (car.x > width - m) {
+    const closing = car.vx > 0 ? car.vx : 0;
     car.x = width - m;
     if (car.vx > 0) car.vx = -car.vx * RESTITUTION;
+    applyCollisionDamage(car, closing);
   }
   if (car.y < m) {
+    const closing = car.vy < 0 ? -car.vy : 0;
     car.y = m;
     if (car.vy < 0) car.vy = -car.vy * RESTITUTION;
+    applyCollisionDamage(car, closing);
   } else if (car.y > height - m) {
+    const closing = car.vy > 0 ? car.vy : 0;
     car.y = height - m;
     if (car.vy > 0) car.vy = -car.vy * RESTITUTION;
+    applyCollisionDamage(car, closing);
   }
 }

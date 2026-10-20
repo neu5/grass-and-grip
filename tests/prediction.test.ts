@@ -144,10 +144,11 @@ describe('compact snapshots', () => {
     expect(encodeSnapshot(state).c[0]).not.toHaveProperty('ai');
     expect(again.cars[0].tyreWear).toBeDefined();
     expect(again.cars[0].fuel).toBeDefined();
-    const worn = { ...state, cars: [{ ...state.cars[0], tyreWear: 0.42, fuel: 0.63 }] };
+    const worn = { ...state, cars: [{ ...state.cars[0], tyreWear: 0.42, fuel: 0.63, damage: 0.37 }] };
     const round = decodeSnapshot(encodeSnapshot(worn));
     expect(Math.abs(round.cars[0].tyreWear - 0.42)).toBeLessThan(1 / 1000 + 1e-9);
     expect(Math.abs(round.cars[0].fuel - 0.63)).toBeLessThan(1 / 1000 + 1e-9);
+    expect(Math.abs(round.cars[0].damage - 0.37)).toBeLessThan(1 / 1000 + 1e-9);
   });
 });
 

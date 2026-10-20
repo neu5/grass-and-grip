@@ -1,6 +1,7 @@
 import './style.css';
 import { Game, type GameOptions } from './client/game';
 import { Keyboard } from './client/input';
+import { damageDemoOptions } from './client/damageDemo';
 import { pitDemoOptions } from './client/pitDemo';
 import { Renderer3D } from './client/renderer3d';
 import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
@@ -40,12 +41,15 @@ function updateControlsHint() {
 form.addEventListener('change', updateControlsHint);
 updateControlsHint();
 
-if (new URLSearchParams(location.search).get('demo') === 'pit') {
-  menu.hidden = true;
-  game = new Game(renderer, keyboard, pitDemoOptions());
-  (window as unknown as { race: Game }).race = game;
-  canvas.focus();
-  game.start();
+{
+  const demo = new URLSearchParams(location.search).get('demo');
+  if (demo === 'pit' || demo === 'damage') {
+    menu.hidden = true;
+    game = new Game(renderer, keyboard, demo === 'damage' ? damageDemoOptions() : pitDemoOptions());
+    (window as unknown as { race: Game }).race = game;
+    canvas.focus();
+    game.start();
+  }
 }
 
 form.addEventListener('submit', (e) => {

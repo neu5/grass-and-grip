@@ -50,6 +50,8 @@ export interface CarState {
   tyreWear: number;
   /** Remaining fuel 0–1 (1 = 100%). Starts full; pit boxes refill it. */
   fuel: number;
+  /** 0 = fine, 1 = wrecked. Hits raise it; pit boxes repair it. */
+  damage: number;
   onGrass: boolean;
   handbrake: boolean;
   lapsCompleted: number;

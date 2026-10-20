@@ -68,6 +68,8 @@ export interface CompactCar {
   tw: number;
   /** Remaining fuel 0–1000 (1000 = 100%, 0 = empty). */
   fu: number;
+  /** Crash damage 0–1000 (0 = fine, 1000 = wrecked). */
+  dm: number;
   g: 0 | 1;
   h: 0 | 1;
   lc: number;
