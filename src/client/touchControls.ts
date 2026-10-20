@@ -1,19 +1,34 @@
 import type { PlayerInput } from '../sim';
 import {
+  STEER_GAIN,
   isMobileLike,
+  isPortraitView,
   mapPointersToControls,
+  overlayInsets,
   readBrowserMobileFlags,
   shouldForceCssLandscape,
+  shouldShowRotateHint,
   type Point,
   type Rect,
   type TouchLayout,
 } from './touchMap';
 
-export { cameraHudHint, isMobileLike, mapPointersToControls, mapStickToDrive, readBrowserMobileFlags, shouldForceCssLandscape } from './touchMap';
+export {
+  cameraHudHint,
+  isMobileLike,
+  isPortraitView,
+  mapPointersToControls,
+  mapSteerAxis,
+  overlayInsets,
+  readBrowserMobileFlags,
+  shouldForceCssLandscape,
+  shouldShowRotateHint,
+} from './touchMap';
 
 const ZERO: PlayerInput = { throttle: 0, steer: 0, handbrake: false };
+const AUTO: PlayerInput = { throttle: 1, steer: 0, handbrake: false };
 
-type LockableOrientation = { lock?: (mode: string) => Promise<void> };
+type LockableOrientation = { lock?: (mode: string) => Promise<void>; type?: string };
 
 export function detectMobile(win: Window = window): boolean {
   return isMobileLike(readBrowserMobileFlags(win));
@@ -35,13 +50,24 @@ function rectOf(el: HTMLElement): Rect {
   return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
 }
 
-function layoutOf(stick: HTMLElement, brake: HTMLElement, camera: HTMLElement): TouchLayout {
-  const s = stick.getBoundingClientRect();
-  return {
-    stick: { cx: s.left + s.width / 2, cy: s.top + s.height / 2, radius: Math.min(s.width, s.height) / 2 },
-    brake: rectOf(brake),
-    camera: rectOf(camera),
+function layoutOf(steer: HTMLElement, brake: HTMLElement, camera: HTMLElement): TouchLayout {
+  return { steer: rectOf(steer), brake: rectOf(brake), camera: rectOf(camera) };
+}
+
+function applyOverlayInsets() {
+  const vv = window.visualViewport;
+  const view = {
+    offsetLeft: vv?.offsetLeft ?? 0,
+    offsetTop: vv?.offsetTop ?? 0,
+    width: vv?.width ?? window.innerWidth,
+    height: vv?.height ?? window.innerHeight,
   };
+  const pad = overlayInsets(view, { width: window.innerWidth, height: window.innerHeight });
+  const root = document.documentElement;
+  root.style.setProperty('--mc-inset-left', `${pad.left}px`);
+  root.style.setProperty('--mc-inset-right', `${pad.right}px`);
+  root.style.setProperty('--mc-inset-bottom', `${pad.bottom}px`);
+  root.style.setProperty('--mc-inset-top', `${pad.top}px`);
 }
 
 export interface TouchControls {
@@ -61,7 +87,7 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
       <button type="button" id="mc-brake" class="mc-btn mc-brake" aria-label="Brake">BRAKE</button>
     </div>
     <div class="mc-right">
-      <div id="mc-stick" class="mc-stick" aria-label="Drive stick">
+      <div id="mc-steer" class="mc-steer" aria-label="Steer">
         <div id="mc-knob" class="mc-knob"></div>
       </div>
     </div>
@@ -74,21 +100,25 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
 
   const camBtn = overlay.querySelector<HTMLButtonElement>('#mc-cam')!;
   const brakeBtn = overlay.querySelector<HTMLButtonElement>('#mc-brake')!;
-  const stickEl = overlay.querySelector<HTMLElement>('#mc-stick')!;
+  const steerEl = overlay.querySelector<HTMLElement>('#mc-steer')!;
   const knob = overlay.querySelector<HTMLElement>('#mc-knob')!;
 
   const pointers = new Map<number, Point>();
-  let stickId: number | null = null;
+  let steerId: number | null = null;
   let cameraHeld = false;
   let visible = false;
   let locked = false;
 
-  const input: PlayerInput = { ...ZERO };
+  const input: PlayerInput = { ...AUTO };
+
+  const resetKnob = () => {
+    knob.style.transform = 'translate(-50%, -50%)';
+  };
 
   const apply = () => {
-    const pts = [...pointers.entries()].filter(([id]) => id !== stickId).map(([, p]) => p);
-    const captured = stickId !== null ? pointers.get(stickId) ?? null : null;
-    const mapped = mapPointersToControls(pts, layoutOf(stickEl, brakeBtn, camBtn), { capturedStick: captured });
+    const pts = [...pointers.entries()].filter(([id]) => id !== steerId).map(([, p]) => p);
+    const captured = steerId !== null ? pointers.get(steerId) ?? null : null;
+    const mapped = mapPointersToControls(pts, layoutOf(steerEl, brakeBtn, camBtn), { capturedSteer: captured });
     input.throttle = mapped.throttle;
     input.steer = mapped.steer;
     input.handbrake = mapped.handbrake;
@@ -97,10 +127,9 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
     if (mapped.camera && !cameraHeld) opts.onCamera();
     cameraHeld = mapped.camera;
 
-    const s = stickEl.getBoundingClientRect();
-    const radius = Math.min(s.width, s.height) / 2;
-    const max = radius * 0.55;
-    knob.style.transform = `translate(calc(-50% + ${mapped.steer * max}px), calc(-50% + ${-mapped.throttle * max}px))`;
+    const box = steerEl.getBoundingClientRect();
+    const max = Math.max(8, box.width / 2 - 36);
+    knob.style.transform = `translate(calc(-50% + ${(mapped.steer / STEER_GAIN) * max}px), -50%)`;
   };
 
   const setPointer = (e: PointerEvent) => {
@@ -112,10 +141,8 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
     e.preventDefault();
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     setPointer(e);
-    const lay = layoutOf(stickEl, brakeBtn, camBtn);
-    const p = { x: e.clientX, y: e.clientY };
-    const dist = Math.hypot(p.x - lay.stick.cx, p.y - lay.stick.cy);
-    if (dist <= lay.stick.radius * 1.5) stickId = e.pointerId;
+    const lay = layoutOf(steerEl, brakeBtn, camBtn);
+    if (pointInSteer({ x: e.clientX, y: e.clientY }, lay.steer)) steerId = e.pointerId;
     apply();
   };
 
@@ -128,14 +155,14 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
 
   const onUp = (e: PointerEvent) => {
     pointers.delete(e.pointerId);
-    if (stickId === e.pointerId) stickId = null;
+    if (steerId === e.pointerId) steerId = null;
     apply();
     if (pointers.size === 0) {
-      input.throttle = 0;
+      input.throttle = 1;
       input.steer = 0;
       input.handbrake = false;
       cameraHeld = false;
-      knob.style.transform = 'translate(-50%, -50%)';
+      resetKnob();
       camBtn.classList.remove('on');
       brakeBtn.classList.remove('on');
     }
@@ -156,10 +183,13 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
       return;
     }
     if (visible) locked = (await tryLockLandscape()) || locked;
-    const portrait = window.innerHeight > window.innerWidth;
+    const ori = (window.screen as Screen & { orientation?: LockableOrientation }).orientation?.type;
+    const vv = window.visualViewport;
+    const portrait = isPortraitView(vv?.width ?? window.innerWidth, vv?.height ?? window.innerHeight, ori);
     const force = visible && shouldForceCssLandscape(mobile, portrait, locked);
     document.documentElement.classList.toggle('gg-rotate', force);
-    hint.hidden = !force;
+    hint.hidden = !shouldShowRotateHint(!portrait, force);
+    applyOverlayInsets();
   };
 
   const onResize = () => {
@@ -167,6 +197,8 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
   };
   window.addEventListener('resize', onResize);
   window.addEventListener('orientationchange', onResize);
+  window.visualViewport?.addEventListener('resize', onResize);
+  window.visualViewport?.addEventListener('scroll', onResize);
   const firstGesture = () => {
     void syncLandscape();
   };
@@ -176,7 +208,8 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
 
   return {
     sample() {
-      return visible ? { ...input } : { ...ZERO };
+      if (!visible) return { ...ZERO };
+      return { ...input };
     },
     setVisible(next) {
       visible = next;
@@ -184,23 +217,33 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
       document.documentElement.classList.toggle('gg-racing', next);
       if (!next) {
         pointers.clear();
-        stickId = null;
+        steerId = null;
         cameraHeld = false;
         input.throttle = 0;
         input.steer = 0;
         input.handbrake = false;
-        knob.style.transform = 'translate(-50%, -50%)';
+        resetKnob();
+      } else {
+        input.throttle = 1;
+        input.steer = 0;
+        input.handbrake = false;
       }
       void syncLandscape();
     },
     destroy() {
       window.removeEventListener('resize', onResize);
       window.removeEventListener('orientationchange', onResize);
+      window.visualViewport?.removeEventListener('resize', onResize);
+      window.visualViewport?.removeEventListener('scroll', onResize);
       window.removeEventListener('pointerdown', firstGesture);
       overlay.remove();
       hint.remove();
     },
   };
+}
+
+function pointInSteer(p: Point, r: Rect): boolean {
+  return p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom;
 }
 
 export function applyTouchMenuHints(mobile: boolean, root: ParentNode = document) {

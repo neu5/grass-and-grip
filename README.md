@@ -59,7 +59,7 @@ On Render, the repo has a `render.yaml` blueprint (free web service, health chec
 
 Press `C` to switch between the follow and overview cameras, `R` to restart the race and `Esc` to go back to the menu.
 
-On a phone (coarse pointer, or a mobile browser with touch) the game locks landscape when it can, or rotates the view and shows a hint if the browser blocks the lock. A transparent right-thumb stick steers and throttles; left-thumb **CAM** and **BRAKE** match `C` and Shift/Space. Keyboard hints hide. Desktop keyboards stay as above — no overlay. `/room` lobby buttons are larger for fingers.
+On a phone (coarse pointer, or a mobile browser with touch) the game locks landscape when it can. If the browser blocks that lock, only the 3D view rotates so portrait is still playable with thumbs on the physical left and right. Right thumb steers left/right (soft, big deadzone); gas is automatic unless **BRAKE** is held (same as Shift). **CAM** cycles the camera like `C`. Overlay sits inside the visible area (safe-area + browser chrome). Keyboard hints hide. Desktop keyboards stay as above — no overlay. `/room` lobby buttons are larger for fingers.
 
 ## Architecture
 
