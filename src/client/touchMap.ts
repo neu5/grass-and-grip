@@ -35,6 +35,7 @@ export interface TouchLayout {
   steer: SteerPad;
   forward: Rect;
   reverse: Rect;
+  brake: Rect;
   camera: Rect;
 }
 
@@ -106,12 +107,13 @@ export interface MapPointersOpts {
 }
 
 /**
- * Right stick = steer only. Left FWD/REV hold throttle. No auto-gas. No handbrake overlay.
+ * Right stick = steer only. Left FWD/REV hold throttle. BRAKE is handbrake. No auto-gas.
  */
 export function mapPointersToControls(pointers: Point[], layout: TouchLayout, opts: MapPointersOpts = {}): MappedControls {
   let steer = 0;
   let forward = false;
   let reverse = false;
+  let handbrake = false;
   let camera = false;
   let stickUsed = false;
 
@@ -134,6 +136,10 @@ export function mapPointersToControls(pointers: Point[], layout: TouchLayout, op
       reverse = true;
       continue;
     }
+    if (pointInRect(p, layout.brake)) {
+      handbrake = true;
+      continue;
+    }
     if (!stickUsed && pointInRect(p, layout.steer)) {
       steer = mapSteerAxis(p.x, layout.steer, opts.deadzone);
       stickUsed = true;
@@ -141,7 +147,7 @@ export function mapPointersToControls(pointers: Point[], layout: TouchLayout, op
   }
 
   const throttle = reverse && !forward ? -1 : forward && !reverse ? 1 : 0;
-  return { throttle, steer, handbrake: false, camera };
+  return { throttle, steer, handbrake, camera };
 }
 
 export function isPortraitView(width: number, height: number, orientationType?: string): boolean {
@@ -171,8 +177,9 @@ export interface OverlayInsets {
 }
 
 /**
- * Keep CAM / FWD / REV / steer inside the visible game area, clear of notches
+ * Keep CAM / FWD / REV / BRAKE / steer inside the visible game area, clear of notches
  * and in-app browser chrome (Instagram side bars, address bars).
+ * Right inset is a bit smaller than left so the steer pad sits slightly righter.
  */
 export function overlayInsets(
   view: { offsetLeft: number; offsetTop: number; width: number; height: number },
@@ -181,7 +188,7 @@ export function overlayInsets(
 ): OverlayInsets {
   const landscape = view.width >= view.height;
   const chromeLeft = landscape ? 120 : 48;
-  const chromeRight = landscape ? 140 : 48;
+  const chromeRight = landscape ? 104 : 48;
   const chromeBottom = landscape ? 28 : 24;
   const chromeTop = 10;
   const viewRightGap = Math.max(0, inner.width - view.offsetLeft - view.width);

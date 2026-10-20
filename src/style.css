@@ -284,11 +284,11 @@ fieldset input:disabled + span {
 .mc-left {
   left: max(var(--mc-inset-left, 120px), env(safe-area-inset-left, 0px));
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .mc-right {
-  right: max(var(--mc-inset-right, 140px), env(safe-area-inset-right, 0px));
+  right: max(var(--mc-inset-right, 104px), env(safe-area-inset-right, 0px));
 }
 
 .mc-btn {
@@ -316,9 +316,16 @@ fieldset input:disabled + span {
 
 .mc-drive {
   width: 96px;
-  height: 70px;
+  height: 64px;
   border-radius: 18px;
   font-size: 15px;
+}
+
+.mc-brake {
+  width: 96px;
+  height: 56px;
+  border-radius: 18px;
+  font-size: 13px;
 }
 
 .mc-btn:hover {
@@ -337,7 +344,8 @@ fieldset input:disabled + span {
   background: rgba(76, 196, 106, 0.48);
 }
 
-#mc-rev.on {
+#mc-rev.on,
+.mc-brake.on {
   background: rgba(239, 81, 70, 0.45);
 }
 
@@ -459,7 +467,12 @@ html.gg-touch .mc-cam {
 
 html.gg-touch .mc-drive {
   width: 96px;
-  min-height: 70px;
+  min-height: 64px;
+}
+
+html.gg-touch .mc-brake {
+  width: 96px;
+  min-height: 56px;
 }
 
 html.gg-touch #players li {

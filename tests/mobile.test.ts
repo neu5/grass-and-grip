@@ -19,8 +19,9 @@ import {
 
 const layout: TouchLayout = {
   steer: { left: 620, top: 250, right: 820, bottom: 336 },
-  forward: { left: 80, top: 180, right: 176, bottom: 250 },
-  reverse: { left: 80, top: 262, right: 176, bottom: 332 },
+  forward: { left: 80, top: 180, right: 176, bottom: 244 },
+  reverse: { left: 80, top: 252, right: 176, bottom: 316 },
+  brake: { left: 80, top: 324, right: 176, bottom: 380 },
   camera: { left: 80, top: 122, right: 126, bottom: 168 },
 };
 
@@ -119,7 +120,7 @@ describe('mapPointersToControls', () => {
     expect(fwd.steer).toBe(0);
     expect(fwd.handbrake).toBe(false);
 
-    const rev = mapPointersToControls([{ x: 120, y: 297 }], layout);
+    const rev = mapPointersToControls([{ x: 120, y: 284 }], layout);
     expect(rev.throttle).toBe(-1);
     expect(rev.steer).toBe(0);
     expect(rev.handbrake).toBe(false);
@@ -127,11 +128,19 @@ describe('mapPointersToControls', () => {
     const both = mapPointersToControls(
       [
         { x: 120, y: 215 },
-        { x: 120, y: 297 },
+        { x: 120, y: 284 },
       ],
       layout,
     );
     expect(both.throttle).toBe(0);
+  });
+
+  it('maps BRAKE to handbrake (same as Shift) without adding gas', () => {
+    const r = mapPointersToControls([{ x: 120, y: 350 }], layout);
+    expect(r.handbrake).toBe(true);
+    expect(r.throttle).toBe(0);
+    expect(r.steer).toBe(0);
+    expect(r.camera).toBe(false);
   });
 
   it('maps CAM to camera (same as C) without adding gas', () => {
@@ -141,11 +150,24 @@ describe('mapPointersToControls', () => {
     expect(r.throttle).toBe(0);
   });
 
+  it('can reverse and hold brake at once from two pointers', () => {
+    const r = mapPointersToControls(
+      [
+        { x: 120, y: 284 },
+        { x: 120, y: 350 },
+      ],
+      layout,
+    );
+    expect(r.throttle).toBe(-1);
+    expect(r.handbrake).toBe(true);
+    expect(r.camera).toBe(false);
+  });
+
   it('can steer and hold reverse at once from two pointers', () => {
     const r = mapPointersToControls(
       [
         { x: 820, y: 293 },
-        { x: 120, y: 297 },
+        { x: 120, y: 284 },
       ],
       layout,
     );
@@ -159,6 +181,7 @@ describe('mapPointersToControls', () => {
     const dragged = { x: 100, y: 145 };
     const r = mapPointersToControls([], layout, { capturedSteer: dragged });
     expect(r.camera).toBe(false);
+    expect(r.handbrake).toBe(false);
     expect(r.throttle).toBe(0);
     expect(r.steer).toBeLessThan(0);
   });
@@ -203,8 +226,8 @@ describe('layout helpers', () => {
   it('pushes overlay inward from visual viewport + fat side chrome', () => {
     const wide = overlayInsets({ offsetLeft: 0, offsetTop: 0, width: 844, height: 390 }, { width: 844, height: 390 });
     expect(wide.left).toBeGreaterThanOrEqual(120);
-    expect(wide.right).toBeGreaterThanOrEqual(140);
-    expect(wide.right).toBeGreaterThan(wide.left);
+    expect(wide.right).toBeGreaterThanOrEqual(100);
+    expect(wide.right).toBeLessThan(140);
 
     const insta = overlayInsets(
       { offsetLeft: 40, offsetTop: 0, width: 760, height: 390 },
