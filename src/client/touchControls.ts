@@ -1,13 +1,12 @@
 import type { PlayerInput } from '../sim';
 import {
   STEER_GAIN,
-  deviceIsLandscape,
+  isLandscapeView,
   isMobileLike,
-  isPortraitView,
   mapPointersToControls,
   overlayInsets,
   readBrowserMobileFlags,
-  shouldForceCssLandscape,
+  shouldBlockPortrait,
   type Point,
   type Rect,
   type TouchLayout,
@@ -15,14 +14,14 @@ import {
 
 export {
   cameraHudHint,
-  deviceIsLandscape,
+  isLandscapeView,
   isMobileLike,
   isPortraitView,
   mapPointersToControls,
   mapSteerAxis,
   overlayInsets,
   readBrowserMobileFlags,
-  shouldForceCssLandscape,
+  shouldBlockPortrait,
   shouldShowRotateHint,
 } from './touchMap';
 
@@ -46,6 +45,26 @@ export async function tryLockLandscape(win: Window = window): Promise<boolean> {
   }
 }
 
+export async function tryEnterFullscreen(doc: Document = document): Promise<boolean> {
+  const root = doc.documentElement as HTMLElement & {
+    requestFullscreen?: (opts?: FullscreenOptions) => Promise<void>;
+    webkitRequestFullscreen?: () => Promise<void> | void;
+  };
+  const webkitEl = (doc as Document & { webkitFullscreenElement?: Element }).webkitFullscreenElement;
+  if (doc.fullscreenElement || webkitEl) return true;
+  try {
+    if (root.requestFullscreen) {
+      await root.requestFullscreen();
+      return true;
+    }
+    const wk = root.webkitRequestFullscreen?.();
+    if (wk && typeof (wk as Promise<void>).then === 'function') await wk;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function rectOf(el: HTMLElement): Rect {
   const r = el.getBoundingClientRect();
   return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
@@ -55,7 +74,7 @@ function layoutOf(steer: HTMLElement, brake: HTMLElement, camera: HTMLElement): 
   return { steer: rectOf(steer), brake: rectOf(brake), camera: rectOf(camera) };
 }
 
-function applyOverlayInsets(rotated = false) {
+function applyOverlayInsets() {
   const vv = window.visualViewport;
   const view = {
     offsetLeft: vv?.offsetLeft ?? 0,
@@ -64,7 +83,6 @@ function applyOverlayInsets(rotated = false) {
     height: vv?.height ?? window.innerHeight,
   };
   const pad = overlayInsets(view, { width: window.innerWidth, height: window.innerHeight });
-  if (rotated) pad.right = Math.max(pad.right, 168);
   const root = document.documentElement;
   root.style.setProperty('--mc-inset-left', `${pad.left}px`);
   root.style.setProperty('--mc-inset-right', `${pad.right}px`);
@@ -84,6 +102,7 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
   overlay.id = 'mobile-controls';
   overlay.hidden = true;
   overlay.innerHTML = `
+    <button type="button" id="mc-full" class="mc-full" aria-label="Fullscreen">FULL</button>
     <div class="mc-left">
       <button type="button" id="mc-cam" class="mc-btn" aria-label="Camera">CAM</button>
       <button type="button" id="mc-brake" class="mc-btn mc-brake" aria-label="Brake">BRAKE</button>
@@ -94,14 +113,22 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
       </div>
     </div>
   `;
-  const hint = document.createElement('div');
-  hint.id = 'rotate-hint';
-  hint.hidden = true;
-  hint.textContent = 'Rotate phone';
-  host.append(overlay, hint);
+  const gate = document.createElement('div');
+  gate.id = 'rotate-gate';
+  gate.hidden = true;
+  gate.innerHTML = `
+    <div class="rotate-gate-card">
+      <p class="rotate-title">Rotate phone</p>
+      <p class="rotate-sub">Landscape only</p>
+      <button type="button" id="rotate-full">Fullscreen</button>
+    </div>
+  `;
+  host.append(overlay, gate);
 
   const camBtn = overlay.querySelector<HTMLButtonElement>('#mc-cam')!;
   const brakeBtn = overlay.querySelector<HTMLButtonElement>('#mc-brake')!;
+  const fullBtn = overlay.querySelector<HTMLButtonElement>('#mc-full')!;
+  const gateFull = gate.querySelector<HTMLButtonElement>('#rotate-full')!;
   const steerEl = overlay.querySelector<HTMLElement>('#mc-steer')!;
   const knob = overlay.querySelector<HTMLElement>('#mc-knob')!;
 
@@ -109,7 +136,7 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
   let steerId: number | null = null;
   let cameraHeld = false;
   let visible = false;
-  let locked = false;
+  let blocked = false;
 
   const input: PlayerInput = { ...AUTO };
 
@@ -118,6 +145,12 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
   };
 
   const apply = () => {
+    if (blocked) {
+      input.throttle = 0;
+      input.steer = 0;
+      input.handbrake = false;
+      return;
+    }
     const pts = [...pointers.entries()].filter(([id]) => id !== steerId).map(([, p]) => p);
     const captured = steerId !== null ? pointers.get(steerId) ?? null : null;
     const mapped = mapPointersToControls(pts, layoutOf(steerEl, brakeBtn, camBtn), { capturedSteer: captured });
@@ -138,9 +171,24 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   };
 
+  const requestChrome = () => {
+    void (async () => {
+      await tryEnterFullscreen();
+      await tryLockLandscape();
+      syncLayout();
+    })();
+  };
+
   const onDown = (e: PointerEvent) => {
-    if (!visible) return;
+    if (!visible || blocked) return;
+    const t = e.target as HTMLElement;
+    if (t === fullBtn || t.closest?.('#mc-full')) {
+      e.preventDefault();
+      requestChrome();
+      return;
+    }
     e.preventDefault();
+    requestChrome();
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     setPointer(e);
     const lay = layoutOf(steerEl, brakeBtn, camBtn);
@@ -160,7 +208,7 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
     if (steerId === e.pointerId) steerId = null;
     apply();
     if (pointers.size === 0) {
-      input.throttle = 1;
+      input.throttle = blocked ? 0 : 1;
       input.steer = 0;
       input.handbrake = false;
       cameraHeld = false;
@@ -175,47 +223,47 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
   overlay.addEventListener('pointerup', onUp);
   overlay.addEventListener('pointercancel', onUp);
   overlay.addEventListener('contextmenu', (e) => e.preventDefault());
+  gateFull.addEventListener('click', (e) => {
+    e.preventDefault();
+    requestChrome();
+  });
+  gate.addEventListener('pointerdown', () => requestChrome());
 
-  const syncLandscape = async () => {
+  const syncLayout = () => {
     const mobile = detectMobile();
     document.documentElement.classList.toggle('gg-touch', mobile);
     if (!mobile) {
-      document.documentElement.classList.remove('gg-rotate', 'gg-racing');
-      hint.hidden = true;
+      document.documentElement.classList.remove('gg-racing', 'gg-portrait-block');
+      gate.hidden = true;
+      blocked = false;
       return;
     }
-    if (visible) locked = (await tryLockLandscape()) || locked;
     const vv = window.visualViewport;
-    const viewPortrait = isPortraitView(vv?.width ?? window.innerWidth, vv?.height ?? window.innerHeight);
-    const deviceLandscape = deviceIsLandscape(window);
-    const force = visible && shouldForceCssLandscape({ mobile, viewPortrait, orientationLocked: locked, deviceLandscape });
-    document.documentElement.classList.toggle('gg-rotate', force);
-    hint.hidden = true;
-    applyOverlayInsets(force);
+    const ori = (window.screen as Screen & { orientation?: LockableOrientation }).orientation?.type;
+    const landscape = isLandscapeView(vv?.width ?? window.innerWidth, vv?.height ?? window.innerHeight, ori);
+    blocked = shouldBlockPortrait(mobile, visible, landscape);
+    document.documentElement.classList.toggle('gg-portrait-block', blocked);
+    gate.hidden = !blocked;
+    overlay.hidden = !visible || blocked;
+    applyOverlayInsets();
   };
 
-  const onResize = () => {
-    void syncLandscape();
-  };
+  const onResize = () => syncLayout();
   window.addEventListener('resize', onResize);
   window.addEventListener('orientationchange', onResize);
   window.visualViewport?.addEventListener('resize', onResize);
   window.visualViewport?.addEventListener('scroll', onResize);
-  const firstGesture = () => {
-    void syncLandscape();
-  };
-  window.addEventListener('pointerdown', firstGesture, { passive: true, once: true });
+  document.addEventListener('fullscreenchange', onResize);
 
-  void syncLandscape();
+  syncLayout();
 
   return {
     sample() {
-      if (!visible) return { ...ZERO };
+      if (!visible || blocked) return { ...ZERO };
       return { ...input };
     },
     setVisible(next) {
       visible = next;
-      overlay.hidden = !next;
       document.documentElement.classList.toggle('gg-racing', next);
       if (!next) {
         pointers.clear();
@@ -229,17 +277,18 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
         input.throttle = 1;
         input.steer = 0;
         input.handbrake = false;
+        requestChrome();
       }
-      void syncLandscape();
+      syncLayout();
     },
     destroy() {
       window.removeEventListener('resize', onResize);
       window.removeEventListener('orientationchange', onResize);
       window.visualViewport?.removeEventListener('resize', onResize);
       window.visualViewport?.removeEventListener('scroll', onResize);
-      window.removeEventListener('pointerdown', firstGesture);
+      document.removeEventListener('fullscreenchange', onResize);
       overlay.remove();
-      hint.remove();
+      gate.remove();
     },
   };
 }

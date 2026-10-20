@@ -3,6 +3,7 @@ import { mergeInputs } from '../src/client/input';
 import {
   STEER_GAIN,
   cameraHudHint,
+  isLandscapeView,
   isMobileLike,
   isPortraitView,
   mapPointersToControls,
@@ -10,9 +11,8 @@ import {
   overlayInsets,
   pointInRect,
   readBrowserMobileFlags,
-  shouldForceCssLandscape,
+  shouldBlockPortrait,
   shouldShowRotateHint,
-  deviceIsLandscape,
   type TouchLayout,
 } from '../src/client/touchMap';
 
@@ -171,36 +171,29 @@ describe('layout helpers', () => {
   it('detects portrait vs landscape, trusting orientation.type when present', () => {
     expect(isPortraitView(390, 844)).toBe(true);
     expect(isPortraitView(844, 390)).toBe(false);
+    expect(isLandscapeView(844, 390)).toBe(true);
     expect(isPortraitView(390, 844, 'landscape-primary')).toBe(false);
     expect(isPortraitView(844, 390, 'portrait-primary')).toBe(true);
   });
 
-  it('CSS-rotates only when the page is portrait but the device is already landscape', () => {
-    expect(shouldForceCssLandscape({ mobile: true, viewPortrait: true, orientationLocked: false, deviceLandscape: true })).toBe(true);
-    expect(shouldForceCssLandscape({ mobile: true, viewPortrait: true, orientationLocked: false, deviceLandscape: false })).toBe(false);
-    expect(shouldForceCssLandscape({ mobile: true, viewPortrait: true, orientationLocked: true, deviceLandscape: true })).toBe(false);
-    expect(shouldForceCssLandscape({ mobile: true, viewPortrait: false, orientationLocked: false, deviceLandscape: true })).toBe(false);
-    expect(shouldForceCssLandscape({ mobile: false, viewPortrait: true, orientationLocked: false, deviceLandscape: true })).toBe(false);
+  it('blocks play until the viewport is actually landscape', () => {
+    expect(shouldBlockPortrait(true, true, false)).toBe(true);
+    expect(shouldBlockPortrait(true, true, true)).toBe(false);
+    expect(shouldBlockPortrait(true, false, false)).toBe(false);
+    expect(shouldBlockPortrait(false, true, false)).toBe(false);
   });
 
-  it('reads device landscape from orientation type or window.orientation', () => {
-    expect(deviceIsLandscape({ screen: { orientation: { type: 'landscape-primary' } } })).toBe(true);
-    expect(deviceIsLandscape({ screen: { orientation: { type: 'portrait-primary' } } })).toBe(false);
-    expect(deviceIsLandscape({ orientation: 90 })).toBe(true);
-    expect(deviceIsLandscape({ orientation: 0, screen: { width: 390, height: 844 } })).toBe(false);
+  it('shows a blocking rotate gate only while racing in portrait', () => {
+    expect(shouldShowRotateHint(true, true, false)).toBe(true);
+    expect(shouldShowRotateHint(true, true, true)).toBe(false);
+    expect(shouldShowRotateHint(true, false, false)).toBe(false);
   });
 
-  it('hides Rotate phone when already landscape or after CSS rotate', () => {
-    expect(shouldShowRotateHint(true, false)).toBe(false);
-    expect(shouldShowRotateHint(false, true)).toBe(false);
-    expect(shouldShowRotateHint(true, true)).toBe(false);
-    expect(shouldShowRotateHint(false, false)).toBe(true);
-  });
-
-  it('pushes overlay inward from visual viewport + browser chrome', () => {
+  it('pushes overlay inward from visual viewport + fat side chrome', () => {
     const wide = overlayInsets({ offsetLeft: 0, offsetTop: 0, width: 844, height: 390 }, { width: 844, height: 390 });
-    expect(wide.left).toBeGreaterThanOrEqual(72);
-    expect(wide.right).toBeGreaterThanOrEqual(72);
+    expect(wide.left).toBeGreaterThanOrEqual(120);
+    expect(wide.right).toBeGreaterThanOrEqual(140);
+    expect(wide.right).toBeGreaterThan(wide.left);
 
     const insta = overlayInsets(
       { offsetLeft: 40, offsetTop: 0, width: 760, height: 390 },
@@ -208,9 +201,6 @@ describe('layout helpers', () => {
     );
     expect(insta.left).toBeGreaterThan(wide.left);
     expect(insta.right).toBeGreaterThan(wide.right);
-
-    const portrait = overlayInsets({ offsetLeft: 0, offsetTop: 0, width: 390, height: 844 }, { width: 390, height: 844 });
-    expect(portrait.left).toBeLessThan(wide.left);
   });
 
   it('hides the C-key camera hint on touch', () => {

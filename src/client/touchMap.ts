@@ -144,34 +144,17 @@ export function isPortraitView(width: number, height: number, orientationType?: 
   return height > width;
 }
 
-/**
- * Only CSS-rotate when the device is already landscape but the page is still
- * a tall portrait layout (in-app browsers). True portrait stays upright so
- * the game is not sideways and thumbs stay on the physical left/right.
- */
-export function shouldForceCssLandscape(opts: {
-  mobile: boolean;
-  viewPortrait: boolean;
-  orientationLocked: boolean;
-  deviceLandscape: boolean;
-}): boolean {
-  return opts.mobile && opts.viewPortrait && opts.deviceLandscape && !opts.orientationLocked;
+export function isLandscapeView(width: number, height: number, orientationType?: string): boolean {
+  return !isPortraitView(width, height, orientationType);
 }
 
-export function deviceIsLandscape(win: {
-  screen?: { width?: number; height?: number; orientation?: { type?: string } };
-  orientation?: number;
-}): boolean {
-  const type = win.screen?.orientation?.type;
-  if (type?.startsWith('landscape')) return true;
-  if (type?.startsWith('portrait')) return false;
-  if (typeof win.orientation === 'number') return Math.abs(win.orientation) === 90;
-  return (win.screen?.width ?? 0) > (win.screen?.height ?? 0);
+/** Portrait is not playable — block until the viewport is actually landscape. */
+export function shouldBlockPortrait(mobile: boolean, racing: boolean, landscape: boolean): boolean {
+  return mobile && racing && !landscape;
 }
 
-/** Hide the banner once the phone is landscape or the CSS rotate fallback is on. */
-export function shouldShowRotateHint(nativeLandscape: boolean, cssRotated: boolean): boolean {
-  return !nativeLandscape && !cssRotated;
+export function shouldShowRotateHint(mobile: boolean, racing: boolean, landscape: boolean): boolean {
+  return shouldBlockPortrait(mobile, racing, landscape);
 }
 
 export interface OverlayInsets {
@@ -191,14 +174,15 @@ export function overlayInsets(
   safe: { left?: number; right?: number; top?: number; bottom?: number } = {},
 ): OverlayInsets {
   const landscape = view.width >= view.height;
-  const chromeSide = landscape ? 72 : 22;
-  const chromeBottom = landscape ? 28 : 20;
-  const chromeTop = 8;
+  const chromeLeft = landscape ? 120 : 48;
+  const chromeRight = landscape ? 140 : 48;
+  const chromeBottom = landscape ? 28 : 24;
+  const chromeTop = 10;
   const viewRightGap = Math.max(0, inner.width - view.offsetLeft - view.width);
   const viewBottomGap = Math.max(0, inner.height - view.offsetTop - view.height);
   return {
-    left: view.offsetLeft + Math.max(safe.left ?? 0, 12) + chromeSide,
-    right: viewRightGap + Math.max(safe.right ?? 0, 12) + chromeSide,
+    left: view.offsetLeft + Math.max(safe.left ?? 0, 12) + chromeLeft,
+    right: viewRightGap + Math.max(safe.right ?? 0, 12) + chromeRight,
     top: view.offsetTop + Math.max(safe.top ?? 0, 8) + chromeTop,
     bottom: viewBottomGap + Math.max(safe.bottom ?? 0, 12) + chromeBottom,
   };
