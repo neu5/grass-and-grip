@@ -198,6 +198,41 @@ fieldset input.text {
   font: inherit;
 }
 
+fieldset.laps-picker {
+  align-items: stretch;
+}
+
+.laps-input {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-weight: 700;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.laps-step {
+  flex: 0 0 48px;
+  width: 48px;
+  padding: 0;
+  font-size: 22px;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.laps-step:hover {
+  filter: none;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.laps-step:disabled,
+.laps-input:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 fieldset input:disabled + span {
   opacity: 0.3;
   cursor: not-allowed;
@@ -451,7 +486,13 @@ html.gg-touch fieldset input.text {
   font-size: 16px;
 }
 
-html.gg-touch button:not(.mc-btn) {
+html.gg-touch .laps-step {
+  min-height: 48px;
+  min-width: 48px;
+  padding: 0;
+}
+
+html.gg-touch button:not(.mc-btn):not(.laps-step) {
   min-height: 52px;
   padding: 16px;
 }

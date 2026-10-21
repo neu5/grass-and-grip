@@ -5,7 +5,9 @@ import { damageDemoOptions } from './client/damageDemo';
 import { mapDemoOptions } from './client/mapDemo';
 import { pitDemoOptions } from './client/pitDemo';
 import { Renderer3D } from './client/renderer3d';
+import { mountLapsPicker } from './client/lapsPicker';
 import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
+import { clampLaps } from './net/protocol';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const hud = document.querySelector<HTMLCanvasElement>('#hud')!;
@@ -41,6 +43,7 @@ function updateControlsHint() {
 
 form.addEventListener('change', updateControlsHint);
 updateControlsHint();
+mountLapsPicker(form);
 
 {
   const demo = new URLSearchParams(location.search).get('demo');
@@ -59,7 +62,7 @@ form.addEventListener('submit', (e) => {
   const options: GameOptions = {
     humans: selected('humans') === '2' ? 2 : 1,
     aiCount: Number(selected('ai')),
-    laps: Number(selected('laps')),
+    laps: clampLaps(form.querySelector<HTMLInputElement>('input[name="laps"]')?.value),
     trackId: selected('track') || 'meadow',
     p1Car: selected('p1car') === 'f1' ? 'f1' : 'rally',
     p2Car: selected('p2car') === 'f1' ? 'f1' : 'rally',

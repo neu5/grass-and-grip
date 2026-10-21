@@ -1,5 +1,5 @@
 import { createRace, isTrackId, step, TICK_RATE, type CarConfig, type CarKind, type GameState, type PlayerInput, type TickInputs } from '../sim';
-import { CAR_COLORS, CAR_KINDS, LAP_OPTIONS, MAX_PLAYERS, type LobbyState, type RoomPhase } from './protocol';
+import { CAR_COLORS, CAR_KINDS, DEFAULT_LAPS, MAX_PLAYERS, parseLaps, type LobbyState, type RoomPhase } from './protocol';
 
 export const COUNTDOWN_SECONDS = 5;
 export const RESULTS_TICKS = 6 * TICK_RATE;
@@ -27,7 +27,7 @@ const clamp1 = (v: unknown) => {
 export class Room {
   readonly players: RoomPlayer[] = [];
   aiCount = 3;
-  laps = 3;
+  laps = DEFAULT_LAPS;
   trackId = 'meadow';
   phase: RoomPhase = 'lobby';
   race: GameState | null = null;
@@ -98,8 +98,9 @@ export class Room {
       this.aiCount = n;
     }
     if (s.laps !== undefined) {
-      if (!(LAP_OPTIONS as readonly number[]).includes(Number(s.laps))) return 'Invalid lap count';
-      this.laps = Number(s.laps);
+      const n = parseLaps(s.laps);
+      if (n === null) return 'Invalid lap count';
+      this.laps = n;
     }
     if (s.trackId !== undefined) {
       if (!isTrackId(s.trackId)) return 'Unknown track';
