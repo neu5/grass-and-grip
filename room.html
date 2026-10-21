@@ -36,8 +36,11 @@
           <fieldset id="ai">
             <legend>AI opponents</legend>
           </fieldset>
-          <fieldset id="laps">
+          <fieldset id="laps" class="laps-picker">
             <legend>Laps</legend>
+            <button type="button" class="laps-step" data-laps-delta="-1" aria-label="Fewer laps">−</button>
+            <input type="number" name="laps" class="text laps-input" min="1" max="99" step="1" value="3" inputmode="numeric" />
+            <button type="button" class="laps-step" data-laps-delta="1" aria-label="More laps">+</button>
           </fieldset>
           <fieldset id="track">
             <legend>Track</legend>

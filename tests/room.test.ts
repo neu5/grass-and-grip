@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CAR_COLORS } from '../src/net/protocol';
+import { CAR_COLORS, clampLaps, parseLaps } from '../src/net/protocol';
 import { COUNTDOWN_SECONDS, RESULTS_TICKS, Room } from '../src/net/room';
 import { TICK_RATE } from '../src/sim';
 
@@ -57,9 +57,39 @@ describe('room settings', () => {
   it('only lets the host change settings', () => {
     const room = roomWith(RED, BLUE);
     expect(room.setSettings('p1', { laps: 1 })).toBe('Only the host can change settings');
-    expect(room.setSettings('p0', { laps: 4 })).toBe('Invalid lap count');
     expect(room.setSettings('p0', { laps: 1 })).toBeNull();
     expect(room.laps).toBe(1);
+  });
+
+  it('accepts laps 1–99 and rejects anything outside', () => {
+    const room = roomWith(RED);
+    expect(room.laps).toBe(3);
+    expect(room.setSettings('p0', { laps: 0 })).toBe('Invalid lap count');
+    expect(room.setSettings('p0', { laps: 100 })).toBe('Invalid lap count');
+    expect(room.setSettings('p0', { laps: -3 })).toBe('Invalid lap count');
+    expect(room.setSettings('p0', { laps: Number.NaN })).toBe('Invalid lap count');
+    expect(room.setSettings('p0', { laps: Number.POSITIVE_INFINITY })).toBe('Invalid lap count');
+    expect(room.laps).toBe(3);
+    expect(room.setSettings('p0', { laps: 1 })).toBeNull();
+    expect(room.laps).toBe(1);
+    expect(room.setSettings('p0', { laps: 4 })).toBeNull();
+    expect(room.laps).toBe(4);
+    expect(room.setSettings('p0', { laps: 99 })).toBeNull();
+    expect(room.laps).toBe(99);
+    expect(room.setSettings('p0', { laps: 42.9 })).toBeNull();
+    expect(room.laps).toBe(42);
+  });
+
+  it('clamps UI values into 1–99 and parseLaps rejects the rest', () => {
+    expect(parseLaps(0)).toBeNull();
+    expect(parseLaps(100)).toBeNull();
+    expect(parseLaps('nope')).toBeNull();
+    expect(parseLaps(1)).toBe(1);
+    expect(parseLaps(99)).toBe(99);
+    expect(clampLaps(0)).toBe(1);
+    expect(clampLaps(100)).toBe(99);
+    expect(clampLaps('')).toBe(3);
+    expect(clampLaps(12)).toBe(12);
   });
 });
 

@@ -1,9 +1,10 @@
 import './style.css';
 import { BINDINGS_SOLO, Keyboard, mergeInputs, NO_PLAYER_INPUT } from './client/input';
+import { mountLapsPicker } from './client/lapsPicker';
 import { drawNetDebug } from './client/netDebug';
 import { Renderer3D } from './client/renderer3d';
 import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
-import { SNAPSHOT_HZ, CAR_COLORS, CAR_KINDS, CAR_KIND_NAMES, COLOR_NAMES, LAP_OPTIONS, MAX_PLAYERS, TRACK_IDS, TRACK_NAMES, type ClientMessage, type CompactSnapshot, type LobbyState, type ServerMessage, type TrackId } from './net/protocol';
+import { SNAPSHOT_HZ, CAR_COLORS, CAR_KINDS, CAR_KIND_NAMES, COLOR_NAMES, MAX_PLAYERS, TRACK_IDS, TRACK_NAMES, type ClientMessage, type CompactSnapshot, type LobbyState, type ServerMessage, type TrackId } from './net/protocol';
 import { SnapshotBuffer, mergeOwn } from './net/interpolate';
 import { InputQueue, lerpCar, reconcile, replaceCar } from './net/prediction';
 import { decodeSnapshot } from './net/snapshot';
@@ -65,8 +66,10 @@ function radios(container: HTMLElement, name: string, values: readonly (string |
 radios($('#colors'), 'color', CAR_COLORS, (c) => COLOR_NAMES[c], (c) => `background:${c}33;border-color:${c}`);
 radios($('#cars'), 'car', CAR_KINDS, (k) => CAR_KIND_NAMES[k as keyof typeof CAR_KIND_NAMES]);
 radios($('#ai'), 'ai', [0, 1, 2, 3], (v) => v);
-radios($('#laps'), 'laps', LAP_OPTIONS, (v) => v);
 radios($('#track'), 'track', TRACK_IDS, (v) => TRACK_NAMES[v as TrackId] ?? v);
+const lapsPicker = mountLapsPicker($('#laps'), (laps) => {
+  if (laps !== lobby?.laps) send({ t: 'settings', laps });
+});
 joinForm.querySelector<HTMLInputElement>('input[name=car][value=rally]')!.checked = true;
 
 function send(msg: ClientMessage) {
@@ -145,10 +148,8 @@ function renderLobby() {
     input.checked = Number(input.value) === lobby.aiCount;
     input.disabled = !isHost || Number(input.value) > MAX_PLAYERS - lobby.players.length;
   }
-  for (const input of lobbyEl.querySelectorAll<HTMLInputElement>('input[name=laps]')) {
-    input.checked = Number(input.value) === lobby.laps;
-    input.disabled = !isHost;
-  }
+  lapsPicker.setValue(lobby.laps);
+  lapsPicker.setDisabled(!isHost);
   for (const input of lobbyEl.querySelectorAll<HTMLInputElement>('input[name=track]')) {
     input.checked = input.value === lobby.trackId;
     input.disabled = !isHost;
@@ -179,7 +180,6 @@ readyBtn.addEventListener('click', () => {
 lobbyEl.addEventListener('change', (e) => {
   const input = e.target as HTMLInputElement;
   if (input.name === 'ai') send({ t: 'settings', aiCount: Number(input.value) });
-  if (input.name === 'laps') send({ t: 'settings', laps: Number(input.value) });
   if (input.name === 'track') send({ t: 'settings', trackId: input.value });
 });
 

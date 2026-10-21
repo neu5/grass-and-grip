@@ -12,7 +12,24 @@ export const COLOR_NAMES: Record<string, string> = {
   '#f2c230': 'Yellow',
   '#3fbf5f': 'Green',
 };
-export const LAP_OPTIONS = [1, 3, 5] as const;
+export const MIN_LAPS = 1;
+export const MAX_LAPS = 99;
+export const DEFAULT_LAPS = 3;
+
+/** Integer laps in 1–99, or null if the value is missing/out of range. */
+export function parseLaps(v: unknown): number | null {
+  const n = Math.floor(Number(v));
+  if (!Number.isFinite(n) || n < MIN_LAPS || n > MAX_LAPS) return null;
+  return n;
+}
+
+/** Snap a UI value into 1–99; blank/non-numeric becomes the default (3). */
+export function clampLaps(v: unknown): number {
+  if (v === '' || v === null || v === undefined) return DEFAULT_LAPS;
+  const n = Math.floor(Number(v));
+  if (!Number.isFinite(n)) return DEFAULT_LAPS;
+  return Math.max(MIN_LAPS, Math.min(MAX_LAPS, n));
+}
 
 /** Authoritative race snapshots per second (20–30 Hz). */
 export const SNAPSHOT_HZ = 20;
