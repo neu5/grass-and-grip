@@ -9,9 +9,9 @@ export const DT = 1 / TICK_RATE;
 
 /** 2-wide staggered grid. World units, not sample counts — Harbor samples are denser. */
 export const GRID_SLOTS = 8;
-const GRID_ROW_GAP = 52;
-const GRID_STAGGER = 16;
-const GRID_LANE = 24;
+const GRID_ROW_GAP = 62;
+const GRID_STAGGER = 20;
+const GRID_LANE = 28;
 /** Pole just after S/F on the straight, west of the pit lane so the grid is not in the stalls. */
 const GRID_POLE_ALONG = 24;
 

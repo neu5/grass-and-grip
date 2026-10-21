@@ -58,7 +58,7 @@ describe('8-car field', () => {
 
   it('places 8 staggered starts on asphalt, facing race direction, without overlap', () => {
     expect(GRID_SLOTS).toBe(8);
-    const minSep = CARS.f1.radius + CARS.f1.radius;
+    const minSep = CARS.f1.radius + CARS.f1.radius + 8;
     for (const id of ['meadow', 'harbor'] as const) {
       const track = getTrack(id);
       const race = createRace({ trackId: id, totalLaps: 3, cars: field });
@@ -77,7 +77,7 @@ describe('8-car field', () => {
         const noseX = car.x + Math.cos(car.angle) * 16;
         const noseY = car.y + Math.sin(car.angle) * 16;
         expect(surfaceAt(track, noseX, noseY)).toBe('asphalt');
-        expect(Math.hypot(car.x - sf.x, car.y - sf.y)).toBeLessThan(220);
+        expect(Math.hypot(car.x - sf.x, car.y - sf.y)).toBeLessThan(260);
       }
       for (let i = 0; i < 8; i++) {
         for (let j = i + 1; j < 8; j++) {
