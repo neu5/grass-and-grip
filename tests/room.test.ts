@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CAR_COLORS, clampLaps, parseLaps } from '../src/net/protocol';
+import { CAR_COLORS, MAX_PLAYERS, clampAiCount, clampLaps, parseLaps } from '../src/net/protocol';
 import { COUNTDOWN_SECONDS, RESULTS_TICKS, Room } from '../src/net/room';
 import { TICK_RATE } from '../src/sim';
 
@@ -20,10 +20,11 @@ describe('room joining', () => {
     expect(room.join('b', 'B', YELLOW)).toBe('Already joined');
   });
 
-  it('caps the room at 4 players', () => {
-    const room = roomWith(RED, BLUE, YELLOW, GREEN);
+  it('caps the room at 8 players', () => {
+    const room = roomWith(...CAR_COLORS);
     expect(room.join('e', 'E', RED)).toBe('Room is full');
-    expect(room.players).toHaveLength(4);
+    expect(room.players).toHaveLength(8);
+    expect(CAR_COLORS).toHaveLength(MAX_PLAYERS);
   });
 
   it('trims names and falls back to a default', () => {
@@ -44,14 +45,26 @@ describe('room joining', () => {
 });
 
 describe('room settings', () => {
-  it('keeps humans + AI within 4 cars', () => {
+  it('keeps humans + AI within 8 cars', () => {
     const room = roomWith(RED);
-    expect(room.aiCount).toBe(3);
+    expect(room.aiCount).toBe(7);
     room.join('b', 'B', BLUE);
-    expect(room.aiCount).toBe(2);
-    expect(room.setSettings('p0', { aiCount: 3 })).toBe('Too many cars');
+    expect(room.aiCount).toBe(6);
+    expect(room.setSettings('p0', { aiCount: 7 })).toBe('Too many cars');
+    expect(room.setSettings('p0', { aiCount: 8 })).toBe('Too many cars');
     expect(room.setSettings('p0', { aiCount: 0 })).toBeNull();
     expect(room.aiCount).toBe(0);
+    expect(clampAiCount(1, 9)).toBe(7);
+    expect(clampAiCount(8, 1)).toBe(0);
+  });
+
+  it('fills remaining grid slots with uniquely colored AI up to 8', () => {
+    const room = roomWith(RED);
+    expect(room.setSettings('p0', { aiCount: 7 })).toBeNull();
+    room.setReady('p0', true);
+    expect(room.race!.cars).toHaveLength(8);
+    expect(room.race!.cars.filter((c) => c.controller === 'ai')).toHaveLength(7);
+    expect(new Set(room.race!.cars.map((c) => c.color)).size).toBe(8);
   });
 
   it('only lets the host change settings', () => {

@@ -65,7 +65,7 @@ function radios(container: HTMLElement, name: string, values: readonly (string |
 }
 radios($('#colors'), 'color', CAR_COLORS, (c) => COLOR_NAMES[c], (c) => `background:${c}33;border-color:${c}`);
 radios($('#cars'), 'car', CAR_KINDS, (k) => CAR_KIND_NAMES[k as keyof typeof CAR_KIND_NAMES]);
-radios($('#ai'), 'ai', [0, 1, 2, 3], (v) => v);
+radios($('#ai'), 'ai', Array.from({ length: MAX_PLAYERS }, (_, i) => i), (v) => v);
 radios($('#carmode'), 'carmode', CAR_MODES, (v) => CAR_MODE_NAMES[v as keyof typeof CAR_MODE_NAMES] ?? v);
 radios($('#track'), 'track', TRACK_IDS, (v) => TRACK_NAMES[v as TrackId] ?? v);
 const lapsPicker = mountLapsPicker($('#laps'), (laps) => {

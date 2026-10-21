@@ -85,6 +85,7 @@ h1 span {
 
 fieldset {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 0 0 14px;
   padding: 0;
@@ -199,7 +200,14 @@ fieldset input.text {
 }
 
 fieldset.laps-picker {
+  flex-wrap: nowrap;
   align-items: stretch;
+}
+
+#colors label,
+#ai label {
+  flex: 1 1 18%;
+  min-width: 3.1rem;
 }
 
 .laps-input {

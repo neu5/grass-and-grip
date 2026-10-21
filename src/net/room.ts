@@ -14,12 +14,11 @@ import {
   type PlayerInput,
   type TickInputs,
 } from '../sim';
-import { CAR_COLORS, CAR_KINDS, DEFAULT_LAPS, MAX_PLAYERS, parseLaps, type LobbyState, type RoomPhase } from './protocol';
+import { AI_NAMES, CAR_COLORS, CAR_KINDS, DEFAULT_LAPS, MAX_PLAYERS, clampAiCount, parseLaps, type LobbyState, type RoomPhase } from './protocol';
 
 export const COUNTDOWN_SECONDS = 5;
 export const RESULTS_TICKS = 6 * TICK_RATE;
 export const MAX_RACE_TICKS = 15 * 60 * TICK_RATE;
-const AI_NAMES = ['Rosa', 'Viktor', 'Kenji'];
 const MAX_NAME_LENGTH = 16;
 
 export interface RoomPlayer {
@@ -41,7 +40,7 @@ const clamp1 = (v: unknown) => {
  */
 export class Room {
   readonly players: RoomPlayer[] = [];
-  aiCount = 3;
+  aiCount = MAX_PLAYERS;
   laps = DEFAULT_LAPS;
   trackId = 'meadow';
   carMode: CarMode = DEFAULT_CAR_MODE;
@@ -75,7 +74,7 @@ export class Room {
     if (!kind) return 'Unknown car';
     const name = String(rawName ?? '').trim().slice(0, MAX_NAME_LENGTH) || `Player ${this.players.length + 1}`;
     this.players.push({ id, name, color, car: kind, ready: false });
-    this.aiCount = Math.min(this.aiCount, MAX_PLAYERS - this.players.length);
+    this.aiCount = clampAiCount(this.players.length, this.aiCount);
     this.changed();
     return null;
   }
@@ -110,7 +109,7 @@ export class Room {
     if (this.phase !== 'lobby') return 'Race in progress';
     if (s.aiCount !== undefined) {
       const n = Math.floor(Number(s.aiCount));
-      if (!Number.isFinite(n) || n < 0 || n > MAX_PLAYERS - this.players.length) return 'Too many cars';
+      if (!Number.isFinite(n) || n < 0 || n !== clampAiCount(this.players.length, n)) return 'Too many cars';
       this.aiCount = n;
     }
     if (s.laps !== undefined) {
@@ -188,7 +187,7 @@ export class Room {
         (p): CarConfig => ({ name: p.name, color: p.color, controller: 'human', kind: spawnKind(p.car, this.carMode) }),
       ),
       ...freeColors.slice(0, this.aiCount).map(
-        (color, i): CarConfig => ({ name: AI_NAMES[i], color, controller: 'ai', kind: spawnAiKind(i, humanKinds, this.carMode) }),
+        (color, i): CarConfig => ({ name: AI_NAMES[i] ?? `AI ${i + 1}`, color, controller: 'ai', kind: spawnAiKind(i, humanKinds, this.carMode) }),
       ),
     ];
     this.carOf.clear();

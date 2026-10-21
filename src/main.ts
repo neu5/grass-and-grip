@@ -8,7 +8,7 @@ import { pitDemoOptions } from './client/pitDemo';
 import { Renderer3D } from './client/renderer3d';
 import { mountLapsPicker } from './client/lapsPicker';
 import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
-import { clampLaps } from './net/protocol';
+import { MAX_PLAYERS, clampAiCount, clampLaps } from './net/protocol';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const hud = document.querySelector<HTMLCanvasElement>('#hud')!;
@@ -46,11 +46,22 @@ function lockCarPicks(f1: boolean) {
 
 function updateControlsHint() {
   const two = selected('humans') === '2';
+  const humans = two ? 2 : 1;
   const f1 = selected('carmode') === 'f1';
   document.querySelector('#hint-solo')!.toggleAttribute('hidden', mobile || two);
   document.querySelector('#hint-duo')!.toggleAttribute('hidden', mobile || !two);
   document.querySelector('#p2-car')!.toggleAttribute('hidden', !two);
   lockCarPicks(f1);
+  const maxAi = MAX_PLAYERS - humans;
+  for (const input of form.querySelectorAll<HTMLInputElement>('input[name="ai"]')) {
+    const n = Number(input.value);
+    input.disabled = n > maxAi;
+    if (input.disabled && input.checked) input.checked = false;
+  }
+  if (!form.querySelector('input[name="ai"]:checked')) {
+    const fallback = form.querySelector<HTMLInputElement>(`input[name="ai"][value="${maxAi}"]`);
+    if (fallback) fallback.checked = true;
+  }
 }
 
 form.addEventListener('change', updateControlsHint);
@@ -59,7 +70,7 @@ mountLapsPicker(form);
 
 {
   const demo = new URLSearchParams(location.search).get('demo');
-  if (demo === 'pit' || demo === 'damage' || demo === 'map' || demo === 'aipit') {
+  if (demo === 'pit' || demo === 'damage' || demo === 'map' || demo === 'aipit' || demo === 'eight') {
     menu.hidden = true;
     const options =
       demo === 'damage'
@@ -68,8 +79,11 @@ mountLapsPicker(form);
           ? mapDemoOptions(renderer)
           : demo === 'aipit'
             ? aiPitDemoOptions()
-            : pitDemoOptions();
+            : demo === 'eight'
+              ? { humans: 1 as const, aiCount: 7, laps: 3, carMode: 'f1' as const, countdownSeconds: 6 }
+              : pitDemoOptions();
     game = new Game(renderer, keyboard, options);
+    if (demo === 'eight') renderer.cameraMode = 'overview';
     (window as unknown as { race: Game }).race = game;
     canvas.focus();
     game.start();
@@ -80,7 +94,7 @@ form.addEventListener('submit', (e) => {
   e.preventDefault();
   const options: GameOptions = {
     humans: selected('humans') === '2' ? 2 : 1,
-    aiCount: Number(selected('ai')),
+    aiCount: clampAiCount(selected('humans') === '2' ? 2 : 1, Number(selected('ai'))),
     laps: clampLaps(form.querySelector<HTMLInputElement>('input[name="laps"]')?.value),
     trackId: selected('track') || 'meadow',
     p1Car: selected('p1car') === 'f1' ? 'f1' : 'rally',

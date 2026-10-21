@@ -12,6 +12,7 @@ import {
   type PlayerInput,
   type TickInputs,
 } from '../sim';
+import { AI_NAMES, CAR_COLORS, MAX_PLAYERS, clampAiCount } from '../net/protocol';
 import { BINDINGS_P1, BINDINGS_P2, BINDINGS_SOLO, Keyboard, mergeInputs, NO_PLAYER_INPUT } from './input';
 import type { Renderer3D } from './renderer3d';
 
@@ -29,24 +30,28 @@ export interface GameOptions {
   scriptedInput?: (state: GameState) => PlayerInput;
 }
 
-const HUMAN_CARS: CarConfig[] = [
-  { name: 'Player 1', color: '#e8443a', controller: 'human' },
-  { name: 'Player 2', color: '#3a8ee8', controller: 'human' },
-];
-const AI_CARS: CarConfig[] = [
-  { name: 'Rosa', color: '#f2c230', controller: 'ai' },
-  { name: 'Viktor', color: '#9b59d0', controller: 'ai' },
-  { name: 'Kenji', color: '#f0f0f0', controller: 'ai' },
-];
+const HUMAN_NAMES = ['Player 1', 'Player 2'] as const;
 
 export function gridCars(options: GameOptions): CarConfig[] {
   const mode = options.carMode === 'f1' ? 'f1' : DEFAULT_CAR_MODE;
+  const humanCount = options.humans === 2 ? 2 : 1;
+  const aiCount = clampAiCount(humanCount, options.aiCount);
   const p1 = spawnKind(options.p1Car, mode);
   const p2 = spawnKind(options.p2Car, mode);
-  const humanKinds: CarKind[] = options.humans === 2 ? [p1, p2] : [p1];
-  const humans = HUMAN_CARS.slice(0, options.humans).map((c, i) => ({ ...c, kind: humanKinds[i] }));
-  const ai = AI_CARS.slice(0, options.aiCount).map((c, i) => ({ ...c, kind: spawnAiKind(i, humanKinds, mode) }));
-  return [...humans, ...ai];
+  const humanKinds: CarKind[] = humanCount === 2 ? [p1, p2] : [p1];
+  const humans: CarConfig[] = HUMAN_NAMES.slice(0, humanCount).map((name, i) => ({
+    name,
+    color: CAR_COLORS[i],
+    controller: 'human',
+    kind: humanKinds[i],
+  }));
+  const ai: CarConfig[] = Array.from({ length: aiCount }, (_, i) => ({
+    name: AI_NAMES[i] ?? `AI ${i + 1}`,
+    color: CAR_COLORS[humanCount + i] ?? CAR_COLORS[CAR_COLORS.length - 1],
+    controller: 'ai' as const,
+    kind: spawnAiKind(i, humanKinds, mode),
+  }));
+  return [...humans, ...ai].slice(0, MAX_PLAYERS);
 }
 
 const MAX_STEPS_PER_FRAME = 8;
