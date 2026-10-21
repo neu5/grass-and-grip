@@ -1,4 +1,4 @@
-import { aiInput } from './ai';
+import { aiInput, createAiMemory } from './ai';
 import { collideBounds, collideCars, collideCircle, NO_INPUT, stepCarPhysics } from './physics';
 import { applyPitService } from './pits';
 import { HEIGHT_SEPARATION, getTrack, heightAt, segmentsIntersect, surfaceAt, type Track } from './track';
@@ -44,7 +44,7 @@ export function createRace(config: RaceConfig): GameState {
       finishTick: null,
       ai:
         c.controller === 'ai'
-          ? { laneOffset: ((i % 3) - 1) * 14, skill: 0.8 + ((i * 7) % 5) * 0.035, stuckTicks: 0, reverseTicks: 0 }
+          ? createAiMemory(((i % 3) - 1) * 14, 0.8 + ((i * 7) % 5) * 0.035)
           : null,
     };
   });
@@ -96,7 +96,7 @@ export function step(prev: GameState, inputs: TickInputs): GameState {
   const canDrive = state.phase !== 'countdown';
 
   for (const car of state.cars) {
-    const input = car.controller === 'ai' ? aiInput(car, track, canDrive) : canDrive ? sanitize(inputs[car.id]) : NO_INPUT;
+    const input = car.controller === 'ai' ? aiInput(car, track, canDrive, state.cars) : canDrive ? sanitize(inputs[car.id]) : NO_INPUT;
     const px = car.x;
     const py = car.y;
     stepCarPhysics(car, input, surfaceAt(track, car.x, car.y), DT);

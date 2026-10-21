@@ -26,11 +26,17 @@ export const CAR_KIND_NAMES: Record<CarKind, string> = {
 
 export type Phase = 'countdown' | 'racing' | 'finished';
 
+export type AiPitPhase = 'race' | 'enter' | 'hold' | 'box' | 'exit';
+
 export interface AiMemory {
   laneOffset: number;
   skill: number;
   stuckTicks: number;
   reverseTicks: number;
+  /** Pit-stop state machine. `race` means follow the racing line. */
+  pitPhase: AiPitPhase;
+  /** Reserved stall index, or -1. */
+  pitBox: number;
 }
 
 export interface CarState {
