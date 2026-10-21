@@ -1,6 +1,7 @@
 import './style.css';
 import { Game, type GameOptions } from './client/game';
 import { Keyboard } from './client/input';
+import { aiPitDemoOptions } from './client/aiPitDemo';
 import { damageDemoOptions } from './client/damageDemo';
 import { mapDemoOptions } from './client/mapDemo';
 import { pitDemoOptions } from './client/pitDemo';
@@ -47,9 +48,16 @@ mountLapsPicker(form);
 
 {
   const demo = new URLSearchParams(location.search).get('demo');
-  if (demo === 'pit' || demo === 'damage' || demo === 'map') {
+  if (demo === 'pit' || demo === 'damage' || demo === 'map' || demo === 'aipit') {
     menu.hidden = true;
-    const options = demo === 'damage' ? damageDemoOptions() : demo === 'map' ? mapDemoOptions(renderer) : pitDemoOptions();
+    const options =
+      demo === 'damage'
+        ? damageDemoOptions()
+        : demo === 'map'
+          ? mapDemoOptions(renderer)
+          : demo === 'aipit'
+            ? aiPitDemoOptions()
+            : pitDemoOptions();
     game = new Game(renderer, keyboard, options);
     (window as unknown as { race: Game }).race = game;
     canvas.focus();

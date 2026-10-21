@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AI_PIT,
   CARS,
   createRace,
   distanceToCenterline,
   getTrack,
   hashState,
+  inPitLane,
+  isStoppedInPit,
   PIT,
   pitBoxIndex,
   step,
@@ -627,5 +630,209 @@ describe('crash damage', () => {
     car.vy = 90 * Math.sin(a);
     s = step(s, { 0: { throttle: 0.3, steer: 1, handbrake: false } });
     expect(Math.abs(s.cars[0].angle - a)).toBeGreaterThan(0.01);
+  });
+});
+
+describe('AI pit stops', () => {
+  function aiRace(trackId: string): GameState {
+    const s = createRace({
+      trackId,
+      totalLaps: 5,
+      cars: [{ name: 'AI', color: '#36f', controller: 'ai', kind: 'f1' }],
+      countdownSeconds: 0,
+    });
+    s.phase = 'racing';
+    s.startTick = 0;
+    return s;
+  }
+
+  function placeApproach(s: GameState) {
+    const track = getTrack(s.trackId);
+    const i = track.samples.length - 8;
+    const p = track.samples[i];
+    const car = s.cars[0];
+    car.x = p.x;
+    car.y = p.y;
+    car.angle = track.tangentAngles[i];
+    car.vx = 0;
+    car.vy = 0;
+  }
+
+  function runUntil(s0: GameState, ticks: number, pred: (s: GameState) => boolean): GameState {
+    let s = s0;
+    for (let i = 0; i < ticks; i++) {
+      s = step(s, {});
+      if (pred(s)) return s;
+    }
+    return s;
+  }
+
+  it('heads to a pit box and stops when fuel is near empty', () => {
+    const track = getTrack('meadow');
+    let s = aiRace('meadow');
+    placeApproach(s);
+    s.cars[0].fuel = 0.05;
+    s.cars[0].tyreWear = 0;
+    s.cars[0].damage = 0;
+    const startFuel = s.cars[0].fuel;
+    s = runUntil(s, 60 * 14, (st) => isStoppedInPit(track, st.cars[0]));
+    expect(isStoppedInPit(track, s.cars[0])).toBe(true);
+    s = step(s, {});
+    expect(s.cars[0].ai?.pitPhase).toBe('box');
+    const stoppedFuel = s.cars[0].fuel;
+    s = runUntil(s, 60 * 4, (st) => st.cars[0].fuel >= AI_PIT.fuelOk);
+    expect(s.cars[0].fuel).toBeGreaterThan(stoppedFuel);
+    expect(s.cars[0].fuel).toBeGreaterThan(startFuel);
+  });
+
+  it('heads to a pit box and stops when tyres are worn out', () => {
+    const track = getTrack('meadow');
+    let s = aiRace('meadow');
+    placeApproach(s);
+    s.cars[0].fuel = 1;
+    s.cars[0].tyreWear = 0.95;
+    s.cars[0].damage = 0;
+    s = runUntil(s, 60 * 14, (st) => isStoppedInPit(track, st.cars[0]));
+    expect(isStoppedInPit(track, s.cars[0])).toBe(true);
+    const wear = s.cars[0].tyreWear;
+    s = runUntil(s, 60 * 4, (st) => st.cars[0].tyreWear <= AI_PIT.tyreOk);
+    expect(s.cars[0].tyreWear).toBeLessThan(wear);
+    expect(s.cars[0].tyreWear).toBeLessThan(0.9);
+  });
+
+  it('heads to a pit box and stops when damage is high', () => {
+    const track = getTrack('meadow');
+    let s = aiRace('meadow');
+    placeApproach(s);
+    s.cars[0].fuel = 1;
+    s.cars[0].tyreWear = 0;
+    s.cars[0].damage = 0.88;
+    s = runUntil(s, 60 * 14, (st) => isStoppedInPit(track, st.cars[0]));
+    expect(isStoppedInPit(track, s.cars[0])).toBe(true);
+    const dmg = s.cars[0].damage;
+    s = runUntil(s, 60 * 4, (st) => st.cars[0].damage <= AI_PIT.damageOk);
+    expect(s.cars[0].damage).toBeLessThan(dmg);
+  });
+
+  it('does not pit when healthy', () => {
+    const track = getTrack('meadow');
+    let s = aiRace('meadow');
+    placeApproach(s);
+    s.cars[0].fuel = 1;
+    s.cars[0].tyreWear = 0;
+    s.cars[0].damage = 0;
+    let inBox = false;
+    for (let i = 0; i < 60 * 8; i++) {
+      s = step(s, {});
+      if (pitBoxIndex(track, s.cars[0].x, s.cars[0].y) >= 0) inBox = true;
+    }
+    expect(inBox).toBe(false);
+    expect(s.cars[0].ai?.pitPhase).toBe('race');
+    expect(s.cars[0].x).toBeGreaterThan(getTrack('meadow').def.pitLane.x + 80);
+  });
+
+  it('pits on harbor as well as meadow', () => {
+    const track = getTrack('harbor');
+    let s = aiRace('harbor');
+    placeApproach(s);
+    s.cars[0].fuel = 0.04;
+    s.cars[0].tyreWear = 0.94;
+    s.cars[0].damage = 0;
+    s = runUntil(s, 60 * 14, (st) => isStoppedInPit(track, st.cars[0]));
+    expect(isStoppedInPit(track, s.cars[0])).toBe(true);
+    expect(pitBoxIndex(track, s.cars[0].x, s.cars[0].y)).toBeGreaterThanOrEqual(0);
+  });
+
+  it('skips the pits when both boxes are busy instead of blocking the racing line', () => {
+    const track = getTrack('meadow');
+    let s = createRace({
+      trackId: 'meadow',
+      totalLaps: 5,
+      cars: [
+        { name: 'AI', color: '#36f', controller: 'ai', kind: 'f1' },
+        { name: 'Park 1', color: '#e33', controller: 'human' },
+        { name: 'Park 2', color: '#3a8', controller: 'human' },
+      ],
+      countdownSeconds: 0,
+    });
+    s.phase = 'racing';
+    s.startTick = 0;
+    placeApproach(s);
+    s.cars[0].fuel = 0.05;
+    s.cars[0].tyreWear = 0.92;
+    s.cars[0].damage = 0.8;
+    track.def.pitBoxes.forEach((b, i) => {
+      const car = s.cars[i + 1];
+      car.x = b.x + b.w / 2;
+      car.y = b.y + b.h / 2;
+      car.vx = 0;
+      car.vy = 0;
+      car.angle = 0;
+    });
+    const racingY = track.samples[0].y;
+    let stoppedOnLine = 0;
+    for (let i = 0; i < 60 * 8; i++) {
+      s = step(s, {});
+      const ai = s.cars[0];
+      const speed = Math.hypot(ai.vx, ai.vy);
+      const onLine = Math.abs(ai.y - racingY) < 40 && pitBoxIndex(track, ai.x, ai.y) < 0;
+      if (onLine && speed < 12 && i > 90) stoppedOnLine++;
+    }
+    expect(pitBoxIndex(track, s.cars[0].x, s.cars[0].y)).toBe(-1);
+    expect(s.cars[0].x).toBeGreaterThan(track.def.pitLane.x + track.def.pitLane.w - 40);
+    expect(stoppedOnLine).toBeLessThan(45);
+  });
+
+  it('is deterministic with pit decisions', () => {
+    const start = () => {
+      const s = aiRace('meadow');
+      placeApproach(s);
+      s.cars[0].fuel = 0.06;
+      s.cars[0].tyreWear = 0.91;
+      s.cars[0].damage = 0.8;
+      return s;
+    };
+    let a = start();
+    let b = start();
+    for (let i = 0; i < 400; i++) {
+      a = step(a, {});
+      b = step(b, {});
+    }
+    expect(hashState(a)).toBe(hashState(b));
+  });
+
+  it('approaches the pits at race pace and only slows in the box', () => {
+    const track = getTrack('meadow');
+    const launch = (fuel: number, wear: number) => {
+      const s = aiRace('meadow');
+      placeApproach(s);
+      s.cars[0].fuel = fuel;
+      s.cars[0].tyreWear = wear;
+      s.cars[0].damage = 0;
+      return s;
+    };
+    let needy = launch(0.1, 0);
+    let healthy = launch(1, 0);
+    let lineTicks = 0;
+    let needyLine = 0;
+    let healthyLine = 0;
+    let maxNeedyOnLine = 0;
+    let stopped = false;
+    for (let i = 0; i < 60 * 12; i++) {
+      needy = step(needy, {});
+      healthy = step(healthy, {});
+      const nCar = needy.cars[0];
+      if (isStoppedInPit(track, nCar)) stopped = true;
+      if (stopped || inPitLane(track, nCar.x, nCar.y) || pitBoxIndex(track, nCar.x, nCar.y) >= 0) continue;
+      const ns = Math.hypot(nCar.vx, nCar.vy);
+      needyLine += ns;
+      healthyLine += Math.hypot(healthy.cars[0].vx, healthy.cars[0].vy);
+      if (ns > maxNeedyOnLine) maxNeedyOnLine = ns;
+      lineTicks++;
+    }
+    expect(lineTicks).toBeGreaterThan(20);
+    expect(maxNeedyOnLine).toBeGreaterThan(280);
+    expect(needyLine / lineTicks).toBeGreaterThan((healthyLine / lineTicks) * 0.85);
+    expect(stopped).toBe(true);
   });
 });
