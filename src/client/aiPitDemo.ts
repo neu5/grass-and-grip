@@ -20,8 +20,8 @@ export function aiPitDemoOptions(): GameOptions {
       car.x = p.x;
       car.y = p.y;
       car.angle = track.tangentAngles[i];
-      car.vx = 0;
-      car.vy = 0;
+      car.vx = Math.cos(car.angle) * 340;
+      car.vy = Math.sin(car.angle) * 340;
       car.fuel = 0.08;
       car.tyreWear = 0.93;
       car.damage = 0.78;

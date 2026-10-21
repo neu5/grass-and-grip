@@ -9,8 +9,6 @@ const PLAN_LATERAL = 820;
 const PLAN_BRAKE = 650;
 const PLAN_SAMPLES = 45;
 const MAX_PLAN_SPEED = 600;
-/** Slow down when committed to a pit so we don't blow past the stalls. */
-const PIT_APPROACH_SPEED = 260;
 
 /** When the AI peels off, and when it leaves the stall. Hysteresis so it does not pit every lap. */
 export const AI_PIT = {
@@ -58,6 +56,19 @@ export function inPitApproach(track: Track, car: CarState): boolean {
   if (idx >= n * 0.14 && idx <= n * 0.86) return false;
   const lane = track.def.pitLane;
   return car.x > lane.x - 180 && car.x < boxesMaxX(track) + 10;
+}
+
+/** Racing-line offset that hugs the pit-lane side without leaving the asphalt. */
+function pitSideOffset(track: Track, idx: number): number {
+  const p = track.samples[idx];
+  const nrm = track.normals[idx];
+  const box = track.def.pitBoxes[0];
+  if (!box) return 0;
+  const bx = box.x + box.w / 2;
+  const by = box.y + box.h / 2;
+  const toward = (bx - p.x) * nrm.x + (by - p.y) * nrm.y;
+  const mag = Math.min(track.def.halfWidth - 10, 44);
+  return toward >= 0 ? mag : -mag;
 }
 
 function pitHoldPoint(track: Track): { x: number; y: number } {
@@ -142,17 +153,8 @@ function sit(): PlayerInput {
   return { throttle: 0, steer: 0, handbrake: true };
 }
 
-/**
- * Deterministic AI driver: produces a PlayerInput exactly like a human would.
- * `cars` is the current field so we can see which pit stalls are taken.
- */
-export function aiInput(car: CarState, track: Track, racing: boolean, cars: CarState[] = []): PlayerInput {
-  const ai = car.ai;
-  if (!ai || !racing) return { throttle: 0, steer: 0, handbrake: false };
-
-  const pitInput = pitSteer(car, ai, track, cars);
-  if (pitInput) return pitInput;
-
+/** Follow the racing line at planned race speed. */
+function raceSteer(car: CarState, ai: AiMemory, track: Track, laneOffset: number): PlayerInput {
   const speed = Math.sqrt(car.vx * car.vx + car.vy * car.vy);
   const n = track.samples.length;
   const idx = nearestSampleIndex(track, car.x, car.y);
@@ -160,8 +162,8 @@ export function aiInput(car: CarState, track: Track, racing: boolean, cars: CarS
   const ti = (idx + look) % n;
   const target = track.samples[ti];
   const nrm = track.normals[ti];
-  const tx = target.x + nrm.x * ai.laneOffset;
-  const ty = target.y + nrm.y * ai.laneOffset;
+  const tx = target.x + nrm.x * laneOffset;
+  const ty = target.y + nrm.y * laneOffset;
   const desired = datan2(ty - car.y, tx - car.x);
   const diff = normalizeAngle(desired - car.angle);
 
@@ -191,7 +193,6 @@ export function aiInput(car: CarState, track: Track, racing: boolean, cars: CarS
     }
     dist += track.segmentLengths[j];
   }
-  if (aiNeedsPit(car)) targetSpeed = Math.min(targetSpeed, PIT_APPROACH_SPEED);
 
   let throttle = 1;
   if (speed > targetSpeed + 25) throttle = -1;
@@ -199,6 +200,20 @@ export function aiInput(car: CarState, track: Track, racing: boolean, cars: CarS
   if (Math.abs(diff) > 1.3 && speed > 120) throttle = -1;
 
   return { throttle, steer: clamp(diff * 2.5, -1, 1), handbrake: false };
+}
+
+/**
+ * Deterministic AI driver: produces a PlayerInput exactly like a human would.
+ * `cars` is the current field so we can see which pit stalls are taken.
+ */
+export function aiInput(car: CarState, track: Track, racing: boolean, cars: CarState[] = []): PlayerInput {
+  const ai = car.ai;
+  if (!ai || !racing) return { throttle: 0, steer: 0, handbrake: false };
+
+  const pitInput = pitSteer(car, ai, track, cars);
+  if (pitInput) return pitInput;
+
+  return raceSteer(car, ai, track, ai.laneOffset);
 }
 
 function pitSteer(car: CarState, ai: AiMemory, track: Track, cars: CarState[]): PlayerInput | null {
@@ -221,21 +236,31 @@ function pitSteer(car: CarState, ai: AiMemory, track: Track, cars: CarState[]): 
     if (box >= 0) {
       ai.pitPhase = 'enter';
       ai.pitBox = box;
-    } else {
+    } else if (inPitLane(track, car.x, car.y)) {
       ai.reverseTicks = 0;
       const hold = pitHoldPoint(track);
       return driveTo(car, hold.x, hold.y, 0.32, true);
+    } else {
+      return raceSteer(car, ai, track, ai.laneOffset);
     }
   }
 
   if (ai.pitPhase === 'enter') {
+    if (!inPitLane(track, car.x, car.y) && car.x > boxesMaxX(track) + 20) {
+      ai.pitPhase = 'race';
+      ai.pitBox = -1;
+      return null;
+    }
     if (ai.pitBox < 0 || boxBusy(track, cars, ai.pitBox, car.id)) {
       const alt = pickFreeBox(track, car, cars);
       if (alt < 0) {
         ai.pitPhase = 'hold';
         ai.pitBox = -1;
-        const hold = pitHoldPoint(track);
-        return driveTo(car, hold.x, hold.y, 0.32, true);
+        if (inPitLane(track, car.x, car.y)) {
+          const hold = pitHoldPoint(track);
+          return driveTo(car, hold.x, hold.y, 0.32, true);
+        }
+        return raceSteer(car, ai, track, ai.laneOffset);
       }
       ai.pitBox = alt;
     }
@@ -251,9 +276,11 @@ function pitSteer(car: CarState, ai: AiMemory, track: Track, cars: CarState[]): 
       ai.pitPhase = 'box';
       return sit();
     }
-    const dist = Math.hypot(c.x - car.x, c.y - car.y);
-    const inLane = inPitLane(track, car.x, car.y);
-    return driveTo(car, c.x, c.y, 0.45, inLane || dist < 110);
+    if (inPitLane(track, car.x, car.y)) {
+      return driveTo(car, c.x, c.y, 0.55, true);
+    }
+    const idx = nearestSampleIndex(track, car.x, car.y);
+    return raceSteer(car, ai, track, pitSideOffset(track, idx));
   }
 
   if (ai.pitPhase === 'box') {
@@ -274,7 +301,7 @@ function pitSteer(car: CarState, ai: AiMemory, track: Track, cars: CarState[]): 
     }
     ai.reverseTicks = 0;
     const r = pitRejoinPoint(track);
-    return driveTo(car, r.x, r.y, 0.55, false);
+    return driveTo(car, r.x, r.y, 0.7, false);
   }
 
   return null;

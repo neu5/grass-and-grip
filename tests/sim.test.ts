@@ -6,6 +6,7 @@ import {
   distanceToCenterline,
   getTrack,
   hashState,
+  inPitLane,
   isStoppedInPit,
   PIT,
   pitBoxIndex,
@@ -798,5 +799,40 @@ describe('AI pit stops', () => {
       b = step(b, {});
     }
     expect(hashState(a)).toBe(hashState(b));
+  });
+
+  it('approaches the pits at race pace and only slows in the box', () => {
+    const track = getTrack('meadow');
+    const launch = (fuel: number, wear: number) => {
+      const s = aiRace('meadow');
+      placeApproach(s);
+      s.cars[0].fuel = fuel;
+      s.cars[0].tyreWear = wear;
+      s.cars[0].damage = 0;
+      return s;
+    };
+    let needy = launch(0.1, 0);
+    let healthy = launch(1, 0);
+    let lineTicks = 0;
+    let needyLine = 0;
+    let healthyLine = 0;
+    let maxNeedyOnLine = 0;
+    let stopped = false;
+    for (let i = 0; i < 60 * 12; i++) {
+      needy = step(needy, {});
+      healthy = step(healthy, {});
+      const nCar = needy.cars[0];
+      if (isStoppedInPit(track, nCar)) stopped = true;
+      if (stopped || inPitLane(track, nCar.x, nCar.y) || pitBoxIndex(track, nCar.x, nCar.y) >= 0) continue;
+      const ns = Math.hypot(nCar.vx, nCar.vy);
+      needyLine += ns;
+      healthyLine += Math.hypot(healthy.cars[0].vx, healthy.cars[0].vy);
+      if (ns > maxNeedyOnLine) maxNeedyOnLine = ns;
+      lineTicks++;
+    }
+    expect(lineTicks).toBeGreaterThan(20);
+    expect(maxNeedyOnLine).toBeGreaterThan(280);
+    expect(needyLine / lineTicks).toBeGreaterThan((healthyLine / lineTicks) * 0.85);
+    expect(stopped).toBe(true);
   });
 });
