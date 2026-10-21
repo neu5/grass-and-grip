@@ -72,6 +72,7 @@ export function encodeSnapshot(state: GameState, ack = 0): CompactSnapshot {
     p: state.phase,
     st: state.startTick,
     tl: state.totalLaps,
+    tid: state.trackId,
     c: state.cars.map(encodeCar),
     ack,
   };
@@ -80,7 +81,7 @@ export function encodeSnapshot(state: GameState, ack = 0): CompactSnapshot {
 export function decodeSnapshot(snap: CompactSnapshot, prev?: GameState): GameState {
   return {
     tick: snap.k,
-    trackId: prev?.trackId ?? 'meadow',
+    trackId: snap.tid ?? prev?.trackId ?? 'meadow',
     phase: snap.p,
     startTick: snap.st,
     totalLaps: snap.tl,

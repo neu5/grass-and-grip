@@ -20,6 +20,8 @@ export function paintTrackSurface(track: Track, res: number): HTMLCanvasElement 
   ctx.fillStyle = '#52a546';
   for (let x = 0; x < width; x += 80) ctx.fillRect(x, 0, 40, height);
 
+  paintSand(ctx, track);
+  paintWater(ctx, track);
   paintPitLane(ctx, track);
 
   ctx.lineJoin = 'round';
@@ -65,6 +67,26 @@ export function paintTrackSurface(track: Track, res: number): HTMLCanvasElement 
   }
   paintPitBoxes(ctx, track);
   return c;
+}
+
+function paintSand(ctx: CanvasRenderingContext2D, track: Track) {
+  for (const r of track.def.sand ?? []) {
+    ctx.fillStyle = '#c4a35a';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = '#d4b36a';
+    for (let x = r.x; x < r.x + r.w; x += 36) ctx.fillRect(x, r.y, 18, r.h);
+  }
+}
+
+function paintWater(ctx: CanvasRenderingContext2D, track: Track) {
+  for (const r of track.def.water ?? []) {
+    ctx.fillStyle = '#2a6fa8';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = '#3480b8';
+    for (let y = r.y; y < r.y + r.h; y += 28) ctx.fillRect(r.x, y, r.w, 10);
+    ctx.fillStyle = 'rgba(180, 220, 255, 0.18)';
+    for (let x = r.x; x < r.x + r.w; x += 70) ctx.fillRect(x, r.y, 16, r.h);
+  }
 }
 
 function paintPitLane(ctx: CanvasRenderingContext2D, track: Track) {

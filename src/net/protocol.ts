@@ -1,7 +1,8 @@
 import type { CarKind, Phase, PlayerInput } from '../sim';
 
 export type { CarKind };
-export { CAR_KINDS, CAR_KIND_NAMES } from '../sim';
+export { CAR_KINDS, CAR_KIND_NAMES, TRACK_IDS, TRACK_NAMES, isTrackId } from '../sim';
+export type { TrackId } from '../sim';
 
 export const MAX_PLAYERS = 4;
 export const CAR_COLORS = ['#e8443a', '#3a8ee8', '#f2c230', '#3fbf5f'] as const;
@@ -33,6 +34,7 @@ export interface LobbyState {
   players: LobbyPlayer[];
   aiCount: number;
   laps: number;
+  trackId: string;
   /** car id per player id in the current race */
   cars: Record<string, number>;
 }
@@ -40,7 +42,7 @@ export interface LobbyState {
 export type ClientMessage =
   | { t: 'join'; name: string; color: string; car?: CarKind }
   | { t: 'ready'; ready: boolean }
-  | { t: 'settings'; aiCount?: number; laps?: number }
+  | { t: 'settings'; aiCount?: number; laps?: number; trackId?: string }
   | { t: 'input'; seq: number; tick: number; input: PlayerInput }
   | { t: 'ping'; t0: number };
 
@@ -85,6 +87,7 @@ export interface CompactSnapshot {
   p: Phase;
   st: number;
   tl: number;
+  tid: string;
   c: CompactCar[];
   /** Last input seq the server applied for the receiving client. */
   ack: number;
