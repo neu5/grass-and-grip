@@ -64,6 +64,8 @@ describe('8-car field', () => {
       const race = createRace({ trackId: id, totalLaps: 3, cars: field });
       expect(race.cars).toHaveLength(8);
       const sf = track.samples[0];
+      const tx = Math.cos(track.tangentAngles[0]);
+      const ty = Math.sin(track.tangentAngles[0]);
       for (let i = 0; i < 8; i++) {
         const car = race.cars[i];
         const pose = gridSlotPose(track, i);
@@ -77,7 +79,11 @@ describe('8-car field', () => {
         const noseX = car.x + Math.cos(car.angle) * 16;
         const noseY = car.y + Math.sin(car.angle) * 16;
         expect(surfaceAt(track, noseX, noseY)).toBe('asphalt');
-        expect(Math.hypot(car.x - sf.x, car.y - sf.y)).toBeLessThan(260);
+        const ahead = (car.x - sf.x) * tx + (car.y - sf.y) * ty;
+        const noseAhead = (noseX - sf.x) * tx + (noseY - sf.y) * ty;
+        expect(ahead).toBeLessThan(0);
+        expect(noseAhead).toBeLessThan(0);
+        expect(Math.hypot(car.x - sf.x, car.y - sf.y)).toBeLessThan(300);
       }
       for (let i = 0; i < 8; i++) {
         for (let j = i + 1; j < 8; j++) {

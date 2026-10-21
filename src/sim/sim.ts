@@ -12,8 +12,8 @@ export const GRID_SLOTS = 8;
 const GRID_ROW_GAP = 62;
 const GRID_STAGGER = 20;
 const GRID_LANE = 28;
-/** Pole just after S/F on the straight, west of the pit lane so the grid is not in the stalls. */
-const GRID_POLE_ALONG = 24;
+/** Pole sits behind S/F (negative = against race direction). Nose stays short of the line. */
+const GRID_POLE_ALONG = -28;
 
 type GridPose = { x: number; y: number; angle: number };
 
