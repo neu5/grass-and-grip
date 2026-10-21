@@ -1,4 +1,17 @@
-import { createRace, DT, step, type CarConfig, type CarKind, type GameState, type PlayerInput, type TickInputs } from '../sim';
+import {
+  createRace,
+  DEFAULT_CAR_MODE,
+  DT,
+  spawnAiKind,
+  spawnKind,
+  step,
+  type CarConfig,
+  type CarKind,
+  type CarMode,
+  type GameState,
+  type PlayerInput,
+  type TickInputs,
+} from '../sim';
 import { BINDINGS_P1, BINDINGS_P2, BINDINGS_SOLO, Keyboard, mergeInputs, NO_PLAYER_INPUT } from './input';
 import type { Renderer3D } from './renderer3d';
 
@@ -9,6 +22,8 @@ export interface GameOptions {
   trackId?: string;
   p1Car?: CarKind;
   p2Car?: CarKind;
+  /** Default mixed. F1 forces every spawned car (picks ignored). */
+  carMode?: CarMode;
   countdownSeconds?: number;
   setup?: (state: GameState) => void;
   scriptedInput?: (state: GameState) => PlayerInput;
@@ -24,13 +39,16 @@ const AI_CARS: CarConfig[] = [
   { name: 'Kenji', color: '#f0f0f0', controller: 'ai' },
 ];
 
-function aiKind(index: number, humans: CarKind[]): CarKind {
-  if (index === 0) {
-    if (!humans.includes('f1')) return 'f1';
-    if (!humans.includes('rally')) return 'rally';
-  }
-  return index % 2 === 0 ? 'f1' : 'rally';
+export function gridCars(options: GameOptions): CarConfig[] {
+  const mode = options.carMode === 'f1' ? 'f1' : DEFAULT_CAR_MODE;
+  const p1 = spawnKind(options.p1Car, mode);
+  const p2 = spawnKind(options.p2Car, mode);
+  const humanKinds: CarKind[] = options.humans === 2 ? [p1, p2] : [p1];
+  const humans = HUMAN_CARS.slice(0, options.humans).map((c, i) => ({ ...c, kind: humanKinds[i] }));
+  const ai = AI_CARS.slice(0, options.aiCount).map((c, i) => ({ ...c, kind: spawnAiKind(i, humanKinds, mode) }));
+  return [...humans, ...ai];
 }
+
 const MAX_STEPS_PER_FRAME = 8;
 
 export class Game {
@@ -57,12 +75,7 @@ export class Game {
   }
 
   reset() {
-    const p1: CarKind = this.options.p1Car === 'f1' ? 'f1' : 'rally';
-    const p2: CarKind = this.options.p2Car === 'f1' ? 'f1' : 'rally';
-    const humanKinds: CarKind[] = this.options.humans === 2 ? [p1, p2] : [p1];
-    const humans = HUMAN_CARS.slice(0, this.options.humans).map((c, i) => ({ ...c, kind: humanKinds[i] }));
-    const ai = AI_CARS.slice(0, this.options.aiCount).map((c, i) => ({ ...c, kind: aiKind(i, humanKinds) }));
-    const cars = [...humans, ...ai];
+    const cars = gridCars(this.options);
     const trackId = this.options.trackId ?? 'meadow';
     this.renderer.setTrack(trackId);
     this.curr = createRace({

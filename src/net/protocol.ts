@@ -1,8 +1,18 @@
-import type { CarKind, Phase, PlayerInput } from '../sim';
+import type { CarKind, CarMode, Phase, PlayerInput } from '../sim';
 
 export type { CarKind };
-export { CAR_KINDS, CAR_KIND_NAMES, TRACK_IDS, TRACK_NAMES, isTrackId } from '../sim';
-export type { TrackId } from '../sim';
+export {
+  CAR_KINDS,
+  CAR_KIND_NAMES,
+  CAR_MODES,
+  CAR_MODE_NAMES,
+  DEFAULT_CAR_MODE,
+  TRACK_IDS,
+  TRACK_NAMES,
+  isTrackId,
+  parseCarMode,
+} from '../sim';
+export type { CarMode, TrackId } from '../sim';
 
 export const MAX_PLAYERS = 4;
 export const CAR_COLORS = ['#e8443a', '#3a8ee8', '#f2c230', '#3fbf5f'] as const;
@@ -52,6 +62,8 @@ export interface LobbyState {
   aiCount: number;
   laps: number;
   trackId: string;
+  /** Host-set. Default mixed (pick your car). F1 forces every spawned car. */
+  carMode: CarMode;
   /** car id per player id in the current race */
   cars: Record<string, number>;
 }
@@ -59,7 +71,7 @@ export interface LobbyState {
 export type ClientMessage =
   | { t: 'join'; name: string; color: string; car?: CarKind }
   | { t: 'ready'; ready: boolean }
-  | { t: 'settings'; aiCount?: number; laps?: number; trackId?: string }
+  | { t: 'settings'; aiCount?: number; laps?: number; trackId?: string; carMode?: CarMode }
   | { t: 'input'; seq: number; tick: number; input: PlayerInput }
   | { t: 'ping'; t0: number };
 

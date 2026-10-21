@@ -35,11 +35,22 @@ function selected(name: string): string {
   return (form.querySelector<HTMLInputElement>(`input[name="${name}"]:checked`)?.value ?? '') as string;
 }
 
+function lockCarPicks(f1: boolean) {
+  for (const name of ['p1car', 'p2car'] as const) {
+    for (const input of form.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`)) {
+      input.disabled = f1;
+      if (f1 && input.value === 'f1') input.checked = true;
+    }
+  }
+}
+
 function updateControlsHint() {
   const two = selected('humans') === '2';
+  const f1 = selected('carmode') === 'f1';
   document.querySelector('#hint-solo')!.toggleAttribute('hidden', mobile || two);
   document.querySelector('#hint-duo')!.toggleAttribute('hidden', mobile || !two);
   document.querySelector('#p2-car')!.toggleAttribute('hidden', !two);
+  lockCarPicks(f1);
 }
 
 form.addEventListener('change', updateControlsHint);
@@ -74,6 +85,7 @@ form.addEventListener('submit', (e) => {
     trackId: selected('track') || 'meadow',
     p1Car: selected('p1car') === 'f1' ? 'f1' : 'rally',
     p2Car: selected('p2car') === 'f1' ? 'f1' : 'rally',
+    carMode: selected('carmode') === 'f1' ? 'f1' : 'mixed',
   };
   game?.stop();
   game = new Game(renderer, keyboard, options, touch ?? undefined);
