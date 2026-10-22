@@ -8,6 +8,10 @@ import {
   pitBoxIndex,
   slopeAttitude,
   terrainHeightAt,
+  bridgeSpan,
+  BRIDGE_DECK_MARGIN,
+  inWater,
+  WATER_BED,
   WATER_SURFACE,
   type Bridge,
   type CarKind,
@@ -17,7 +21,7 @@ import {
 } from '../sim';
 import { checkpointDebugPose } from './checkpointDebug';
 import { drawHud, type Label } from './hud';
-import { paintTrackSurface, SkidMarks } from './trackTexture';
+import { paintTrackSurface, SkidMarks, splitBridgeDecks } from './trackTexture';
 
 export type CameraMode = 'follow' | 'overview';
 
@@ -560,54 +564,164 @@ function buildWater(track: Track): THREE.Group {
   return g;
 }
 
-function buildBridges(track: Track): THREE.Group {
+function buildBridges(track: Track, decks: THREE.Texture[]): THREE.Group {
   const g = new THREE.Group();
-  const slabMat = std('#6f6c67', { roughness: 0.85, metalness: 0.1 });
-  const railMat = std('#cfd3d8', { metalness: 0.45, roughness: 0.4 });
-  const postMat = std('#5c5854', { roughness: 0.9 });
-  for (const b of track.def.bridges ?? []) {
-    g.add(buildBridge(b, slabMat, railMat, postMat));
-  }
+  (track.def.bridges ?? []).forEach((b, i) => g.add(buildBridge(track, b, decks[i])));
   return shadowed(g);
 }
 
-function buildBridge(
-  b: Bridge,
-  slabMat: THREE.Material,
-  railMat: THREE.Material,
-  postMat: THREE.Material,
-): THREE.Group {
-  const g = new THREE.Group();
-  const cx = b.x + b.w / 2;
-  const cz = b.y + b.h / 2;
-  const slab = new THREE.Mesh(new THREE.BoxGeometry(b.w + 10, 8, b.h + 6), slabMat);
-  slab.position.set(cx, b.height - 6, cz);
-  g.add(slab);
-  const ns = b.h >= b.w;
-  const railH = 8;
-  if (ns) {
-    for (const sx of [b.x + 4, b.x + b.w - 4]) {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(1.8, railH, b.h + 4), railMat);
-      rail.position.set(sx, b.height + railH / 2, cz);
-      g.add(rail);
+/** Quads between two matching polylines. */
+function sheet(a: THREE.Vector3[], b: THREE.Vector3[], mat: THREE.Material, uv?: (p: THREE.Vector3) => [number, number]) {
+  const pos: number[] = [];
+  const uvs: number[] = [];
+  const idx: number[] = [];
+  for (let k = 0; k < a.length; k++) {
+    for (const p of [a[k], b[k]]) {
+      pos.push(p.x, p.y, p.z);
+      if (uv) uvs.push(...uv(p));
     }
-  } else {
-    for (const sz of [b.y + 4, b.y + b.h - 4]) {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(b.w + 4, railH, 1.8), railMat);
-      rail.position.set(cx, b.height + railH / 2, sz);
-      g.add(rail);
+    if (k > 0) {
+      const v = k * 2;
+      idx.push(v - 2, v - 1, v, v - 1, v + 1, v);
     }
   }
-  const cols = ns ? 4 : 3;
-  for (let i = 0; i < cols; i++) {
-    const t = (i + 0.5) / cols;
-    for (const side of [-1, 1]) {
-      const px = ns ? cx + side * (b.w / 2 - 8) : b.x + t * b.w;
-      const pz = ns ? b.y + t * b.h : cz + side * (b.h / 2 - 8);
-      const post = new THREE.Mesh(new THREE.BoxGeometry(9, b.height, 9), postMat);
-      post.position.set(px, b.height / 2, pz);
-      g.add(post);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  if (uv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return new THREE.Mesh(geo, mat);
+}
+
+function tube(points: THREE.Vector3[], radius: number, mat: THREE.Material) {
+  const curve = new THREE.CatmullRomCurve3(points);
+  return new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(8, points.length * 2), radius, 8), mat);
+}
+
+/** Box from `bottom` up to `top`, centred on (x, z), turned to `angle`. */
+function pillar(x: number, z: number, bottom: number, top: number, w: number, d: number, angle: number, mat: THREE.Material) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, top - bottom, d), mat);
+  m.position.set(x, (top + bottom) / 2, z);
+  m.rotation.y = -angle;
+  return m;
+}
+
+/**
+ * Deck that follows the road: painted asphalt, raised footways, railings and
+ * lamps on top; girders, a steel arch with spandrel posts and concrete
+ * abutments below.
+ */
+function buildBridge(track: Track, b: Bridge, deckTex: THREE.Texture): THREE.Group {
+  const g = new THREE.Group();
+  const span = bridgeSpan(track, b);
+  if (span.length < 2) return g;
+  const H = b.height;
+  const hw = track.def.halfWidth;
+  const road = hw + 9;
+  const edge = hw + BRIDGE_DECK_MARGIN;
+  const under = H - 5;
+  const girderBottom = H - 13;
+  const girderOff = hw - 10;
+
+  const asphalt = std('#fff', { map: deckTex, roughness: 0.9, side: THREE.DoubleSide });
+  const concrete = std('#c3beb3', { roughness: 0.95, side: THREE.DoubleSide });
+  const fascia = std('#9c978d', { roughness: 0.9, side: THREE.DoubleSide });
+  const steel = std('#b8452c', { roughness: 0.55, metalness: 0.35, side: THREE.DoubleSide });
+  const rail = std('#dfe3e8', { roughness: 0.35, metalness: 0.6 });
+  const lampMat = std('#3b3f45', { roughness: 0.5, metalness: 0.5 });
+  const glow = new THREE.MeshStandardMaterial({ color: '#fff4d0', emissive: '#ffe2a0', emissiveIntensity: 1.2 });
+
+  const at = (k: number, off: number, y: number) => {
+    const i = span[k];
+    const p = track.samples[i];
+    const n = track.normals[i];
+    return new THREE.Vector3(p.x + n.x * off, y, p.y + n.y * off);
+  };
+  const line = (off: number, y: number) => span.map((_, k) => at(k, off, y));
+  const deckUv = (p: THREE.Vector3): [number, number] => [(p.x - b.x) / b.w, 1 - (p.z - b.y) / b.h];
+
+  // Deck: road paint, curbs up to footways, footways, outer faces, underside.
+  g.add(sheet(line(-road, H + 0.3), line(road, H + 0.3), asphalt, deckUv));
+  for (const s of [-1, 1]) {
+    g.add(sheet(line(s * road, H + 0.3), line(s * road, H + 1.8), concrete));
+    g.add(sheet(line(s * road, H + 1.8), line(s * edge, H + 1.8), concrete));
+    g.add(sheet(line(s * edge, H + 1.8), line(s * edge, under), steel));
+    // Girder under each wheel track.
+    const o = s * girderOff;
+    g.add(sheet(line(o - 5, under), line(o - 5, girderBottom), steel));
+    g.add(sheet(line(o + 5, under), line(o + 5, girderBottom), steel));
+    g.add(sheet(line(o - 5, girderBottom), line(o + 5, girderBottom), steel));
+  }
+  g.add(sheet(line(-edge, under), line(edge, under), fascia));
+
+  // Railings: posts, a top rail and a mid rail on both edges.
+  for (const s of [-1, 1]) {
+    const off = s * (edge - 1.5);
+    for (let k = 0; k < span.length; k += 3) {
+      const p = at(k, off, 0);
+      g.add(pillar(p.x, p.z, H + 1.8, H + 9, 1.6, 1.6, 0, rail));
     }
+    g.add(tube(line(off, H + 9), 0.9, rail));
+    g.add(tube(line(off, H + 5.4), 0.55, rail));
+  }
+
+  // Lamps on alternating sides.
+  for (const [t, s] of [
+    [0.2, 1],
+    [0.5, -1],
+    [0.8, 1],
+  ] as const) {
+    const k = Math.round(t * (span.length - 1));
+    const base = at(k, s * (edge - 4), H + 1.8);
+    const head = at(k, s * (edge - 12), H + 22);
+    g.add(pillar(base.x, base.z, base.y, H + 23, 1.4, 1.4, 0, lampMat));
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), lampMat);
+    arm.position.set((base.x + head.x) / 2, H + 23, (base.z + head.z) / 2);
+    arm.scale.set(Math.hypot(head.x - base.x, head.z - base.z), 1, 1.2);
+    arm.rotation.y = -Math.atan2(head.z - base.z, head.x - base.x);
+    g.add(arm);
+    const bulb = new THREE.Mesh(new THREE.BoxGeometry(5, 1.6, 3), glow);
+    bulb.position.set(head.x, H + 22, head.z);
+    bulb.rotation.y = arm.rotation.y;
+    g.add(bulb);
+  }
+
+  // Stretch over water: arch springs from the abutments at each bank.
+  const wet = span.map((i) => inWater(track, track.samples[i].x, track.samples[i].y));
+  const ws = wet.indexOf(true);
+  const we = wet.lastIndexOf(true);
+  if (ws < 0) return g;
+  const a0 = Math.max(0, ws - 1);
+  const a1 = Math.min(span.length - 1, we + 1);
+  for (const k of [a0, a1]) {
+    const i = span[k];
+    const p = track.samples[i];
+    g.add(pillar(p.x, p.y, WATER_BED - 2, under, 14, edge * 2 + 26, track.tangentAngles[i], concrete));
+  }
+  const spring = WATER_SURFACE + 1;
+  const crown = under - 1;
+  const archY = (k: number) => {
+    const t = (k - a0) / (a1 - a0);
+    return spring + (crown - spring) * (1 - (2 * t - 1) * (2 * t - 1));
+  };
+  // Ribs sit under the deck edges so they show from the side.
+  const ribOff = edge - 5;
+  for (const s of [-1, 1]) {
+    const o = s * ribOff;
+    const pts: THREE.Vector3[] = [];
+    for (let k = a0; k <= a1; k++) pts.push(at(k, o, archY(k)));
+    g.add(tube(pts, 3, steel));
+    for (let k = a0 + 3; k <= a1 - 3; k += 3) {
+      const y = archY(k);
+      if (under - y < 2) continue;
+      const p = at(k, o, 0);
+      g.add(pillar(p.x, p.z, y, under, 2.4, 2.4, track.tangentAngles[span[k]], steel));
+    }
+  }
+  // Cross bracing between the two arch ribs.
+  for (const t of [0.25, 0.5, 0.75]) {
+    const k = Math.round(a0 + t * (a1 - a0));
+    g.add(tube([at(k, -ribOff, archY(k)), at(k, ribOff, archY(k))], 1.4, steel));
   }
   return g;
 }
@@ -697,6 +811,13 @@ export class Renderer3D {
     this.resetRace();
   }
 
+  private canvasTexture(c: HTMLCanvasElement): THREE.CanvasTexture {
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = this.gl.capabilities.getMaxAnisotropy();
+    return t;
+  }
+
   private buildWorld() {
     const debugOn = this.checkpointDebug?.visible ?? false;
     while (this.world.children.length) {
@@ -711,12 +832,11 @@ export class Renderer3D {
     outer.receiveShadow = true;
     this.world.add(outer);
 
-    const surfaceTex = new THREE.CanvasTexture(paintTrackSurface(this.track, SURFACE_RES));
-    surfaceTex.colorSpace = THREE.SRGBColorSpace;
-    surfaceTex.anisotropy = this.gl.capabilities.getMaxAnisotropy();
-    this.world.add(buildHeightGround(this.track, surfaceTex));
+    const surface = paintTrackSurface(this.track, SURFACE_RES);
+    const deckTex = splitBridgeDecks(surface, this.track, SURFACE_RES).map((c) => this.canvasTexture(c));
+    this.world.add(buildHeightGround(this.track, this.canvasTexture(surface)));
     this.world.add(buildWater(this.track));
-    this.world.add(buildBridges(this.track));
+    this.world.add(buildBridges(this.track, deckTex));
 
     this.skids = new SkidMarks(width, height);
     this.skidTexture = new THREE.CanvasTexture(this.skids.canvas);

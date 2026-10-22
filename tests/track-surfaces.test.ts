@@ -10,6 +10,7 @@ import {
   getTrack,
   heightAt,
   inBridge,
+  pointInRect,
   slopeAttitude,
   step,
   terrainHeightAt,
@@ -119,11 +120,13 @@ describe('harbor layout', () => {
   });
 
   it('has no cliffs or creases in the terrain around lakes and the bridge', () => {
+    const deck = TRACKS.harbor.bridges![0];
     let steepest = 0;
     let crease = 0;
     for (let y = 8; y < track.def.height - 8; y += 8) {
       for (let x = 8; x < track.def.width - 8; x += 8) {
-        if (inBridge(track, x, y)) continue;
+        // Ground under the deck sits behind the abutments.
+        if (pointInRect(x, y, deck)) continue;
         const h = terrainHeightAt(track, x, y);
         const e = terrainHeightAt(track, x + 4, y);
         const w = terrainHeightAt(track, x - 4, y);

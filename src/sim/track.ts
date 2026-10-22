@@ -54,7 +54,10 @@ export interface Rect {
   h: number;
 }
 
-/** Elevated asphalt deck over water. */
+/**
+ * Elevated deck over water. The rect marks which stretch of road is bridged;
+ * the deck itself follows the road, `BRIDGE_DECK_MARGIN` past each edge.
+ */
 export interface Bridge {
   x: number;
   y: number;
@@ -519,11 +522,28 @@ export function inSand(track: Track, x: number, y: number): boolean {
   return inAnyRect(x, y, track.def.sand);
 }
 
+/** Deck width past each road edge: curb stripe plus a footway under the rail. */
+export const BRIDGE_DECK_MARGIN = 15;
+
 export function bridgeAt(track: Track, x: number, y: number): Bridge | null {
   const bridges = track.def.bridges;
   if (!bridges) return null;
-  for (const b of bridges) if (pointInRect(x, y, b)) return b;
+  for (const b of bridges) {
+    if (pointInRect(x, y, b) && distanceToCenterline(track, x, y) <= track.def.halfWidth + BRIDGE_DECK_MARGIN) return b;
+  }
   return null;
+}
+
+/** Centerline sample indices on a bridge, in driving order. */
+export function bridgeSpan(track: Track, b: Bridge): number[] {
+  const s = track.samples;
+  const n = s.length;
+  const inside = (i: number) => pointInRect(s[i].x, s[i].y, b);
+  let start = 0;
+  while (start < n && !(inside(start) && !inside((start - 1 + n) % n))) start++;
+  const span: number[] = [];
+  for (let k = 0; k < n && inside((start + k) % n); k++) span.push((start + k) % n);
+  return span;
 }
 
 export function inBridge(track: Track, x: number, y: number): boolean {
@@ -713,9 +733,9 @@ export const TRACKS: Record<string, TrackDef> = {
     water: [
       { x: 360, y: 390, w: 640, h: 300 },
       { x: 1000, y: 405, w: 250, h: 255 },
-      { x: 1250, y: 480, w: 350, h: 140 },
+      { x: 1250, y: 470, w: 350, h: 170 },
     ],
-    bridges: [{ x: 1360, y: 440, w: 205, h: 220, height: 52 }],
+    bridges: [{ x: 1360, y: 425, w: 205, h: 255, height: 52 }],
     sand: [
       { x: 1080, y: 720, w: 380, h: 155 },
       { x: 180, y: 730, w: 270, h: 130 },

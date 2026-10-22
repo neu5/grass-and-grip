@@ -78,6 +78,28 @@ function paintSand(ctx: CanvasRenderingContext2D, track: Track) {
   }
 }
 
+/**
+ * Lifts the road paint under each bridge into its own canvas (for the deck)
+ * and paints water back over the ground below, so no asphalt shows through.
+ */
+export function splitBridgeDecks(surface: HTMLCanvasElement, track: Track, res: number): HTMLCanvasElement[] {
+  const ctx = surface.getContext('2d')!;
+  return (track.def.bridges ?? []).map((b) => {
+    const deck = document.createElement('canvas');
+    deck.width = Math.round(b.w * res);
+    deck.height = Math.round(b.h * res);
+    deck.getContext('2d')!.drawImage(surface, b.x * res, b.y * res, b.w * res, b.h * res, 0, 0, deck.width, deck.height);
+    ctx.save();
+    ctx.setTransform(res, 0, 0, res, 0, 0);
+    ctx.beginPath();
+    ctx.rect(b.x, b.y, b.w, b.h);
+    ctx.clip();
+    paintWater(ctx, track);
+    ctx.restore();
+    return deck;
+  });
+}
+
 function paintWater(ctx: CanvasRenderingContext2D, track: Track) {
   for (const r of track.def.water ?? []) {
     ctx.fillStyle = '#2a6fa8';
