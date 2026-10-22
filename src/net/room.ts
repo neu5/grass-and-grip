@@ -4,6 +4,9 @@ import {
   DEFAULT_RULES,
   isTrackId,
   normalizeRules,
+  parseTrackDef,
+  registerTrack,
+  validateTrack,
   normalizeSetup,
   parseCarKind,
   parseCarMode,
@@ -20,10 +23,13 @@ import {
   type PlayerInput,
   type RaceRules,
   type TickInputs,
+  type TrackDef,
 } from '../sim';
 import { AI_NAMES, CAR_COLORS, DEFAULT_LAPS, MAX_PLAYERS, clampAiCount, parseLaps, type LobbyState, type RoomPhase } from './protocol';
 
 export const COUNTDOWN_SECONDS = 5;
+/** A custom track's JSON may not be bigger than this. */
+export const MAX_CUSTOM_TRACK_BYTES = 60_000;
 export const RESULTS_TICKS = 6 * TICK_RATE;
 export const MAX_RACE_TICKS = 15 * 60 * TICK_RATE;
 const MAX_NAME_LENGTH = 16;
@@ -53,6 +59,8 @@ export class Room {
   trackId = 'meadow';
   carMode: CarMode = DEFAULT_CAR_MODE;
   rules: RaceRules = { ...DEFAULT_RULES };
+  /** Set while the room races on a track from the host's editor. */
+  customTrack: TrackDef | null = null;
   phase: RoomPhase = 'lobby';
   race: GameState | null = null;
   /** Per-track top 3 for this room process. */
@@ -127,7 +135,7 @@ export class Room {
 
   setSettings(
     id: string,
-    s: { aiCount?: number; laps?: number; trackId?: string; carMode?: string; rules?: Partial<RaceRules> },
+    s: { aiCount?: number; laps?: number; trackId?: string; carMode?: string; rules?: Partial<RaceRules>; customTrack?: unknown },
   ): string | null {
     if (id !== this.hostId) return 'Only the host can change settings';
     if (this.phase !== 'lobby') return 'Race in progress';
@@ -141,9 +149,17 @@ export class Room {
       if (n === null) return 'Invalid lap count';
       this.laps = n;
     }
-    if (s.trackId !== undefined) {
+    if (s.customTrack !== undefined) {
+      const def = parseTrackDef(s.customTrack);
+      if (!def || JSON.stringify(def).length > MAX_CUSTOM_TRACK_BYTES) return 'That track cannot be used';
+      if (validateTrack(def).length) return 'That track has problems; fix them in the editor';
+      registerTrack(def);
+      this.customTrack = def;
+      this.trackId = def.id;
+    } else if (s.trackId !== undefined) {
       if (!isTrackId(s.trackId)) return 'Unknown track';
       this.trackId = s.trackId;
+      this.customTrack = null;
     }
     if (s.carMode !== undefined) {
       const mode = parseCarMode(s.carMode);
@@ -199,6 +215,7 @@ export class Room {
       trackId: this.trackId,
       carMode: this.carMode,
       rules: { ...this.rules },
+      ...(this.customTrack ? { customTrack: this.customTrack } : {}),
       cars: Object.fromEntries(this.carOf),
       fastestLaps: this.fastestByTrack[this.trackId] ?? [],
     };

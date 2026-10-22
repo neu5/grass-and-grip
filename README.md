@@ -4,6 +4,8 @@ A small 3D isometric racing game in the browser, in the spirit of GeneRally. It 
 
 **Championship** (local play): pick Championship in the menu and tick the tracks to race, in order. The same drivers, cars and options run every round; each race scores 10-8-6-5-4-3-2-1, and ties are split on wins, then on the best finishes. After each race a results screen shows the race and the championship table; the last one shows a podium. The season is saved in the browser, so **Continue championship** picks it up after a reload or Esc.
 
+**Track editor** (`/editor`): draw your own track on a top-down map. Tools: **Road** (click to add points, drag to shape, right-click to remove; point 1 is the start line on the straight by the pits), **Hills** (scroll for size, Shift+scroll for height, below zero digs a dip), **River** (bridges appear on their own where the road crosses), **Paint** (gravel, sand, snow, ice or grass areas, optionally over the road), **Objects** (trees, tyre stacks, cones) and **Barriers**. A live check lists anything that would make the track unraceable (road running into itself, corners too tight, water without a bridge, a tree on the road, the start away from the pits) and circles it on the map. **3D view** shows the real thing, **Save & race** stores it in the browser and opens it in the menu; tracks can also be exported and imported as JSON files. Custom tracks show up in the local track picker and championships, and the host of an online room can pick one of theirs: the server checks it and sends it to everyone in the room.
+
 ## Run it
 
 ```bash
@@ -31,6 +33,7 @@ src/net/interpolate.ts  100 ms interpolation buffer + short extrapolate
 src/net/room.ts         Room: join/leave, colors, host, settings, ready -> race -> results -> lobby (no I/O, unit-tested)
 src/server/index.ts     HTTP + websocket server (/ws?room=id), 60 Hz loop, 20 Hz snaps, serves dist/ in production
 src/room.ts             /room page: lobby UI, prediction, interpolation, F3 net overlay
+src/editor.ts           /editor page: track editor
 ```
 
 `F3` toggles a net debug overlay (ping, snapshot rate, seq/ack).
@@ -79,6 +82,7 @@ src/sim/      pure, DOM-free simulation (can run on a server as-is)
   track.ts    track definitions (Meadow Ring, Harbor Bridge), spline centerline, surfaces (asphalt/grass/sand/water), height, bridges, checkpoint gates, obstacles, pit boxes
   ai.ts       AI driver that outputs PlayerInput just like a human (racing line, passing, missed-gate recovery, pit stops)
   racingLine.ts  minimum-curvature racing line, per-car speed plan, missed-checkpoint check
+  trackTools.ts  editor support: starter track, auto bridges, validation, safe parsing of shared tracks
   dmath.ts    deterministic sin/cos/atan2
 src/client/   browser-only code
   renderer3d.ts  Three.js scene: orthographic isometric camera, lights/shadows, car meshes

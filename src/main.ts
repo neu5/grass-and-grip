@@ -21,11 +21,13 @@ import { loadFastestLaps } from './client/fastestStore';
 import { mapDemoOptions } from './client/mapDemo';
 import { pitDemoOptions } from './client/pitDemo';
 import { SoundEngine } from './client/audio';
+import { loadCustomTracks } from './client/customTracks';
 import { Renderer3D } from './client/renderer3d';
 import { mountLapsPicker } from './client/lapsPicker';
 import { mountRulesFields, mountSetupFields } from './client/raceOptionsUi';
 import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
-import { CAR_KIND_SHORT, MAX_PLAYERS, TRACK_NAMES, clampAiCount, clampLaps, parseCarKind, parseCarMode, type TrackId } from './net/protocol';
+import { CAR_KIND_SHORT, MAX_PLAYERS, clampAiCount, clampLaps, parseCarKind, parseCarMode } from './net/protocol';
+import { trackName as simTrackName } from './sim';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const hud = document.querySelector<HTMLCanvasElement>('#hud')!;
@@ -36,6 +38,23 @@ renderer.sound = sound;
 for (const ev of ['pointerdown', 'keydown'] as const) window.addEventListener(ev, () => sound.unlock(), { capture: true });
 const menu = document.querySelector<HTMLDivElement>('#menu')!;
 const form = document.querySelector<HTMLFormElement>('#menu-form')!;
+
+// Tracks made in the editor join the pickers.
+for (const def of loadCustomTracks()) {
+  const name = def.name.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  const single = document.createElement('label');
+  single.innerHTML = `<input type="radio" name="track" value="${def.id}" /><span>${name}</span>`;
+  document.querySelector('#single-track')!.append(single);
+  const season = document.createElement('label');
+  season.innerHTML = `<input type="checkbox" name="season-track" value="${def.id}" /><span>${name}</span>`;
+  document.querySelector('#season-tracks')!.append(season);
+}
+{
+  // The editor's Play button lands here with ?track=<id>.
+  const wanted = new URLSearchParams(location.search).get('track');
+  const input = wanted ? form.querySelector<HTMLInputElement>(`input[name="track"][value="${CSS.escape(wanted)}"]`) : null;
+  if (input) input.checked = true;
+}
 const keyboard = new Keyboard(window);
 const mobile = detectMobile();
 applyTouchMenuHints(mobile);
@@ -145,7 +164,7 @@ const seasonEl = document.querySelector<HTMLDivElement>('#season')!;
 const resumeBtn = document.querySelector<HTMLButtonElement>('#resume-season')!;
 
 function trackName(id: string): string {
-  return TRACK_NAMES[id as TrackId] ?? id;
+  return simTrackName(id);
 }
 
 const raceOverHint = renderer.finishHint;

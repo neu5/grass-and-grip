@@ -9,3 +9,4 @@ export { aiInput, AI_PIT, aiNeedsPit, aiPitReady, createAiMemory, inPitApproach 
 export { racingLine, speedProfile, missedGate, pastNextGate, MISSED_GATE_DISTANCE } from './racingLine';
 export { AI_LEVEL, aiSkill } from './ai';
 export { CONE, conesFromTrack } from './props';
+export * from './trackTools';

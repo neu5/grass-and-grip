@@ -1003,8 +1003,9 @@ export class Renderer3D {
     return this.track.def.id;
   }
 
-  setTrack(trackId: string) {
-    if (this.track.def.id === trackId) return;
+  /** `force` rebuilds even for the same id (the editor changed it). */
+  setTrack(trackId: string, force = false) {
+    if (this.track.def.id === trackId && !force) return;
     this.track = getTrack(trackId);
     this.buildWorld();
     this.resetRace();

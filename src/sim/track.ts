@@ -18,7 +18,7 @@ const PIT_BOX_GAP = 12;
 const PIT_BOX_Y = 32;
 const PIT_LANE_PAD = 20;
 
-function pitComplex(firstBoxX: number): { pitLane: Rect; pitBoxes: Rect[] } {
+export function pitComplex(firstBoxX: number): { pitLane: Rect; pitBoxes: Rect[] } {
   const pitBoxes: Rect[] = [];
   for (let i = 0; i < PIT_STALLS; i++) {
     pitBoxes.push({
@@ -216,7 +216,8 @@ function catmullRom(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, t: number): Vec2 {
   return { x: catmullRom1(p0.x, p1.x, p2.x, p3.x, t), y: catmullRom1(p0.y, p1.y, p2.y, p3.y, t) };
 }
 
-export function buildTrack(def: TrackDef): Track {
+/** `grid: false` skips the height field: cheap enough for live editor checks. */
+export function buildTrack(def: TrackDef, opts: { grid?: boolean } = {}): Track {
   const cp = def.controlPoints;
   const n = cp.length;
   const samples: Vec2[] = [];
@@ -276,7 +277,7 @@ export function buildTrack(def: TrackDef): Track {
       ty: -nrm.x,
     });
   }
-  const heightGrid = def.terrain ? buildHeightGrid(def, samples, sampleHeights, rivers) : null;
+  const heightGrid = def.terrain && opts.grid !== false ? buildHeightGrid(def, samples, sampleHeights, rivers) : null;
   const patches = (def.patches ?? []).map(patchShape);
   return { def, samples, tangentAngles, normals, segmentLengths, curvature, sampleHeights, heightGrid, rivers, patches, gates };
 }
@@ -1161,11 +1162,32 @@ export const TRACKS: Record<string, TrackDef> = {
 };
 
 const cache = new Map<string, Track>();
+/** Tracks added at runtime (editor, online rooms), by id. */
+const custom = new Map<string, TrackDef>();
+
+/** Add or replace a track definition. A replaced track is rebuilt on next use. */
+export function registerTrack(def: TrackDef): void {
+  custom.set(def.id, def);
+  cache.delete(def.id);
+}
+
+export function hasTrack(id: string | undefined): boolean {
+  return !!id && (id in TRACKS || custom.has(id));
+}
+
+export function trackDef(id: string): TrackDef | undefined {
+  return TRACKS[id] ?? custom.get(id);
+}
+
+/** Display name for any known track id. */
+export function trackName(id: string): string {
+  return trackDef(id)?.name ?? id;
+}
 
 export function getTrack(id: string): Track {
   let t = cache.get(id);
   if (!t) {
-    const def = TRACKS[id];
+    const def = trackDef(id);
     if (!def) throw new Error(`Unknown track: ${id}`);
     t = buildTrack(def);
     cache.set(id, t);

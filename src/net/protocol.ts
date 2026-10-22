@@ -1,4 +1,4 @@
-import type { CarKind, CarMode, CarSetup, FastestLap, Phase, PlayerInput, RaceRules } from '../sim';
+import type { CarKind, CarMode, CarSetup, FastestLap, Phase, PlayerInput, RaceRules, TrackDef } from '../sim';
 
 export type { CarKind };
 export {
@@ -96,6 +96,8 @@ export interface LobbyState {
   carMode: CarMode;
   /** Host-set race options (damage, wear, fuel, collisions, AI level). */
   rules: RaceRules;
+  /** The full track when the host picked one made in the editor. */
+  customTrack?: TrackDef;
   /** car id per player id in the current race */
   cars: Record<string, number>;
   /** Room top 3 for the current track (server memory). */
@@ -105,7 +107,16 @@ export interface LobbyState {
 export type ClientMessage =
   | { t: 'join'; name: string; color: string; car?: CarKind; setup?: CarSetup }
   | { t: 'ready'; ready: boolean }
-  | { t: 'settings'; aiCount?: number; laps?: number; trackId?: string; carMode?: CarMode; rules?: Partial<RaceRules> }
+  | {
+      t: 'settings';
+      aiCount?: number;
+      laps?: number;
+      trackId?: string;
+      carMode?: CarMode;
+      rules?: Partial<RaceRules>;
+      /** A track from the host's editor; validated and shared with the room. */
+      customTrack?: unknown;
+    }
   | { t: 'setup'; setup: CarSetup }
   | { t: 'input'; seq: number; tick: number; input: PlayerInput }
   | { t: 'ping'; t0: number };

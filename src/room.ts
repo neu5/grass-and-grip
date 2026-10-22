@@ -2,6 +2,7 @@ import './style.css';
 import { fillFastestList } from './client/fastestBoard';
 import { persistFastestLaps } from './client/fastestStore';
 import { BINDINGS_SOLO, Keyboard, mergeInputs, NO_PLAYER_INPUT } from './client/input';
+import { loadCustomTracks } from './client/customTracks';
 import { mountLapsPicker } from './client/lapsPicker';
 import { mountRulesFields, mountSetupFields } from './client/raceOptionsUi';
 import { drawNetDebug } from './client/netDebug';
@@ -12,7 +13,7 @@ import { SNAPSHOT_HZ, CAR_COLORS, CAR_KINDS, CAR_KIND_NAMES, CAR_MODES, CAR_MODE
 import { SnapshotBuffer, mergeOwn } from './net/interpolate';
 import { InputQueue, lerpCar, reconcile, replaceCar } from './net/prediction';
 import { decodeSnapshot } from './net/snapshot';
-import { DT, stepOwnCar, type GameState, type PlayerInput } from './sim';
+import { DT, parseTrackDef, registerTrack, stepOwnCar, type GameState, type PlayerInput, type TrackDef } from './sim';
 
 const MAX_STEPS_PER_FRAME = 8;
 const PING_EVERY_MS = 500;
@@ -75,6 +76,14 @@ radios($('#cars'), 'car', CAR_KINDS, (k) => CAR_KIND_NAMES[k as keyof typeof CAR
 radios($('#ai'), 'ai', Array.from({ length: MAX_PLAYERS }, (_, i) => i), (v) => v);
 radios($('#carmode'), 'carmode', CAR_MODES, (v) => CAR_MODE_NAMES[v as keyof typeof CAR_MODE_NAMES] ?? v);
 radios($('#track'), 'track', TRACK_IDS, (v) => TRACK_NAMES[v as TrackId] ?? v);
+// The host's own editor tracks; picking one sends the whole track to the room.
+const myTracks = new Map<string, TrackDef>(loadCustomTracks().map((d) => [d.id, d]));
+radios($('#track'), 'track', [...myTracks.keys()], (id) => escapeHtml(myTracks.get(id)?.name ?? id));
+/** Radio for a custom track the host picked that this player does not have. */
+function ensureTrackRadio(def: TrackDef) {
+  if ($('#track').querySelector(`input[value="${CSS.escape(def.id)}"]`)) return;
+  radios($('#track'), 'track', [def.id], () => escapeHtml(def.name));
+}
 const lapsPicker = mountLapsPicker($('#laps'), (laps) => {
   if (laps !== lobby?.laps) send({ t: 'settings', laps });
 });
@@ -118,6 +127,11 @@ function connect() {
     else if (msg.t === 'error') showError(msg.message);
     else if (msg.t === 'lobby') {
       lobby = msg.lobby;
+      const def = lobby.customTrack ? parseTrackDef(lobby.customTrack) : null;
+      if (def) {
+        registerTrack(def);
+        ensureTrackRadio(def);
+      }
       persistFastestLaps(lobby.trackId, lobby.fastestLaps ?? []);
       renderLobby();
     } else if (msg.t === 'snap') onSnapshot(msg.snap);
@@ -209,7 +223,10 @@ readyBtn.addEventListener('click', () => {
 lobbyEl.addEventListener('change', (e) => {
   const input = e.target as HTMLInputElement;
   if (input.name === 'ai') send({ t: 'settings', aiCount: Number(input.value) });
-  if (input.name === 'track') send({ t: 'settings', trackId: input.value });
+  if (input.name === 'track') {
+    const custom = myTracks.get(input.value);
+    send(custom ? { t: 'settings', customTrack: custom } : { t: 'settings', trackId: input.value });
+  }
   if (input.name === 'carmode') send({ t: 'settings', carMode: parseCarMode(input.value) ?? 'mixed' });
 });
 

@@ -95,7 +95,8 @@ export const PLAN_BRAKE = 0.75;
 export const PLAN_STEER = 1.3;
 const MAX_PLAN_SPEED = 900;
 
-const profiles = new Map<string, number[]>();
+/** Per track (so an edited track gets fresh plans), then per kind + setup. */
+const profiles = new WeakMap<Track, Map<string, number[]>>();
 
 /** Fastest a car may go at a sample before its yaw rate runs out. */
 function steerLimit(C: CarStats, kappa: number): number {
@@ -114,8 +115,13 @@ function steerLimit(C: CarStats, kappa: number): number {
  */
 export function speedProfile(track: Track, car: { kind?: CarKind; setup?: CarSetup }): number[] {
   const C = carStats(car);
-  const key = `${track.def.id}|${car.kind}|${car.setup?.gearing ?? 0},${car.setup?.steering ?? 0},${car.setup?.grip ?? 0}`;
-  const cached = profiles.get(key);
+  const key = `${car.kind}|${car.setup?.gearing ?? 0},${car.setup?.steering ?? 0},${car.setup?.grip ?? 0}`;
+  let perTrack = profiles.get(track);
+  if (!perTrack) {
+    perTrack = new Map();
+    profiles.set(track, perTrack);
+  }
+  const cached = perTrack.get(key);
   if (cached) return cached;
   const line = racingLine(track);
   const n = line.points.length;
@@ -135,7 +141,7 @@ export function speedProfile(track: Track, car: { kind?: CarKind; setup?: CarSet
       if (reach < v[k]) v[k] = reach;
     }
   }
-  profiles.set(key, v);
+  perTrack.set(key, v);
   return v;
 }
 
