@@ -12,9 +12,31 @@ import {
   type Vec2,
 } from './track';
 
-/** Every track shares the map size, so the pit complex and walls line up. */
-export const MAP_WIDTH = 1600;
-export const MAP_HEIGHT = 1050;
+/**
+ * Map sizes a custom track can use. Every size keeps the pit complex and
+ * start straight in the same top-left spot; the map grows right and down.
+ */
+export const MAP_SIZES = {
+  small: { width: 1200, height: 800 },
+  medium: { width: 1600, height: 1050 },
+  large: { width: 2200, height: 1450 },
+} as const;
+export type MapSize = keyof typeof MAP_SIZES;
+export const MAP_SIZE_NAMES: Record<MapSize, string> = { small: 'Small', medium: 'Medium', large: 'Large' };
+/** The built-in tracks' size. */
+export const MAP_WIDTH = MAP_SIZES.medium.width;
+export const MAP_HEIGHT = MAP_SIZES.medium.height;
+
+/** Size preset matching a track's map, or medium when it matches none. */
+export function mapSizeOf(def: { width: number; height: number }): MapSize {
+  for (const k of Object.keys(MAP_SIZES) as MapSize[]) {
+    if (MAP_SIZES[k].width === def.width && MAP_SIZES[k].height === def.height) return k;
+  }
+  return 'medium';
+}
+
+/** The start line stays here for every size; resizing scales away from it. */
+const ANCHOR = { x: 400, y: 210 };
 export const CUSTOM_PREFIX = 'custom-';
 export const MIN_HALF_WIDTH = 40;
 export const MAX_HALF_WIDTH = 70;
@@ -39,8 +61,8 @@ const LIMITS = {
 const GROUNDS: readonly Surface[] = ['grass', 'snow', 'sand', 'gravel'];
 
 /** A starter layout: the shared start straight and pits, and a plain loop. */
-export function starterTrack(id: string, name: string): TrackDef {
-  return finalizeTrack({
+export function starterTrack(id: string, name: string, size: MapSize = 'medium'): TrackDef {
+  const medium = finalizeTrack({
     id,
     name,
     width: MAP_WIDTH,
@@ -64,6 +86,36 @@ export function starterTrack(id: string, name: string): TrackDef {
     obstacles: [],
     ...pitComplex(480),
   });
+  return size === 'medium' ? medium : resizeTrack(medium, size);
+}
+
+/**
+ * Move a design to another map size. Everything right of / below the start
+ * line stretches or shrinks to fill the new map; the strip left of and above
+ * it (start line, pits) stays put, so the pit complex still fits.
+ */
+export function resizeTrack(def: TrackDef, size: MapSize): TrackDef {
+  const to = MAP_SIZES[size];
+  const kx = (to.width - ANCHOR.x) / (def.width - ANCHOR.x);
+  const ky = (to.height - ANCHOR.y) / (def.height - ANCHOR.y);
+  const k = Math.sqrt(kx * ky);
+  const fx = (x: number) => Math.round(x <= ANCHOR.x ? x : ANCHOR.x + (x - ANCHOR.x) * kx);
+  const fy = (y: number) => Math.round(y <= ANCHOR.y ? y : ANCHOR.y + (y - ANCHOR.y) * ky);
+  const pt = (p: Vec2): Vec2 => ({ x: fx(p.x), y: fy(p.y) });
+  return finalizeTrack({
+    ...def,
+    width: to.width,
+    height: to.height,
+    controlPoints: def.controlPoints.map(pt),
+    terrain: def.terrain && {
+      ...def.terrain,
+      hills: def.terrain.hills.map((h) => ({ ...pt(h), r: Math.round(h.r * k), h: h.h })),
+    },
+    rivers: def.rivers?.map((r) => ({ ...r, points: r.points.map(pt) })),
+    patches: def.patches?.map((p) => ({ ...p, points: p.points.map(pt) })),
+    barriers: def.barriers?.map((b) => ({ a: pt(b.a), b: pt(b.b) })),
+    obstacles: def.obstacles.map((o) => ({ ...o, ...pt(o) })),
+  });
 }
 
 /**
@@ -71,10 +123,11 @@ export function starterTrack(id: string, name: string): TrackDef {
  * the shared pit complex, and bridges wherever the road crosses a river.
  */
 export function finalizeTrack(def: TrackDef): TrackDef {
+  const size = MAP_SIZES[mapSizeOf(def)];
   const base: TrackDef = {
     ...def,
-    width: MAP_WIDTH,
-    height: MAP_HEIGHT,
+    width: size.width,
+    height: size.height,
     checkpointCount: 8,
     halfWidth: Math.min(MAX_HALF_WIDTH, Math.max(MIN_HALF_WIDTH, def.halfWidth)),
     ...pitComplex(480),
@@ -205,9 +258,9 @@ const num = (v: unknown, lo: number, hi: number, fallback = lo): number => {
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fallback;
 };
 
-function points(v: unknown, max: number): Vec2[] {
+function points(v: unknown, max: number, w: number, h: number): Vec2[] {
   if (!Array.isArray(v)) return [];
-  return v.slice(0, max).map((p) => ({ x: num(p?.x, 0, MAP_WIDTH), y: num(p?.y, 0, MAP_HEIGHT) }));
+  return v.slice(0, max).map((p) => ({ x: num(p?.x, 0, w), y: num(p?.y, 0, h) }));
 }
 
 /**
@@ -219,7 +272,8 @@ export function parseTrackDef(raw: unknown): TrackDef | null {
   const o = raw as Record<string, unknown>;
   const id = String(o.id ?? '');
   if (!id.startsWith(CUSTOM_PREFIX) || id.length > 64 || !/^[a-z0-9-]+$/.test(id)) return null;
-  const controlPoints = points(o.controlPoints, LIMITS.controlPoints);
+  const { width: W, height: H } = MAP_SIZES[mapSizeOf({ width: Number(o.width), height: Number(o.height) })];
+  const controlPoints = points(o.controlPoints, LIMITS.controlPoints, W, H);
   if (controlPoints.length < 4) return null;
   const terrain = o.terrain && typeof o.terrain === 'object' ? (o.terrain as Record<string, unknown>) : null;
   const surface = (v: unknown, allowed: readonly Surface[], fallback: Surface): Surface =>
@@ -227,8 +281,8 @@ export function parseTrackDef(raw: unknown): TrackDef | null {
   const def: TrackDef = {
     id,
     name: String(o.name ?? 'Custom track').trim().slice(0, LIMITS.name) || 'Custom track',
-    width: MAP_WIDTH,
-    height: MAP_HEIGHT,
+    width: W,
+    height: H,
     halfWidth: num(o.halfWidth, MIN_HALF_WIDTH, MAX_HALF_WIDTH, 54),
     checkpointCount: 8,
     controlPoints,
@@ -236,29 +290,29 @@ export function parseTrackDef(raw: unknown): TrackDef | null {
     terrain: {
       base: num(terrain?.base, 0, 60, 10),
       hills: (Array.isArray(terrain?.hills) ? terrain.hills : []).slice(0, LIMITS.hills).map((h) => ({
-        x: num(h?.x, -200, MAP_WIDTH + 200),
-        y: num(h?.y, -200, MAP_HEIGHT + 200),
-        r: num(h?.r, 30, 400, 140),
+        x: num(h?.x, -200, W + 200),
+        y: num(h?.y, -200, H + 200),
+        r: num(h?.r, 30, 500, 140),
         h: num(h?.h, -40, 140, 50),
       })),
     },
     rivers: (Array.isArray(o.rivers) ? o.rivers : [])
       .slice(0, LIMITS.rivers)
-      .map((r) => ({ halfWidth: num(r?.halfWidth, 12, 70, 30), points: pointsLoose(r?.points, LIMITS.riverPoints) }))
+      .map((r) => ({ halfWidth: num(r?.halfWidth, 12, 70, 30), points: pointsLoose(r?.points, LIMITS.riverPoints, W, H) }))
       .filter((r) => r.points.length >= 2),
     patches: (Array.isArray(o.patches) ? o.patches : [])
       .slice(0, LIMITS.patches)
-      .map((p) => ({ surface: surface(p?.surface, PATCH_SURFACES, 'sand'), points: points(p?.points, LIMITS.patchPoints), overRoad: !!p?.overRoad }))
+      .map((p) => ({ surface: surface(p?.surface, PATCH_SURFACES, 'sand'), points: points(p?.points, LIMITS.patchPoints, W, H), overRoad: !!p?.overRoad }))
       .filter((p) => p.points.length >= 3),
     barriers: (Array.isArray(o.barriers) ? o.barriers : []).slice(0, LIMITS.barriers).map((b) => ({
-      a: { x: num(b?.a?.x, 0, MAP_WIDTH), y: num(b?.a?.y, 0, MAP_HEIGHT) },
-      b: { x: num(b?.b?.x, 0, MAP_WIDTH), y: num(b?.b?.y, 0, MAP_HEIGHT) },
+      a: { x: num(b?.a?.x, 0, W), y: num(b?.a?.y, 0, H) },
+      b: { x: num(b?.b?.x, 0, W), y: num(b?.b?.y, 0, H) },
     })),
     obstacles: (Array.isArray(o.obstacles) ? o.obstacles : []).slice(0, LIMITS.obstacles).map((ob) => {
       const kind = ob?.kind === 'tree' || ob?.kind === 'cone' ? ob.kind : 'tyres';
       return {
-        x: num(ob?.x, 0, MAP_WIDTH),
-        y: num(ob?.y, 0, MAP_HEIGHT),
+        x: num(ob?.x, 0, W),
+        y: num(ob?.y, 0, H),
         r: kind === 'cone' ? 6 : num(ob?.r, 8, 30, 16),
         kind,
       };
@@ -270,7 +324,7 @@ export function parseTrackDef(raw: unknown): TrackDef | null {
 }
 
 /** River points may run off the map so the water flows out of sight. */
-function pointsLoose(v: unknown, max: number): Vec2[] {
+function pointsLoose(v: unknown, max: number, w: number, h: number): Vec2[] {
   if (!Array.isArray(v)) return [];
-  return v.slice(0, max).map((p) => ({ x: num(p?.x, -300, MAP_WIDTH + 300), y: num(p?.y, -300, MAP_HEIGHT + 300) }));
+  return v.slice(0, max).map((p) => ({ x: num(p?.x, -300, w + 300), y: num(p?.y, -300, h + 300) }));
 }

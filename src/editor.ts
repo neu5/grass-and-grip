@@ -6,11 +6,14 @@ import {
   createRace,
   CUSTOM_PREFIX,
   finalizeTrack,
+  mapSizeOf,
   parseTrackDef,
   PATCH_SURFACES,
   registerTrack,
+  resizeTrack,
   starterTrack,
   validateTrack,
+  type MapSize,
   type Obstacle,
   type Surface,
   type Track,
@@ -115,6 +118,7 @@ function undo() {
   def = JSON.parse(prev);
   syncFields();
   changed();
+  layout();
 }
 
 function dist(a: Vec2, b: Vec2) {
@@ -713,6 +717,7 @@ function syncFields() {
   $<HTMLInputElement>('#width').value = String(def.halfWidth);
   $('#width-val').textContent = String(def.halfWidth * 2);
   $<HTMLSelectElement>('#ground').value = def.ground ?? 'grass';
+  $<HTMLSelectElement>('#size').value = mapSizeOf(def);
 }
 
 $<HTMLInputElement>('#name').addEventListener('change', (e) => {
@@ -726,6 +731,13 @@ $<HTMLInputElement>('#width').addEventListener('input', (e) => {
   changed();
 });
 $<HTMLInputElement>('#width').addEventListener('pointerdown', snapshot);
+$<HTMLSelectElement>('#size').addEventListener('change', (e) => {
+  snapshot();
+  // Stretch or shrink the design to the new map; the start and pits stay put.
+  def = resizeTrack(def, (e.target as HTMLSelectElement).value as MapSize);
+  changed();
+  layout();
+});
 $<HTMLSelectElement>('#ground').addEventListener('change', (e) => {
   snapshot();
   def.ground = (e.target as HTMLSelectElement).value as Surface;
@@ -753,6 +765,7 @@ function open(next: TrackDef) {
   syncFields();
   changed(false);
   refreshList();
+  layout();
 }
 
 function confirmDiscard(): boolean {
@@ -768,7 +781,7 @@ $<HTMLSelectElement>('#track-list').addEventListener('change', (e) => {
 
 $('#new').addEventListener('click', () => {
   if (!confirmDiscard()) return;
-  open(starterTrack(newId('Track'), 'My track'));
+  open(starterTrack(newId('Track'), 'My track', mapSizeOf(def)));
 });
 $('#undo').addEventListener('click', undo);
 $('#delete').addEventListener('click', () => {

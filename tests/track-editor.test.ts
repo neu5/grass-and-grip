@@ -9,8 +9,11 @@ import {
   hasTrack,
   inBridge,
   inWater,
+  MAP_SIZES,
+  mapSizeOf,
   parseTrackDef,
   registerTrack,
+  resizeTrack,
   starterTrack,
   step,
   trackName,
@@ -129,6 +132,45 @@ describe('parsing untrusted tracks', () => {
     expect(def.pitBoxes).toEqual(TRACKS.meadow.pitBoxes.map((b) => ({ ...b, x: b.x - TRACKS.meadow.pitBoxes[0].x + 480 })));
     expect(def.bridges).toHaveLength(2);
     expect(def.obstacles[0]).toMatchObject({ x: 0, r: 30, kind: 'tyres' });
+  });
+});
+
+describe('map sizes', () => {
+  it('makes a valid starter on every size, which the AI can lap', () => {
+    for (const size of ['small', 'medium', 'large'] as const) {
+      const def = starterTrack(`custom-size-${size}`, 'Size', size);
+      expect(def.width).toBe(MAP_SIZES[size].width);
+      expect(def.height).toBe(MAP_SIZES[size].height);
+      expect(mapSizeOf(def)).toBe(size);
+      expect(messages(def)).toEqual([]);
+      registerTrack(def);
+      let s = createRace({ trackId: def.id, totalLaps: 1, countdownSeconds: 0, cars: [{ name: 'A', color: '#fff', controller: 'ai', kind: 'rally' }] });
+      s.phase = 'racing';
+      for (let i = 0; i < 60 * 60 && s.phase !== 'finished'; i++) s = step(s, {});
+      expect(s.phase, size).toBe('finished');
+    }
+  });
+
+  it('resizes a design to fit, keeping the start and pits in place', () => {
+    const harbor = finalizeTrack({ ...TRACKS.harbor, id: 'custom-harbor-size', bridges: [] });
+    for (const size of ['small', 'large'] as const) {
+      const r = resizeTrack(harbor, size);
+      expect(r.width).toBe(MAP_SIZES[size].width);
+      expect(r.controlPoints[0]).toEqual(harbor.controlPoints[0]);
+      expect(r.pitBoxes).toEqual(harbor.pitBoxes);
+      for (const p of r.controlPoints) {
+        expect(p.x).toBeLessThanOrEqual(r.width);
+        expect(p.y).toBeLessThanOrEqual(r.height);
+      }
+      expect(r.bridges).toHaveLength(2);
+      expect(messages(r), size).toEqual([]);
+    }
+  });
+
+  it('keeps the size through parsing, and falls back to medium for unknown sizes', () => {
+    const large = starterTrack('custom-size-parse', 'L', 'large');
+    expect(parseTrackDef(JSON.parse(JSON.stringify(large)))!.width).toBe(2200);
+    expect(parseTrackDef({ ...starterTrack('custom-odd', 'O'), width: 5000, height: 5000 })!.width).toBe(1600);
   });
 });
 

@@ -35,7 +35,10 @@ const ISO_AZIMUTH = Math.PI / 4;
 const ISO_ELEVATION = Math.atan(1 / Math.SQRT2);
 const CAMERA_DISTANCE = 3000;
 const FOLLOW_MIN_EXTENT = 620;
-const SURFACE_RES = 2;
+/** Ground texture pixels per world unit, capped so big maps stay within GPU texture limits. */
+function surfaceRes(track: Track): number {
+  return Math.min(2, 4096 / Math.max(track.def.width, track.def.height));
+}
 const CAR_FALL_GRAVITY = 900;
 
 function lerpAngle(a: number, b: number, t: number): number {
@@ -710,7 +713,8 @@ function sceneryTrees(width: number, height: number): TreeSpot[] {
 
 function buildHeightGround(track: Track, map: THREE.Texture): THREE.Mesh {
   const { width, height } = track.def;
-  const geo = new THREE.PlaneGeometry(width, height, 400, 262);
+  // About one vertex every 4 units, whatever the map size.
+  const geo = new THREE.PlaneGeometry(width, height, Math.round(width / 4), Math.round(height / 4));
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
@@ -985,13 +989,11 @@ export class Renderer3D {
     this.scene.background = new THREE.Color('#9fd3f0');
 
     this.scene.add(new THREE.HemisphereLight('#dff1ff', '#3d5a2a', 1.15));
-    const { width, height } = this.track.def;
     const sun = new THREE.DirectionalLight('#fff4e0', 2.6);
-    sun.position.set(width / 2 - 600, 760, height / 2 - 800);
-    sun.target.position.set(width / 2, 0, height / 2);
+    this.sun = sun;
+    this.aimSun();
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    Object.assign(sun.shadow.camera, { left: -1300, right: 1300, top: 1300, bottom: -1300, near: 10, far: 4000 });
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.6;
     this.scene.add(sun, sun.target);
@@ -1018,7 +1020,21 @@ export class Renderer3D {
     return t;
   }
 
+  private sun!: THREE.DirectionalLight;
+
+  /** Centre the sun and its shadow box on the current map (sizes differ). */
+  private aimSun() {
+    const { width, height } = this.track.def;
+    const sun = this.sun;
+    sun.position.set(width / 2 - 600, 760, height / 2 - 800);
+    sun.target.position.set(width / 2, 0, height / 2);
+    const half = Math.max(1300, Math.hypot(width, height) / 2 + 100);
+    Object.assign(sun.shadow.camera, { left: -half, right: half, top: half, bottom: -half, near: 10, far: 4000 });
+    sun.shadow.camera.updateProjectionMatrix();
+  }
+
   private buildWorld() {
+    if (this.sun) this.aimSun();
     const debugOn = this.checkpointDebug?.visible ?? false;
     while (this.world.children.length) {
       const child = this.world.children[0];
@@ -1041,8 +1057,9 @@ export class Renderer3D {
     outer.receiveShadow = true;
     this.world.add(outer);
 
-    const surface = paintTrackSurface(this.track, SURFACE_RES);
-    const deckTex = splitBridgeDecks(surface, this.track, SURFACE_RES).map((c) => this.canvasTexture(c));
+    const res = surfaceRes(this.track);
+    const surface = paintTrackSurface(this.track, res);
+    const deckTex = splitBridgeDecks(surface, this.track, res).map((c) => this.canvasTexture(c));
     this.world.add(buildHeightGround(this.track, this.canvasTexture(surface)));
     this.world.add(buildWater(this.track));
     this.world.add(buildBridges(this.track, deckTex));
