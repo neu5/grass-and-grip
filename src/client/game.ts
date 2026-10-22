@@ -37,6 +37,8 @@ export interface GameOptions {
   scriptedInput?: (state: GameState) => PlayerInput;
   /** Persist top 3 to localStorage. Default true; demos turn it off. */
   persistFastest?: boolean;
+  /** Called once when the race ends. */
+  onFinish?: (state: GameState) => void;
 }
 
 const HUMAN_NAMES = ['Player 1', 'Player 2'] as const;
@@ -132,6 +134,7 @@ export class Game {
           saveFastestLaps(this.curr.trackId, this.curr.fastestLaps);
         }
         this.renderer.onTick(this.curr);
+        if (this.prev.phase !== 'finished' && this.curr.phase === 'finished') this.options.onFinish?.(this.curr);
         this.acc -= DT;
         steps++;
       }

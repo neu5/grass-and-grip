@@ -645,3 +645,117 @@ html.gg-touch .card {
 html.gg-portrait-block #stage {
   filter: brightness(0.35);
 }
+
+button.secondary {
+  margin-top: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+#season {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(6, 10, 14, 0.6);
+  z-index: 20;
+}
+
+#season[hidden] {
+  display: none;
+}
+
+#season .card {
+  width: min(640px, 100%);
+  max-height: 100%;
+  overflow: auto;
+}
+
+#season h2 {
+  margin: 0 0 4px;
+}
+
+.season-tables {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 14px 0 16px;
+}
+
+@media (max-width: 560px) {
+  .season-tables {
+    grid-template-columns: 1fr;
+  }
+}
+
+.season-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.season-table td {
+  padding: 5px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.season-table td.num {
+  text-align: right;
+  font-weight: 700;
+}
+
+.season-table .swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 2px;
+}
+
+.season-table tr.you td {
+  color: #ffd54a;
+}
+
+.podium {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 10px;
+  margin: 16px 0 4px;
+}
+
+.podium[hidden] {
+  display: none;
+}
+
+.podium div {
+  flex: 0 1 150px;
+  padding: 10px 8px;
+  border-radius: 10px 10px 0 0;
+  text-align: center;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.podium .p1 {
+  min-height: 120px;
+  background: rgba(255, 213, 74, 0.25);
+}
+
+.podium .p2 {
+  min-height: 95px;
+  background: rgba(220, 224, 230, 0.18);
+}
+
+.podium .p3 {
+  min-height: 75px;
+  background: rgba(205, 127, 50, 0.22);
+}
+
+.podium span {
+  display: block;
+  font-size: 26px;
+}

@@ -22,6 +22,12 @@
           <label><input type="radio" name="humans" value="2" /><span>2 players</span></label>
         </fieldset>
 
+        <fieldset>
+          <legend>Mode</legend>
+          <label><input type="radio" name="series" value="single" checked /><span>Single race</span></label>
+          <label><input type="radio" name="series" value="season" /><span>Championship</span></label>
+        </fieldset>
+
         <fieldset class="car-kinds">
           <legend>Grid</legend>
           <label><input type="radio" name="carmode" value="mixed" checked /><span>Mixed</span></label>
@@ -75,7 +81,14 @@
 
         <div id="ai-level"></div>
 
-        <fieldset>
+        <fieldset id="season-tracks" hidden>
+          <legend>Championship tracks <i>raced in this order</i></legend>
+          <label><input type="checkbox" name="season-track" value="meadow" checked /><span>Meadow Ring</span></label>
+          <label><input type="checkbox" name="season-track" value="harbor" checked /><span>Harbor Bridge</span></label>
+          <label><input type="checkbox" name="season-track" value="alpine" checked /><span>Alpine Pass</span></label>
+        </fieldset>
+
+        <fieldset id="single-track">
           <legend>Track</legend>
           <label><input type="radio" name="track" value="meadow" checked /><span>Meadow Ring</span></label>
           <label><input type="radio" name="track" value="harbor" /><span>Harbor Bridge</span></label>
@@ -109,9 +122,29 @@
           <div class="muted" data-touch-hint hidden>Landscape only · rotate phone · FULL hides browser chrome</div>
         </div>
 
-        <button type="submit">Start race</button>
+        <button type="button" id="resume-season" class="secondary" hidden>Continue championship</button>
+        <button type="submit" id="start">Start race</button>
         <p class="online-link"><a href="/room">Play online with friends →</a></p>
       </form>
+    </div>
+    <div id="season" hidden>
+      <div class="card">
+        <h2 id="season-title"></h2>
+        <p id="season-sub" class="muted"></p>
+        <div id="season-podium" class="podium" hidden></div>
+        <div class="season-tables">
+          <div id="season-race-box">
+            <legend>Race</legend>
+            <table id="season-race" class="season-table"></table>
+          </div>
+          <div>
+            <legend>Championship</legend>
+            <table id="season-standings" class="season-table"></table>
+          </div>
+        </div>
+        <button type="button" id="season-next">Next race</button>
+        <button type="button" id="season-menu" class="secondary">Back to menu</button>
+      </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
