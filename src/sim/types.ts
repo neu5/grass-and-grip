@@ -17,6 +17,15 @@ export type Controller = 'human' | 'ai';
 
 export type CarKind = 'rally' | 'f1';
 
+/** One completed lap on the fastest-laps board. */
+export interface FastestLap {
+  name: string;
+  ticks: number;
+  trackId: string;
+  car: CarKind;
+  color: string;
+}
+
 export const CAR_KINDS = ['rally', 'f1'] as const;
 
 export const CAR_KIND_NAMES: Record<CarKind, string> = {
@@ -77,6 +86,8 @@ export interface GameState {
   startTick: number;
   totalLaps: number;
   cars: CarState[];
+  /** Fastest-first top 3 laps for this track (includes earlier races when seeded). */
+  fastestLaps: FastestLap[];
 }
 
 export interface CarConfig {
@@ -92,4 +103,6 @@ export interface RaceConfig {
   totalLaps: number;
   cars: CarConfig[];
   countdownSeconds?: number;
+  /** Seed the HUD / room board (e.g. persisted top 3). */
+  fastestLaps?: FastestLap[];
 }

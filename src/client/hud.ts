@@ -104,6 +104,8 @@ export function drawHud(
     ctx.textAlign = 'left';
   });
 
+  drawFastestBoard(ctx, state, boardX, 12 + 30 + order.length * 18 + 8);
+
   ctx.font = '500 12px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.75)';
   ctx.textAlign = keyHints ? 'right' : 'center';
@@ -122,6 +124,39 @@ export function drawHud(
     ctx.fillText(finishHint, cw / 2, ch / 2 + 36);
   }
   ctx.restore();
+}
+
+function drawFastestBoard(ctx: CanvasRenderingContext2D, state: GameState, x: number, y: number) {
+  const laps = state.fastestLaps ?? [];
+  const rowH = 18;
+  const h = 30 + 3 * rowH;
+  ctx.fillStyle = 'rgba(10,14,20,0.6)';
+  ctx.beginPath();
+  ctx.roundRect(x, y, 248, h, 10);
+  ctx.fill();
+  ctx.font = '600 12px system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.textAlign = 'left';
+  ctx.fillText('FASTEST', x + 12, y + 20);
+  for (let i = 0; i < 3; i++) {
+    const e = laps[i];
+    const rowY = y + 38 + i * rowH;
+    if (!e) {
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillText(`${i + 1}. –`, x + 12, rowY);
+      continue;
+    }
+    ctx.fillStyle = e.color || '#888';
+    ctx.fillRect(x + 12, rowY - 9, 10, 10);
+    ctx.fillStyle = i === 0 ? '#ffd54a' : '#fff';
+    ctx.fillText(`${i + 1}. ${e.name}`, x + 30, rowY);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillText(e.car === 'f1' ? 'F1' : 'Rally', x + 168, rowY);
+    ctx.fillStyle = i === 0 ? '#ffd54a' : '#fff';
+    ctx.fillText(ticksToTime(e.ticks), x + 236, rowY);
+    ctx.textAlign = 'left';
+  }
 }
 
 function remainColor(left: number): string {

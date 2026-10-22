@@ -291,6 +291,48 @@ fieldset input:disabled + span {
   font-weight: 700;
 }
 
+.fastest-board {
+  margin: 0 0 14px;
+}
+
+.fastest-board ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fastest-board li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fastest-board .swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+}
+
+.fastest-board .grow {
+  flex: 1;
+}
+
+.fastest-board .badge {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.fastest-board .time {
+  font-weight: 700;
+  color: #ffd54a;
+}
+
 .error {
   color: #ff8a80;
 }

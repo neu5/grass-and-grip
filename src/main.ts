@@ -3,6 +3,9 @@ import { Game, type GameOptions } from './client/game';
 import { Keyboard } from './client/input';
 import { aiPitDemoOptions } from './client/aiPitDemo';
 import { damageDemoOptions } from './client/damageDemo';
+import { fillFastestList } from './client/fastestBoard';
+import { fastestLapsDemoOptions } from './client/fastestLapsDemo';
+import { loadFastestLaps } from './client/fastestStore';
 import { mapDemoOptions } from './client/mapDemo';
 import { pitDemoOptions } from './client/pitDemo';
 import { Renderer3D } from './client/renderer3d';
@@ -64,13 +67,23 @@ function updateControlsHint() {
   }
 }
 
-form.addEventListener('change', updateControlsHint);
+function refreshFastestBoard() {
+  const ol = document.querySelector<HTMLOListElement>('#fastest-laps ol');
+  if (!ol) return;
+  fillFastestList(ol, loadFastestLaps(selected('track') || 'meadow'));
+}
+
+form.addEventListener('change', () => {
+  updateControlsHint();
+  refreshFastestBoard();
+});
 updateControlsHint();
+refreshFastestBoard();
 mountLapsPicker(form);
 
 {
   const demo = new URLSearchParams(location.search).get('demo');
-  if (demo === 'pit' || demo === 'damage' || demo === 'map' || demo === 'aipit' || demo === 'eight') {
+  if (demo === 'pit' || demo === 'damage' || demo === 'map' || demo === 'aipit' || demo === 'eight' || demo === 'laps') {
     menu.hidden = true;
     const options =
       demo === 'damage'
@@ -81,9 +94,11 @@ mountLapsPicker(form);
             ? aiPitDemoOptions()
             : demo === 'eight'
               ? { humans: 1 as const, aiCount: 7, laps: 3, carMode: 'f1' as const, countdownSeconds: 6 }
-              : pitDemoOptions();
+              : demo === 'laps'
+                ? fastestLapsDemoOptions(renderer)
+                : pitDemoOptions();
     game = new Game(renderer, keyboard, options);
-    if (demo === 'eight') renderer.cameraMode = 'overview';
+    if (demo === 'eight' || demo === 'laps') renderer.cameraMode = 'overview';
     (window as unknown as { race: Game }).race = game;
     canvas.focus();
     game.start();
@@ -120,5 +135,6 @@ window.addEventListener('keydown', (e) => {
     game = null;
     touch?.setVisible(false);
     menu.hidden = false;
+    refreshFastestBoard();
   }
 });

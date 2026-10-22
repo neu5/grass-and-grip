@@ -1,4 +1,6 @@
 import './style.css';
+import { fillFastestList } from './client/fastestBoard';
+import { persistFastestLaps } from './client/fastestStore';
 import { BINDINGS_SOLO, Keyboard, mergeInputs, NO_PLAYER_INPUT } from './client/input';
 import { mountLapsPicker } from './client/lapsPicker';
 import { drawNetDebug } from './client/netDebug';
@@ -109,6 +111,7 @@ function connect() {
     else if (msg.t === 'error') showError(msg.message);
     else if (msg.t === 'lobby') {
       lobby = msg.lobby;
+      persistFastestLaps(lobby.trackId, lobby.fastestLaps ?? []);
       renderLobby();
     } else if (msg.t === 'snap') onSnapshot(msg.snap);
     else if (msg.t === 'pong') pingMs = performance.now() - msg.t0;
@@ -171,6 +174,7 @@ function renderLobby() {
   }${isHost ? '' : ' The host picks AI, laps, track and mode.'}`;
   readyBtn.textContent = me.ready ? 'Ready! (click to cancel)' : 'Ready';
   readyBtn.classList.toggle('on', me.ready);
+  fillFastestList($('#fastest-laps ol'), lobby.fastestLaps ?? []);
 }
 
 function escapeHtml(s: string) {
@@ -208,6 +212,7 @@ function onSnapshot(raw: CompactSnapshot) {
   while (snapTimes[0] < now - 1000) snapTimes.shift();
   lastAck = raw.ack;
   const state = decodeSnapshot(raw, remotes.latest ?? predicted ?? undefined);
+  persistFastestLaps(state.trackId, state.fastestLaps ?? []);
   renderer.setTrack(state.trackId);
   if (remotes.length === 0) renderer.resetRace();
   remotes.push(state, now);
