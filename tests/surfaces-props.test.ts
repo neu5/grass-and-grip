@@ -41,10 +41,10 @@ describe('surfaces', () => {
 
   it('paints Alpine with snow, a frozen pond, black ice on the road and gravel traps', () => {
     const alpine = getTrack('alpine');
-    expect(surfaceAt(alpine, 800, 420)).toBe('ice');
-    expect(surfaceAt(alpine, 1050, 630)).toBe('ice');
-    expect(surfaceAt(alpine, 1550, 520)).toBe('gravel');
-    expect(surfaceAt(alpine, 300, 1000)).toBe('snow');
+    expect(surfaceAt(alpine, 1000, 520)).toBe('ice');
+    expect(surfaceAt(alpine, 1375, 830)).toBe('ice');
+    expect(surfaceAt(alpine, 2080, 668)).toBe('gravel');
+    expect(surfaceAt(alpine, 1200, 1100)).toBe('snow');
     expect(surfaceAt(alpine, alpine.samples[0].x, alpine.samples[0].y)).toBe('asphalt');
     const harbor = getTrack('harbor');
     expect(surfaceAt(harbor, 1500, 260)).toBe('sand');
@@ -61,7 +61,7 @@ describe('surfaces', () => {
       return s.cars[0].y - y0;
     };
     // Sideways slide: on ice the tyres barely catch it.
-    expect(coast(800, 380)).toBeGreaterThan(coast(700, 200) * 2);
+    expect(coast(1000, 470)).toBeGreaterThan(coast(700, 200) * 2);
   });
 });
 
