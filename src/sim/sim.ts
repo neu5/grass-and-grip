@@ -2,6 +2,7 @@ import { aiInput, createAiMemory } from './ai';
 import { collideBounds, collideCars, collideCircle, NO_INPUT, stepCarPhysics } from './physics';
 import { applyPitService } from './pits';
 import { HEIGHT_SEPARATION, getTrack, heightAt, segmentsIntersect, surfaceAt, type Track } from './track';
+import { copyFastestLaps, insertFastestLap } from './fastestLaps';
 import type { CarState, GameState, PlayerInput, RaceConfig, TickInputs } from './types';
 
 export const TICK_RATE = 60;
@@ -116,7 +117,15 @@ export function createRace(config: RaceConfig): GameState {
   });
   const startTick = Math.round((config.countdownSeconds ?? 3) * TICK_RATE);
   for (const car of cars) car.lapStartTick = startTick;
-  return { tick: 0, trackId: config.trackId, phase: 'countdown', startTick, totalLaps: config.totalLaps, cars };
+  return {
+    tick: 0,
+    trackId: config.trackId,
+    phase: 'countdown',
+    startTick,
+    totalLaps: config.totalLaps,
+    cars,
+    fastestLaps: copyFastestLaps(config.fastestLaps),
+  };
 }
 
 export function sanitize(input: PlayerInput | undefined): PlayerInput {
@@ -142,6 +151,13 @@ function updateCheckpoints(state: GameState, car: CarState, track: Track, px: nu
     car.lapsCompleted++;
     car.lastLapTicks = lapTicks;
     if (car.bestLapTicks === null || lapTicks < car.bestLapTicks) car.bestLapTicks = lapTicks;
+    state.fastestLaps = insertFastestLap(state.fastestLaps ?? [], {
+      name: car.name,
+      ticks: lapTicks,
+      trackId: state.trackId,
+      car: car.kind === 'f1' ? 'f1' : 'rally',
+      color: car.color,
+    });
     car.lapStartTick = state.tick;
     if (car.finishTick === null && car.lapsCompleted >= state.totalLaps) car.finishTick = state.tick;
   }

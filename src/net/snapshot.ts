@@ -1,5 +1,5 @@
-import type { CarState, GameState } from '../sim';
-import type { CompactCar, CompactSnapshot } from './protocol';
+import { copyFastestLaps, type CarState, type FastestLap, type GameState } from '../sim';
+import type { CompactCar, CompactFastestLap, CompactSnapshot } from './protocol';
 
 /** Position / velocity stored in tenths. Angle in milliradians. Wear/fuel/damage 0–1 as 0–1000. */
 export const POS_Q = 10;
@@ -66,6 +66,20 @@ function decodeCar(c: CompactCar, prev?: CarState): CarState {
   };
 }
 
+function encodeFastest(entry: FastestLap): CompactFastestLap {
+  return { n: entry.name, t: entry.ticks, tid: entry.trackId, c: entry.car, col: entry.color };
+}
+
+function decodeFastest(entry: CompactFastestLap): FastestLap {
+  return {
+    name: entry.n,
+    ticks: entry.t,
+    trackId: entry.tid,
+    car: entry.c === 'f1' ? 'f1' : 'rally',
+    color: entry.col,
+  };
+}
+
 export function encodeSnapshot(state: GameState, ack = 0): CompactSnapshot {
   return {
     k: state.tick,
@@ -74,6 +88,7 @@ export function encodeSnapshot(state: GameState, ack = 0): CompactSnapshot {
     tl: state.totalLaps,
     tid: state.trackId,
     c: state.cars.map(encodeCar),
+    fl: (state.fastestLaps ?? []).map(encodeFastest),
     ack,
   };
 }
@@ -86,5 +101,6 @@ export function decodeSnapshot(snap: CompactSnapshot, prev?: GameState): GameSta
     startTick: snap.st,
     totalLaps: snap.tl,
     cars: snap.c.map((c) => decodeCar(c, prev?.cars.find((x) => x.id === c.i))),
+    fastestLaps: copyFastestLaps(snap.fl?.map(decodeFastest) ?? prev?.fastestLaps),
   };
 }

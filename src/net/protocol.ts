@@ -1,4 +1,4 @@
-import type { CarKind, CarMode, Phase, PlayerInput } from '../sim';
+import type { CarKind, CarMode, FastestLap, Phase, PlayerInput } from '../sim';
 
 export type { CarKind };
 export {
@@ -89,6 +89,8 @@ export interface LobbyState {
   carMode: CarMode;
   /** car id per player id in the current race */
   cars: Record<string, number>;
+  /** Room top 3 for the current track (server memory). */
+  fastestLaps: FastestLap[];
 }
 
 export type ClientMessage =
@@ -134,6 +136,14 @@ export interface CompactCar {
   ft: number | null;
 }
 
+export interface CompactFastestLap {
+  n: string;
+  t: number;
+  tid: string;
+  c: CarKind;
+  col: string;
+}
+
 export interface CompactSnapshot {
   k: number;
   p: Phase;
@@ -141,6 +151,8 @@ export interface CompactSnapshot {
   tl: number;
   tid: string;
   c: CompactCar[];
+  /** Fastest-first top 3 for this track. */
+  fl?: CompactFastestLap[];
   /** Last input seq the server applied for the receiving client. */
   ack: number;
 }

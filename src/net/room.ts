@@ -10,6 +10,7 @@ import {
   type CarConfig,
   type CarKind,
   type CarMode,
+  type FastestLap,
   type GameState,
   type PlayerInput,
   type TickInputs,
@@ -46,6 +47,8 @@ export class Room {
   carMode: CarMode = DEFAULT_CAR_MODE;
   phase: RoomPhase = 'lobby';
   race: GameState | null = null;
+  /** Per-track top 3 for this room process. */
+  readonly fastestByTrack: Record<string, FastestLap[]> = {};
   /** Player id -> car id for the current race. */
   readonly carOf = new Map<string, number>();
   /** Bumped whenever the lobby view changes, so the server knows when to broadcast it. */
@@ -150,6 +153,7 @@ export class Room {
   tick(): boolean {
     if (!this.race) return false;
     this.race = step(this.race, this.inputs);
+    this.fastestByTrack[this.race.trackId] = this.race.fastestLaps;
     if (this.phase === 'racing' && (this.race.phase === 'finished' || this.race.tick >= MAX_RACE_TICKS)) {
       this.phase = 'results';
       this.resultsLeft = RESULTS_TICKS;
@@ -170,6 +174,7 @@ export class Room {
       trackId: this.trackId,
       carMode: this.carMode,
       cars: Object.fromEntries(this.carOf),
+      fastestLaps: this.fastestByTrack[this.trackId] ?? [],
     };
   }
 
@@ -194,7 +199,13 @@ export class Room {
     this.lastSeq.clear();
     this.players.forEach((p, i) => this.carOf.set(p.id, i));
     this.inputs = {};
-    this.race = createRace({ trackId: this.trackId, totalLaps: this.laps, cars, countdownSeconds: COUNTDOWN_SECONDS });
+    this.race = createRace({
+      trackId: this.trackId,
+      totalLaps: this.laps,
+      cars,
+      countdownSeconds: COUNTDOWN_SECONDS,
+      fastestLaps: this.fastestByTrack[this.trackId],
+    });
     this.phase = 'racing';
     this.changed();
   }

@@ -1,5 +1,6 @@
 export * from './types';
 export * from './carMode';
+export * from './fastestLaps';
 export * from './sim';
 export * from './track';
 export { CAR, CARS, SURFACES, NO_INPUT, statsFor, TYRE, tyreFactor, FUEL, DAMAGE, applyCollisionDamage } from './physics';
