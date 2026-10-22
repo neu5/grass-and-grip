@@ -1,4 +1,4 @@
-import { getTrack, heightAt, nearestSampleIndex, surfaceAt, type CarState, type PlayerInput, type Track } from '../sim';
+import { getTrack, inBridge, nearestSampleIndex, surfaceAt, type CarState, type PlayerInput, type Track } from '../sim';
 import type { Renderer3D } from './renderer3d';
 import type { GameOptions } from './game';
 
@@ -43,9 +43,10 @@ export function mapDemoOptions(renderer: Renderer3D): GameOptions {
   const deck = track.def.bridges![0];
   const bridgeIdx = nearestSampleIndex(track, deck.x + deck.w / 2, deck.y + deck.h / 2);
   const approachIdx = Math.max(0, bridgeIdx - Math.floor(track.samples.length * 0.2));
-  // The channel just west of the deck.
-  const water = { x: 1300, y: 560 };
-  const sand = { x: 1200, y: 740 };
+  // The river just upstream of the east bridge, then the runoff past the NE corner.
+  const water = { x: 1340, y: 482 };
+  const runoff = track.def.sand![0];
+  const sand = { x: runoff.x + runoff.w / 2, y: runoff.y + runoff.h / 2 };
   type Phase = 'show' | 'toBridge' | 'onBridge' | 'toWater' | 'inWater' | 'toSand';
   let phase: Phase = 'show';
   let hold = 0;
@@ -83,7 +84,7 @@ export function mapDemoOptions(renderer: Renderer3D): GameOptions {
       }
       if (phase === 'toBridge') {
         renderer.cameraMode = 'follow';
-        if (heightAt(track, car.x, car.y) > 48) {
+        if (inBridge(track, car.x, car.y)) {
           phase = 'onBridge';
           hold = 0;
         }

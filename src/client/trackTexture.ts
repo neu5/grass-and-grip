@@ -101,14 +101,26 @@ export function splitBridgeDecks(surface: HTMLCanvasElement, track: Track, res: 
 }
 
 function paintWater(ctx: CanvasRenderingContext2D, track: Track) {
-  for (const r of track.def.water ?? []) {
-    ctx.fillStyle = '#2a6fa8';
-    ctx.fillRect(r.x, r.y, r.w, r.h);
-    ctx.fillStyle = '#3480b8';
-    for (let y = r.y; y < r.y + r.h; y += 28) ctx.fillRect(r.x, y, r.w, 10);
-    ctx.fillStyle = 'rgba(180, 220, 255, 0.18)';
-    for (let x = r.x; x < r.x + r.w; x += 70) ctx.fillRect(x, r.y, 16, r.h);
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  for (const r of track.rivers) {
+    ctx.beginPath();
+    r.points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+    ctx.strokeStyle = '#2a6fa8';
+    ctx.lineWidth = r.halfWidth * 2;
+    ctx.stroke();
+    ctx.setLineDash([46, 34]);
+    ctx.strokeStyle = '#3480b8';
+    ctx.lineWidth = r.halfWidth * 0.9;
+    ctx.stroke();
+    ctx.setLineDash([14, 70]);
+    ctx.strokeStyle = 'rgba(180, 220, 255, 0.22)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
+  ctx.restore();
 }
 
 function paintPitLane(ctx: CanvasRenderingContext2D, track: Track) {

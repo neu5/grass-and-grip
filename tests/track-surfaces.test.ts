@@ -9,7 +9,9 @@ import {
   createRace,
   getTrack,
   heightAt,
+  distanceToCenterline,
   inBridge,
+  inWater,
   pointInRect,
   slopeAttitude,
   step,
@@ -70,26 +72,61 @@ describe('harbor layout', () => {
   });
 
   it('has water, sand, a high bridge, and pits on asphalt', () => {
-    expect(TRACKS.harbor.water?.length).toBeGreaterThan(0);
+    expect(TRACKS.harbor.rivers?.length).toBeGreaterThan(0);
     expect(TRACKS.harbor.sand?.length).toBeGreaterThan(0);
-    expect(TRACKS.harbor.bridges).toHaveLength(1);
-    const b = TRACKS.harbor.bridges![0];
-    const bx = b.x + b.w / 2;
-    const by = b.y + b.h / 2;
-    expect(inBridge(track, bx, by)).toBe(true);
-    expect(surfaceAt(track, bx, by)).toBe('asphalt');
-    expect(heightAt(track, bx, by)).toBeGreaterThan(45);
+    expect(TRACKS.harbor.bridges).toHaveLength(2);
+    for (const b of TRACKS.harbor.bridges!) {
+      const bx = b.x + b.w / 2;
+      const by = b.y + b.h / 2;
+      expect(inBridge(track, bx, by)).toBe(true);
+      expect(surfaceAt(track, bx, by)).toBe('asphalt');
+      expect(heightAt(track, bx, by)).toBeGreaterThan(20);
+    }
     const box = track.def.pitBoxes[0];
     expect(surfaceAt(track, box.x + box.w / 2, box.y + box.h / 2)).toBe('asphalt');
   });
 
   it('does not treat a car on the bridge as in water', () => {
-    const b = TRACKS.harbor.bridges![0];
-    const x = b.x + b.w / 2;
-    const y = b.y + b.h / 2;
-    expect(surfaceAt(track, x, y)).toBe('asphalt');
-    expect(surfaceAt(track, x, y)).not.toBe('water');
-    expect(heightAt(track, x, y)).toBeGreaterThan(45);
+    for (const b of TRACKS.harbor.bridges!) {
+      const x = b.x + b.w / 2;
+      const y = b.y + b.h / 2;
+      expect(inWater(track, x, y)).toBe(true);
+      expect(surfaceAt(track, x, y)).toBe('asphalt');
+      expect(heightAt(track, x, y)).toBe(b.height);
+    }
+  });
+
+  it('only crosses the river on a bridge', () => {
+    let crossings = 0;
+    for (let i = 0; i < track.samples.length; i++) {
+      const p = track.samples[i];
+      const q = track.samples[(i + 1) % track.samples.length];
+      if (inWater(track, p.x, p.y)) expect(inBridge(track, p.x, p.y)).toBe(true);
+      if (!inWater(track, p.x, p.y) && inWater(track, q.x, q.y)) crossings++;
+    }
+    expect(crossings).toBe(2);
+  });
+
+  it('turns both ways and climbs real hills', () => {
+    const n = track.samples.length;
+    let left = 0;
+    let right = 0;
+    for (let i = 0; i < n; i++) {
+      const turn = track.tangentAngles[(i + 1) % n] - track.tangentAngles[i];
+      const d = Math.atan2(Math.sin(turn), Math.cos(turn));
+      if (d > 0.01) right++;
+      if (d < -0.01) left++;
+    }
+    expect(left).toBeGreaterThan(n * 0.08);
+    expect(right).toBeGreaterThan(n * 0.08);
+    expect(Math.max(...track.sampleHeights) - Math.min(...track.sampleHeights)).toBeGreaterThan(30);
+  });
+
+  it('keeps obstacles off the road and out of the river', () => {
+    for (const o of TRACKS.harbor.obstacles) {
+      expect(distanceToCenterline(track, o.x, o.y)).toBeGreaterThan(track.def.halfWidth + o.r);
+      expect(inWater(track, o.x, o.y)).toBe(false);
+    }
   });
 
   it('ramps onto the bridge without cliff steps', () => {
@@ -120,13 +157,13 @@ describe('harbor layout', () => {
   });
 
   it('has no cliffs or creases in the terrain around lakes and the bridge', () => {
-    const deck = TRACKS.harbor.bridges![0];
+    const decks = TRACKS.harbor.bridges!;
     let steepest = 0;
     let crease = 0;
     for (let y = 8; y < track.def.height - 8; y += 8) {
       for (let x = 8; x < track.def.width - 8; x += 8) {
         // Ground under the deck sits behind the abutments.
-        if (pointInRect(x, y, deck)) continue;
+        if (decks.some((d) => pointInRect(x, y, d))) continue;
         const h = terrainHeightAt(track, x, y);
         const e = terrainHeightAt(track, x + 4, y);
         const w = terrainHeightAt(track, x - 4, y);
@@ -140,11 +177,12 @@ describe('harbor layout', () => {
     expect(crease).toBeLessThan(0.5);
   });
 
-  it('holds the deck flat and level with the road', () => {
-    const b = TRACKS.harbor.bridges![0];
-    for (let i = 0; i < track.samples.length; i++) {
-      const p = track.samples[i];
-      if (inBridge(track, p.x, p.y)) expect(track.sampleHeights[i]).toBeCloseTo(b.height, 5);
+  it('holds each deck flat and level with the road', () => {
+    for (const b of TRACKS.harbor.bridges!) {
+      for (let i = 0; i < track.samples.length; i++) {
+        const p = track.samples[i];
+        if (pointInRect(p.x, p.y, b)) expect(track.sampleHeights[i]).toBeCloseTo(b.height, 5);
+      }
     }
   });
 
@@ -168,12 +206,12 @@ describe('surfaces', () => {
   const asphalt = meadow.samples[0];
   const b = TRACKS.harbor.bridges![0];
   const water = (() => {
-    for (let x = b.x - 80; x < b.x; x += 8) {
-      for (let y = b.y; y < b.y + b.h; y += 8) {
+    for (let x = b.x - 120; x < b.x; x += 8) {
+      for (let y = b.y - 40; y < b.y + b.h + 40; y += 8) {
         if (surfaceAt(harbor, x, y) === 'water') return { x, y };
       }
     }
-    return { x: 500, y: 520 };
+    return { x: 0, y: 0 };
   })();
   const sand = (() => {
     const r = TRACKS.harbor.sand![0];
@@ -219,7 +257,7 @@ describe('surfaces', () => {
 
   it('keeps meadow off-track as grass, not water or sand', () => {
     expect(surfaceAt(meadow, 30, 30)).toBe('grass');
-    expect(meadow.def.water).toBeUndefined();
+    expect(meadow.def.rivers).toBeUndefined();
     expect(meadow.def.sand).toBeUndefined();
     expect(meadow.def.bridges).toBeUndefined();
     expect(heightAt(meadow, meadow.samples[0].x, meadow.samples[0].y)).toBeCloseTo(0, 5);

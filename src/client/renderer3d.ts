@@ -486,21 +486,41 @@ function buildGantry(track: Track): THREE.Group {
   return shadowed(g);
 }
 
-function buildWalls(width: number, height: number): THREE.Group {
+/** Ground level beyond the boundary wall: the map's base, so it does not sit on a plateau. */
+function outsideLevel(track: Track): number {
+  return track.def.terrain?.base ?? 0;
+}
+
+/** Boundary wall riding the ground; its outer face reaches down to the outside grass. */
+function buildWalls(track: Track): THREE.Group {
   const g = new THREE.Group();
+  const { width, height } = track.def;
   const t = 10;
   const h = 12;
-  const segs: [number, number, number, number][] = [
-    [width / 2, -t / 2, width + t * 2, t],
-    [width / 2, height + t / 2, width + t * 2, t],
-    [-t / 2, height / 2, t, height],
-    [width + t / 2, height / 2, t, height],
+  const mat = std('#cfcac0', { roughness: 0.95, side: THREE.DoubleSide });
+  // Each side: start, end, and the outward direction.
+  const sides: [number, number, number, number, number, number][] = [
+    [-t, 0, width + t, 0, 0, -1],
+    [-t, height, width + t, height, 0, 1],
+    [0, -t, 0, height + t, -1, 0],
+    [width, -t, width, height + t, 1, 0],
   ];
-  const mat = std('#cfcac0', { roughness: 0.95 });
-  for (const [x, z, w, d] of segs) {
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-    wall.position.set(x, h / 2, z);
-    g.add(wall);
+  for (const [x0, z0, x1, z1, ox, oz] of sides) {
+    const steps = Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 8);
+    const inner: THREE.Vector3[] = [];
+    const innerTop: THREE.Vector3[] = [];
+    const outerTop: THREE.Vector3[] = [];
+    const outer: THREE.Vector3[] = [];
+    for (let i = 0; i <= steps; i++) {
+      const x = x0 + ((x1 - x0) * i) / steps;
+      const z = z0 + ((z1 - z0) * i) / steps;
+      const ground = terrainHeightAt(track, Math.min(width, Math.max(0, x)), Math.min(height, Math.max(0, z)));
+      inner.push(new THREE.Vector3(x, ground - 2, z));
+      innerTop.push(new THREE.Vector3(x, ground + h, z));
+      outerTop.push(new THREE.Vector3(x + ox * t, ground + h, z + oz * t));
+      outer.push(new THREE.Vector3(x + ox * t, outsideLevel(track) - 1, z + oz * t));
+    }
+    g.add(sheet(inner, innerTop, mat), sheet(innerTop, outerTop, mat), sheet(outerTop, outer, mat));
   }
   return shadowed(g);
 }
@@ -554,10 +574,20 @@ function buildWater(track: Track): THREE.Group {
     transparent: true,
     opacity: 0.58,
     depthWrite: false,
+    side: THREE.DoubleSide,
   });
-  for (const r of track.def.water ?? []) {
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.h).rotateX(-Math.PI / 2), mat);
-    mesh.position.set(r.x + r.w / 2, WATER_SURFACE, r.y + r.h / 2);
+  // A ribbon a little wider than the river; the banks rise over its edges.
+  for (const r of track.rivers) {
+    const pts = r.points;
+    const side = (s: number) =>
+      pts.map((p, i) => {
+        const a = pts[Math.max(0, i - 1)];
+        const b = pts[Math.min(pts.length - 1, i + 1)];
+        const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+        const off = s * (r.halfWidth + 10);
+        return new THREE.Vector3(p.x - ((b.y - a.y) / len) * off, WATER_SURFACE, p.y + ((b.x - a.x) / len) * off);
+      });
+    const mesh = sheet(side(-1), side(1), mat);
     mesh.receiveShadow = true;
     g.add(mesh);
   }
@@ -785,10 +815,10 @@ export class Renderer3D {
     this.gl.outputColorSpace = THREE.SRGBColorSpace;
     this.scene.background = new THREE.Color('#9fd3f0');
 
-    this.scene.add(new THREE.HemisphereLight('#dff1ff', '#3d5a2a', 1.4));
+    this.scene.add(new THREE.HemisphereLight('#dff1ff', '#3d5a2a', 1.15));
     const { width, height } = this.track.def;
-    const sun = new THREE.DirectionalLight('#fff4e0', 2.2);
-    sun.position.set(width / 2 - 500, 1100, height / 2 - 700);
+    const sun = new THREE.DirectionalLight('#fff4e0', 2.6);
+    sun.position.set(width / 2 - 600, 760, height / 2 - 800);
     sun.target.position.set(width / 2, 0, height / 2);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -827,8 +857,17 @@ export class Renderer3D {
     }
     const { width, height } = this.track.def;
 
-    const outer = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000).rotateX(-Math.PI / 2), std('#4b9c40', { roughness: 1 }));
-    outer.position.set(width / 2, -0.5, height / 2);
+    // Grass beyond the wall: a frame around the map, so it never covers low ground inside.
+    const far = 4500;
+    const frame = new THREE.Shape([
+      new THREE.Vector2(width / 2 - far, height / 2 - far),
+      new THREE.Vector2(width / 2 + far, height / 2 - far),
+      new THREE.Vector2(width / 2 + far, height / 2 + far),
+      new THREE.Vector2(width / 2 - far, height / 2 + far),
+    ]);
+    frame.holes.push(new THREE.Path([new THREE.Vector2(0, 0), new THREE.Vector2(0, height), new THREE.Vector2(width, height), new THREE.Vector2(width, 0)]));
+    const outer = new THREE.Mesh(new THREE.ShapeGeometry(frame).rotateX(Math.PI / 2), std('#4b9c40', { roughness: 1, side: THREE.DoubleSide }));
+    outer.position.y = outsideLevel(this.track) - 0.5;
     outer.receiveShadow = true;
     this.world.add(outer);
 
@@ -849,7 +888,7 @@ export class Renderer3D {
     skidPlane.receiveShadow = true;
     this.world.add(skidPlane);
 
-    const trees: TreeSpot[] = sceneryTrees(width, height);
+    const trees: TreeSpot[] = sceneryTrees(width, height).map((t) => ({ ...t, h: outsideLevel(this.track) }));
     for (const o of this.track.def.obstacles) {
       const h = terrainHeightAt(this.track, o.x, o.y);
       if (o.kind === 'tree') {
@@ -864,7 +903,7 @@ export class Renderer3D {
     for (const c of this.crew) this.world.add(c.mesh);
     this.checkpointDebug = buildCheckpointDebug(this.track);
     this.checkpointDebug.visible = debugOn;
-    this.world.add(buildPitDecor(this.track), buildGantry(this.track), buildWalls(width, height), buildForest(trees), this.checkpointDebug);
+    this.world.add(buildPitDecor(this.track), buildGantry(this.track), buildWalls(this.track), buildForest(trees), this.checkpointDebug);
   }
 
   resetRace() {
@@ -1002,6 +1041,8 @@ export class Renderer3D {
   }
 
   private updateCamera(positions: THREE.Vector3[], humanIds: number[], aspect: number, frameDt?: number) {
+    // A hidden canvas has no size; framing it would poison the camera with NaN.
+    if (!(aspect > 0)) return;
     const { width, height } = this.track.def;
     const overview = this.frame(
       [
