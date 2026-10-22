@@ -24,6 +24,25 @@
           <label><input type="radio" name="humans" value="2" /><span>2 players</span></label>
         </fieldset>
 
+        <div id="p1-who" class="who">
+          <fieldset class="stack">
+            <legend>Player 1 name</legend>
+            <input id="p1-name" class="text" maxlength="16" placeholder="Player 1" autocomplete="nickname" />
+          </fieldset>
+          <fieldset id="p1-colors" class="colors">
+            <legend>Player 1 color</legend>
+          </fieldset>
+        </div>
+        <div id="p2-who" class="who" hidden>
+          <fieldset class="stack">
+            <legend>Player 2 name</legend>
+            <input id="p2-name" class="text" maxlength="16" placeholder="Player 2" autocomplete="off" />
+          </fieldset>
+          <fieldset id="p2-colors" class="colors">
+            <legend>Player 2 color</legend>
+          </fieldset>
+        </div>
+
         <fieldset>
           <legend>Mode</legend>
           <label><input type="radio" name="series" value="single" checked /><span>Single race</span></label>
