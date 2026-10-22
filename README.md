@@ -57,6 +57,8 @@ On Render, the repo has a `render.yaml` blueprint (free web service, health chec
 | 2 players, P1 | Arrows | Right Shift / Enter |
 | 2 players, P2 | WASD | Left Shift / Space |
 
+All sound is synthesised in the browser (no audio files): each of the four cars nearest the camera has an engine note that climbs through fake gears with speed (a deep truck, a screaming kart), tyres squeal when sliding on tarmac or ice, loose ground rumbles, and crashes, flying cones, the pit crew's air guns, the countdown beeps and lap and finish chimes all have their own sounds. Sound starts on the first click or key press; `M` mutes it and the choice is remembered.
+
 Press `C` to switch between the follow and overview cameras, `U` to toggle checkpoint-gate debug, `R` to restart the race and `Esc` to go back to the menu.
 
 On a phone (coarse pointer, or a mobile browser with touch) play is landscape-only. The game tries to lock orientation and enter fullscreen (first tap, **CAM**, or **FULL**). If the lock fails, a blocking **Rotate phone** screen stays up until the device is actually landscape — portrait is not playable. Left thumb holds **FWD** (throttle), **REV** (reverse), or **BRAKE** (handbrake, same as Shift) — no auto-gas. Right thumb is a horizontal stick: left/right steer only, with a large deadzone so it is not twitchy. **CAM** (small, above the drive buttons) cycles the camera like `C`. Controls sit inward from the edges (safe-area + in-app browser chrome); the steer pad sits a bit closer to the right than the left cluster. Desktop keyboards stay as above — no overlay. `/room` lobby buttons are larger for fingers.
@@ -79,6 +81,7 @@ src/sim/      pure, DOM-free simulation (can run on a server as-is)
 src/client/   browser-only code
   renderer3d.ts  Three.js scene: orthographic isometric camera, lights/shadows, car meshes
   trackTexture.ts  paints the grass/asphalt/curb ground texture and the skid-mark layer
+  audio.ts    Web Audio synth: engines, squeal, rumble, one-shots; soundEvents.ts turns state changes into one-shots
   hud.ts      2D canvas overlay: lap times, standings, fastest-laps board, tyre wear, fuel, damage, countdown
   game.ts     fixed-timestep loop, input sampling, input log
 tests/        vitest tests for the simulation

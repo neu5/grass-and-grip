@@ -23,7 +23,9 @@ import {
   type GameState,
   type Track,
 } from '../sim';
+import type { SoundEngine } from './audio';
 import { checkpointDebugPose } from './checkpointDebug';
+import { soundEvents } from './soundEvents';
 import { drawHud, type Label } from './hud';
 import { paintTrackSurface, SkidMarks, splitBridgeDecks } from './trackTexture';
 
@@ -934,6 +936,14 @@ export class Renderer3D {
     Math.cos(ISO_AZIMUTH) * Math.cos(ISO_ELEVATION),
   );
   private camTarget = new THREE.Vector3();
+  /** Optional sound; the renderer feeds it states and the listening point. */
+  sound: SoundEngine | null = null;
+  private lastTick: GameState | null = null;
+
+  /** Where the player "hears" from: the camera's focus on the ground. */
+  private listener(): { x: number; y: number } {
+    return { x: this.camTarget.x, y: this.camTarget.z };
+  }
   private camHalfHeight = 400;
   private camInitialized = false;
   private track: Track;
@@ -1066,6 +1076,8 @@ export class Renderer3D {
   }
 
   resetRace() {
+    this.lastTick = null;
+    this.sound?.silence();
     const ctx = this.skids.canvas.getContext('2d')!;
     ctx.clearRect(0, 0, this.skids.canvas.width, this.skids.canvas.height);
     this.skidTexture.needsUpdate = true;
@@ -1135,6 +1147,12 @@ export class Renderer3D {
 
   /** Called once per simulated tick. */
   onTick(state: GameState) {
+    if (this.sound) {
+      if (this.lastTick && this.lastTick.trackId === state.trackId && state.tick > this.lastTick.tick) {
+        this.sound.play(soundEvents(this.lastTick, state), state, this.listener());
+      }
+      this.lastTick = state;
+    }
     this.skids.update(state);
     if (this.skids.dirty && state.tick - this.skidUploadTick >= 4) {
       this.skidTexture.needsUpdate = true;
@@ -1375,6 +1393,7 @@ export class Renderer3D {
     this.updateSmokePuffs(prev, curr, alpha, dt);
     this.updateCrew(curr, dt);
     this.updateCamera(positions, humanIds, w / Math.max(1, h), frameDt);
+    this.sound?.update(curr, this.track, this.listener(), true);
     this.gl.render(this.scene, this.camera);
 
     const toScreen = (v: THREE.Vector3) => {

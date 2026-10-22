@@ -5,6 +5,7 @@ import { BINDINGS_SOLO, Keyboard, mergeInputs, NO_PLAYER_INPUT } from './client/
 import { mountLapsPicker } from './client/lapsPicker';
 import { mountRulesFields, mountSetupFields } from './client/raceOptionsUi';
 import { drawNetDebug } from './client/netDebug';
+import { SoundEngine } from './client/audio';
 import { Renderer3D } from './client/renderer3d';
 import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
 import { SNAPSHOT_HZ, CAR_COLORS, CAR_KINDS, CAR_KIND_NAMES, CAR_MODES, CAR_MODE_NAMES, COLOR_NAMES, MAX_PLAYERS, TRACK_IDS, TRACK_NAMES, parseCarKind, parseCarMode, type CarKind, type ClientMessage, type CompactSnapshot, type LobbyState, type ServerMessage, type TrackId } from './net/protocol';
@@ -21,6 +22,9 @@ const canvas = $<HTMLCanvasElement>('#game');
 const hudCanvas = $<HTMLCanvasElement>('#hud');
 const renderer = new Renderer3D(canvas, hudCanvas, 'meadow');
 renderer.finishHint = 'Back to the room in a few seconds…';
+const sound = new SoundEngine();
+renderer.sound = sound;
+for (const ev of ['pointerdown', 'keydown'] as const) window.addEventListener(ev, () => sound.unlock(), { capture: true });
 const keyboard = new Keyboard(window);
 const mobile = detectMobile();
 applyTouchMenuHints(mobile);
@@ -126,7 +130,10 @@ function renderLobby() {
   const inRace = !!lobby && lobby.phase !== 'lobby';
   menu.hidden = inRace;
   touch?.setVisible(inRace);
-  if (!inRace) resetRaceNet();
+  if (!inRace) {
+    resetRaceNet();
+    sound.silence();
+  }
   joinForm.hidden = !lobby || !!me;
   lobbyEl.hidden = !lobby || !me;
   if (!lobby) return;
@@ -289,6 +296,7 @@ function frame(now: number) {
 
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyC' && menu.hidden) renderer.toggleCamera();
+  if (e.code === 'KeyM' && !(e.target instanceof HTMLInputElement)) sound.toggleMute();
   if (e.code === 'KeyU') renderer.toggleCheckpointDebug();
   if (e.code === 'F3') {
     e.preventDefault();

@@ -8,6 +8,7 @@ import { fastestLapsDemoOptions } from './client/fastestLapsDemo';
 import { loadFastestLaps } from './client/fastestStore';
 import { mapDemoOptions } from './client/mapDemo';
 import { pitDemoOptions } from './client/pitDemo';
+import { SoundEngine } from './client/audio';
 import { Renderer3D } from './client/renderer3d';
 import { mountLapsPicker } from './client/lapsPicker';
 import { mountRulesFields, mountSetupFields } from './client/raceOptionsUi';
@@ -17,6 +18,10 @@ import { MAX_PLAYERS, clampAiCount, clampLaps, parseCarKind, parseCarMode } from
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const hud = document.querySelector<HTMLCanvasElement>('#hud')!;
 const renderer = new Renderer3D(canvas, hud, 'meadow');
+const sound = new SoundEngine();
+renderer.sound = sound;
+// Audio may only start after a gesture.
+for (const ev of ['pointerdown', 'keydown'] as const) window.addEventListener(ev, () => sound.unlock(), { capture: true });
 const menu = document.querySelector<HTMLDivElement>('#menu')!;
 const form = document.querySelector<HTMLFormElement>('#menu-form')!;
 const keyboard = new Keyboard(window);
@@ -145,7 +150,9 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyR') game.reset();
   if (e.code === 'KeyC') renderer.toggleCamera();
   if (e.code === 'KeyU') renderer.toggleCheckpointDebug();
+  if (e.code === 'KeyM') sound.toggleMute();
   if (e.code === 'Escape') {
+    sound.silence();
     game.stop();
     game = null;
     touch?.setVisible(false);
