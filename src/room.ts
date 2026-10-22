@@ -76,7 +76,7 @@ const lapsPicker = mountLapsPicker($('#laps'), (laps) => {
 });
 joinForm.querySelector<HTMLInputElement>('input[name=car][value=rally]')!.checked = true;
 const mySetup = mountSetupFields($('#my-setup'), 'setup', (setup) => send({ t: 'setup', setup }));
-const roomRules = mountRulesFields($('#room-rules'), 'rule', (rules) => send({ t: 'settings', rules }));
+const roomRules = mountRulesFields($('#room-rules'), 'rule', (rules) => send({ t: 'settings', rules }), $('#room-ai-level'));
 
 function send(msg: ClientMessage) {
   if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));

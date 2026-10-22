@@ -54,17 +54,66 @@ export interface RulesFields {
   setDisabled(disabled: boolean): void;
 }
 
+/** AI level presets; any other value shows as Custom. */
+export const AI_PRESETS = [
+  { value: 40, label: 'Easy' },
+  { value: 70, label: 'Medium' },
+  { value: 90, label: 'Hard' },
+] as const;
+
+/** AI level row: Easy / Medium / Hard / Custom plus a 0–100% slider. */
+function mountAiLevel(container: HTMLElement, prefix: string, onInput: () => void) {
+  const fs = group(container, `${prefix}-ai`, 'AI level <i id="' + prefix + '-ai-pct"></i>', [
+    ...AI_PRESETS.map((p) => ({ value: String(p.value), label: p.label })),
+    { value: 'custom', label: 'Custom' },
+  ]);
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.min = '0';
+  slider.max = '100';
+  slider.step = '1';
+  slider.className = 'ai-slider';
+  slider.setAttribute('aria-label', 'AI level percent');
+  fs.append(slider);
+  const pct = fs.querySelector<HTMLElement>(`#${prefix}-ai-pct`)!;
+  const show = (level: number) => {
+    slider.value = String(level);
+    pct.textContent = `${level}%`;
+    const preset = AI_PRESETS.find((p) => p.value === level);
+    check(fs, `${prefix}-ai`, preset ? String(preset.value) : 'custom');
+  };
+  fs.addEventListener('change', (e) => {
+    const input = e.target as HTMLInputElement;
+    if (input.name === `${prefix}-ai` && input.value !== 'custom') show(Number(input.value));
+    onInput();
+  });
+  slider.addEventListener('input', () => show(Number(slider.value)));
+  return {
+    get: () => Number(slider.value),
+    set: show,
+    setDisabled: (d: boolean) => {
+      for (const input of fs.querySelectorAll<HTMLInputElement>('input')) input.disabled = d;
+    },
+  };
+}
+
 /**
- * Damage / tyre wear / fuel (off, normal, double) and car contact. AI level is
- * left to its own picker; `get()` keeps whatever level was last `set()`.
+ * Damage / tyre wear / fuel (off, normal, double) and car contact, plus the
+ * AI level picker, which goes in `aiContainer` when given (it is worth showing
+ * outside a folded options box).
  */
-export function mountRulesFields(container: HTMLElement, prefix: string, onChange?: (rules: RaceRules) => void): RulesFields {
+export function mountRulesFields(
+  container: HTMLElement,
+  prefix: string,
+  onChange?: (rules: RaceRules) => void,
+  aiContainer: HTMLElement = container,
+): RulesFields {
+  const ai = mountAiLevel(aiContainer, prefix, () => {});
   for (const [key, legend] of RATE_ROWS) group(container, `${prefix}-${key}`, legend, RATES);
   group(container, `${prefix}-collisions`, 'Car contact', [
     { value: 'on', label: 'On' },
     { value: 'off', label: 'Off' },
   ]);
-  let aiLevel = DEFAULT_RULES.aiLevel;
   const fields: RulesFields = {
     get() {
       return normalizeRules({
@@ -72,21 +121,25 @@ export function mountRulesFields(container: HTMLElement, prefix: string, onChang
         tyreWear: pick(container, `${prefix}-tyreWear`),
         fuel: pick(container, `${prefix}-fuel`),
         collisions: pick(container, `${prefix}-collisions`) !== 'off',
-        aiLevel,
+        aiLevel: ai.get(),
       });
     },
     set(rules) {
       const r = normalizeRules(rules);
       for (const [key] of RATE_ROWS) check(container, `${prefix}-${key}`, String(r[key]));
       check(container, `${prefix}-collisions`, r.collisions ? 'on' : 'off');
-      aiLevel = r.aiLevel;
+      ai.set(r.aiLevel);
     },
     setDisabled(disabled) {
       for (const input of container.querySelectorAll<HTMLInputElement>('input')) input.disabled = disabled;
+      ai.setDisabled(disabled);
     },
   };
   fields.set(DEFAULT_RULES);
-  container.addEventListener('change', () => onChange?.(fields.get()));
+  const changed = () => onChange?.(fields.get());
+  container.addEventListener('change', changed);
+  // The slider sends once on release, not on every step.
+  if (aiContainer !== container) aiContainer.addEventListener('change', changed);
   return fields;
 }
 

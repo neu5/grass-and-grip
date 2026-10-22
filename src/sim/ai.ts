@@ -1,14 +1,39 @@
-import { clamp, datan2, normalizeAngle } from './dmath';
-import { inPitLane, nearestSampleIndex, pitBoxIndex, type Track } from './track';
+import { clamp, datan2, dcos, dsin, normalizeAngle } from './dmath';
+import { carStats, tyreFactor, TYRE } from './physics';
+import { distanceToCenterline, inPitLane, nearestSampleIndex, pitBoxIndex, type Track } from './track';
 import { PIT } from './pits';
+import { missedGate, pastNextGate, racingLine, speedProfile, MISSED_GATE_DISTANCE } from './racingLine';
 import type { AiMemory, CarState, PlayerInput } from './types';
 
-/** Usable lateral acceleration the AI plans corners with (px/s^2). */
+/** Usable lateral acceleration for centerline driving in the pit approach (px/s^2). */
 const PLAN_LATERAL = 820;
-/** Deceleration the AI assumes when planning braking points (px/s^2). */
+/** Deceleration assumed for pit-approach braking points (px/s^2). */
 const PLAN_BRAKE = 650;
 const PLAN_SAMPLES = 45;
 const MAX_PLAN_SPEED = 600;
+
+/** How the 0..1 driving level shapes the AI. */
+export const AI_LEVEL = {
+  /** Share of the planned speed at level 0 and 1. */
+  paceMin: 0.8,
+  paceMax: 1.0,
+  /** Sideways wander off the line at level 0 (units). */
+  wobble: 16,
+  /** Chance per braking zone of braking late, at level 0. */
+  mistakeChance: 0.12,
+  /** Extra pace while braking late. */
+  mistakePace: 0.1,
+  mistakeTicks: 40,
+  /** Gap kept to a car when passing, at level 0 and 1. */
+  passGapMin: 8,
+  passGapMax: 18,
+};
+
+/** Race AI level (0..100) plus a small fixed spread per car, as 0..1. */
+export function aiSkill(level: number, carIndex: number): number {
+  const spread = (((carIndex * 7) % 5) - 2) * 0.015;
+  return clamp(level / 100 + spread, 0, 1);
+}
 
 /** When the AI peels off, and when it leaves the stall. Hysteresis so it does not pit every lap. */
 export const AI_PIT = {
@@ -25,7 +50,18 @@ export const AI_PIT = {
 };
 
 export function createAiMemory(laneOffset: number, skill: number): AiMemory {
-  return { laneOffset, skill, stuckTicks: 0, reverseTicks: 0, pitPhase: 'race', pitBox: -1 };
+  return {
+    laneOffset,
+    skill,
+    stuckTicks: 0,
+    reverseTicks: 0,
+    pitPhase: 'race',
+    pitBox: -1,
+    passOffset: 0,
+    recoverGate: -1,
+    recoverStage: 0,
+    mistakeTicks: 0,
+  };
 }
 
 export function aiNeedsPit(car: CarState): boolean {
@@ -153,8 +189,8 @@ function sit(): PlayerInput {
   return { throttle: 0, steer: 0, handbrake: true };
 }
 
-/** Follow the racing line at planned race speed. */
-function raceSteer(car: CarState, ai: AiMemory, track: Track, laneOffset: number): PlayerInput {
+/** Follow the centerline (plus an offset) at planned speed. Used around the pits. */
+function centerSteer(car: CarState, ai: AiMemory, track: Track, laneOffset: number): PlayerInput {
   const speed = Math.sqrt(car.vx * car.vx + car.vy * car.vy);
   const n = track.samples.length;
   const idx = nearestSampleIndex(track, car.x, car.y);
@@ -206,14 +242,207 @@ function raceSteer(car: CarState, ai: AiMemory, track: Track, laneOffset: number
  * Deterministic AI driver: produces a PlayerInput exactly like a human would.
  * `cars` is the current field so we can see which pit stalls are taken.
  */
-export function aiInput(car: CarState, track: Track, racing: boolean, cars: CarState[] = []): PlayerInput {
+export function aiInput(car: CarState, track: Track, racing: boolean, cars: CarState[] = [], tick = 0): PlayerInput {
   const ai = car.ai;
   if (!ai || !racing) return { throttle: 0, steer: 0, handbrake: false };
 
   const pitInput = pitSteer(car, ai, track, cars);
   if (pitInput) return pitInput;
 
-  return raceSteer(car, ai, track, ai.laneOffset);
+  return raceDrive(car, ai, track, cars, tick);
+}
+
+/** Cheap deterministic 0..1 hash of two integers. */
+function hash01(a: number, b: number): number {
+  let h = (Math.imul(a | 0, 73856093) ^ Math.imul(b | 0, 19349663)) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+  return (h % 10000) / 10000;
+}
+
+/** Back off and reverse out when the car has been stuck for a while. Returns an input while reversing. */
+function unstick(ai: AiMemory, speed: number, err: number): PlayerInput | null {
+  if (ai.reverseTicks > 0) {
+    ai.reverseTicks--;
+    // Lock picked once per escape: backing out with the wheels the other way
+    // points the nose toward the target. If that keeps failing (wedged against
+    // a wall), alternate with driving forward on the opposite lock.
+    const forward = (ai.stuckCount ?? 0) % 2 === 0;
+    const lock = ai.reverseSteer ?? 1;
+    return { throttle: forward ? 1 : -1, steer: forward ? -lock : lock, handbrake: false };
+  }
+  if (speed < 25) {
+    ai.stuckTicks++;
+    if (ai.stuckTicks > 60) {
+      ai.stuckTicks = 0;
+      ai.stuckCount = Math.min(6, (ai.stuckCount ?? 0) + 1);
+      ai.reverseTicks = 35 + ai.stuckCount * 10;
+      ai.reverseSteer = (err > 0 ? -1 : 1) * (ai.stuckCount > 2 && ai.stuckCount % 4 >= 2 ? -1 : 1);
+    }
+  } else if (speed > 80) {
+    ai.stuckTicks = 0;
+    ai.stuckCount = 0;
+  } else {
+    ai.stuckTicks = Math.max(0, ai.stuckTicks - 1);
+  }
+  return null;
+}
+
+/**
+ * Race driving: follow the precomputed racing line at the car's own speed
+ * profile, pass slower cars on the side with room, and go back for a
+ * checkpoint it drove past.
+ */
+function raceDrive(car: CarState, ai: AiMemory, track: Track, cars: CarState[], tick: number): PlayerInput {
+  const line = racingLine(track);
+  const n = line.points.length;
+  const speed = Math.hypot(car.vx, car.vy);
+  const idx = nearestSampleIndex(track, car.x, car.y);
+  const level = clamp(ai.skill, 0, 1);
+
+  // A checkpoint missed (pushed wide, cut, or round the gate end): go back for it.
+  if ((ai.recoverGate ?? -1) >= 0 && car.nextCheckpoint !== ai.recoverGate) ai.recoverGate = -1;
+  if (car.finishTick === null) {
+    if ((ai.recoverGate ?? -1) < 0 && missedGate(track, car, idx)) {
+      ai.recoverGate = car.nextCheckpoint;
+      ai.recoverStage = 0;
+    } else if (ai.recoverStage === 1 && pastNextGate(track, car, idx) > MISSED_GATE_DISTANCE * 2) {
+      ai.recoverStage = 0;
+    }
+  }
+  if ((ai.recoverGate ?? -1) >= 0 && ai.recoverStage === 0) {
+    const gate = line.gateIndex[ai.recoverGate!];
+    const back = line.points[(gate - 10 + n) % n];
+    const toBack = normalizeAngle(datan2(back.y - car.y, back.x - car.x) - car.angle);
+    const stuck = unstick(ai, speed, toBack);
+    if (stuck) return stuck;
+    if (Math.hypot(back.x - car.x, back.y - car.y) < 40) {
+      ai.recoverStage = 1;
+    } else {
+      return driveTo(car, back.x, back.y, 0.6, false);
+    }
+  }
+
+  // Aim point along the line, further out at speed.
+  const look = 34 + speed * 0.22;
+  let j = idx;
+  for (let d = 0; d < look; j = (j + 1) % n) d += track.segmentLengths[j];
+
+  // Off the road: just get back on; passing can wait.
+  const offRoad = distanceToCenterline(track, car.x, car.y) > track.def.halfWidth;
+  // Only pull out to pass where the line is not braking for a corner.
+  const profile = speedProfile(track, car);
+  const cornering = profile[(idx + 8) % n] < speed + 30;
+  const lane = offRoad ? { offset: 0, speedCap: Infinity } : passLane(car, track, cars, idx, level, cornering);
+  ai.passOffset = (ai.passOffset ?? 0) + (lane.offset - (ai.passOffset ?? 0)) * 0.08;
+  const wobble = (1 - level) * AI_LEVEL.wobble * dsin(line.arc[idx] / 170 + car.id * 1.7);
+  const edge = track.def.halfWidth - 12;
+  const want = clamp(line.offset[j] + ai.passOffset + wobble, -edge, edge);
+  const tx = track.samples[j].x + track.normals[j].x * want;
+  const ty = track.samples[j].y + track.normals[j].y * want;
+  const err = normalizeAngle(datan2(ty - car.y, tx - car.x) - car.angle);
+
+  const stuck = unstick(ai, speed, err);
+  if (stuck) return stuck;
+
+  // Counter-steer into a slide: steer toward where the car is actually going.
+  let slipAngle = 0;
+  if (speed > 40) {
+    const beta = normalizeAngle(datan2(car.vy, car.vx) - car.angle);
+    if (Math.abs(beta) < Math.PI / 2) slipAngle = beta;
+  }
+  const steer = clamp(err * 2.4 + slipAngle * 0.9, -1, 1);
+
+  // Target speed: own profile, a few samples ahead, slower on worn tyres.
+  const grip = tyreFactor(car.tyreWear ?? 0, TYRE.wornGrip);
+  let pace = AI_LEVEL.paceMin + (AI_LEVEL.paceMax - AI_LEVEL.paceMin) * level;
+  const ahead = (idx + 3) % n;
+  const planned = profile[ahead] * Math.sqrt(grip);
+  if ((ai.mistakeTicks ?? 0) > 0) {
+    ai.mistakeTicks!--;
+    pace += AI_LEVEL.mistakePace;
+  } else if (planned < speed - 40 && hash01(car.id + 1, Math.floor(tick / 45)) < AI_LEVEL.mistakeChance * (1 - level)) {
+    ai.mistakeTicks = AI_LEVEL.mistakeTicks;
+  }
+  const target = Math.min(planned * pace, lane.speedCap);
+
+  let throttle: number;
+  const diff = target - speed;
+  if (diff > 0) throttle = clamp(0.35 + diff / 30, 0, 1);
+  else if (diff > -18 || speed < 20) throttle = 0;
+  else throttle = -clamp(-diff / 70, 0.35, 1);
+  if (Math.abs(err) > 1.3 && speed > 120) throttle = -1;
+
+  // Light cars flick the handbrake into tight hairpins.
+  const kind = car.kind;
+  const hairpin = line.curvature[j] > 1 / 85;
+  const handbrake = kind !== 'f1' && kind !== 'truck' && hairpin && Math.abs(err) > 0.75 && speed > 90;
+  return { throttle, steer, handbrake };
+}
+
+/**
+ * Sideways shift off the racing line to get past a slower car ahead, and a
+ * speed cap when there is no room. Gives room to a car alongside.
+ */
+function passLane(
+  car: CarState,
+  track: Track,
+  cars: CarState[],
+  idx: number,
+  level: number,
+  cornering: boolean,
+): { offset: number; speedCap: number } {
+  const line = racingLine(track);
+  const ca = dcos(car.angle);
+  const sa = dsin(car.angle);
+  const speed = car.vx * ca + car.vy * sa;
+  const me = carStats(car);
+  const edge = track.def.halfWidth - 14;
+  const gap = AI_LEVEL.passGapMax - (AI_LEVEL.passGapMax - AI_LEVEL.passGapMin) * level;
+  let ahead: CarState | null = null;
+  let aheadAlong = Infinity;
+  let nudge = 0;
+  for (const o of cars) {
+    if (o.id === car.id) continue;
+    const dx = o.x - car.x;
+    const dy = o.y - car.y;
+    const along = dx * ca + dy * sa;
+    const side = -dx * sa + dy * ca;
+    const reach = me.radius + carStats(o).radius;
+    if (Math.abs(along) < reach + 6 && Math.abs(side) < reach + 14) {
+      // Alongside: lean away so neither gets squeezed off.
+      nudge += side > 0 ? -10 : 10;
+      continue;
+    }
+    if (along <= 0 || along > 150 + Math.max(0, speed) * 0.3 || Math.abs(side) > reach + 22) continue;
+    const otherAlong = o.vx * ca + o.vy * sa;
+    if (speed - otherAlong < -5) continue;
+    if (along < aheadAlong) {
+      aheadAlong = along;
+      ahead = o;
+    }
+  }
+  if (!ahead) return { offset: clamp(nudge, -edge, edge), speedCap: Infinity };
+
+  // Pass on whichever side of the car ahead has more road left.
+  const io = nearestSampleIndex(track, ahead.x, ahead.y);
+  const center = track.samples[io];
+  const nrm = track.normals[io];
+  const theirs = (ahead.x - center.x) * nrm.x + (ahead.y - center.y) * nrm.y;
+  const need = me.radius + carStats(ahead).radius + gap;
+  const roomPlus = edge - theirs;
+  const roomMinus = theirs + edge;
+  const otherAlong = ahead.vx * ca + ahead.vy * sa;
+  let lane: number | null = null;
+  if (roomPlus >= need && roomPlus >= roomMinus) lane = theirs + need;
+  else if (roomMinus >= need) lane = theirs - need;
+  else if (roomPlus >= need) lane = theirs + need;
+  const lineHere = line.offset[idx];
+  if (lane === null || cornering) {
+    // Boxed in: hang back behind it.
+    const cap = aheadAlong < 70 ? Math.max(0, otherAlong - 5) : Infinity;
+    return { offset: clamp(nudge, -edge, edge), speedCap: cap };
+  }
+  return { offset: clamp(lane - lineHere + nudge, -edge * 2, edge * 2), speedCap: Infinity };
 }
 
 function pitSteer(car: CarState, ai: AiMemory, track: Track, cars: CarState[]): PlayerInput | null {
@@ -241,7 +470,7 @@ function pitSteer(car: CarState, ai: AiMemory, track: Track, cars: CarState[]): 
       const hold = pitHoldPoint(track);
       return driveTo(car, hold.x, hold.y, 0.32, true);
     } else {
-      return raceSteer(car, ai, track, ai.laneOffset);
+      return centerSteer(car, ai, track, ai.laneOffset);
     }
   }
 
@@ -260,7 +489,7 @@ function pitSteer(car: CarState, ai: AiMemory, track: Track, cars: CarState[]): 
           const hold = pitHoldPoint(track);
           return driveTo(car, hold.x, hold.y, 0.32, true);
         }
-        return raceSteer(car, ai, track, ai.laneOffset);
+        return centerSteer(car, ai, track, ai.laneOffset);
       }
       ai.pitBox = alt;
     }
@@ -283,7 +512,7 @@ function pitSteer(car: CarState, ai: AiMemory, track: Track, cars: CarState[]): 
       return driveTo(car, c.x, c.y, 0.55, true);
     }
     const idx = nearestSampleIndex(track, car.x, car.y);
-    return raceSteer(car, ai, track, pitSideOffset(track, idx));
+    return centerSteer(car, ai, track, pitSideOffset(track, idx));
   }
 
   if (ai.pitPhase === 'box') {

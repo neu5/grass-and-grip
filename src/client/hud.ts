@@ -5,6 +5,8 @@ export interface Label {
   text: string;
   x: number;
   y: number;
+  /** Screen direction to a checkpoint this car drove past, if any. */
+  missed?: { dx: number; dy: number };
 }
 
 export function drawHud(
@@ -31,6 +33,7 @@ export function drawHud(
     ctx.strokeText(l.text, l.x, l.y);
     ctx.fillStyle = '#fff';
     ctx.fillText(l.text, l.x, l.y);
+    if (l.missed) drawMissedGate(ctx, l);
   }
   ctx.textAlign = 'left';
 
@@ -162,6 +165,35 @@ function drawFastestBoard(ctx: CanvasRenderingContext2D, state: GameState, x: nu
     ctx.fillText(ticksToTime(e.ticks), x + 236, rowY);
     ctx.textAlign = 'left';
   }
+}
+
+/** Pointer from the car label toward the checkpoint it skipped. */
+function drawMissedGate(ctx: CanvasRenderingContext2D, l: Label) {
+  const { dx, dy } = l.missed!;
+  const cx = l.x + dx * 46;
+  const cy = l.y - 20 + dy * 46;
+  const a = Math.atan2(dy, dx);
+  const blink = Math.floor(performance.now() / 300) % 2 === 0;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(a);
+  ctx.beginPath();
+  ctx.moveTo(16, 0);
+  ctx.lineTo(-10, -11);
+  ctx.lineTo(-4, 0);
+  ctx.lineTo(-10, 11);
+  ctx.closePath();
+  ctx.fillStyle = blink ? '#ffd54a' : '#ff6b4a';
+  ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.fill();
+  ctx.restore();
+  ctx.font = 'bold 13px system-ui, sans-serif';
+  ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+  ctx.strokeText('Missed checkpoint — go back', l.x, l.y + 64);
+  ctx.fillStyle = '#ffd54a';
+  ctx.fillText('Missed checkpoint — go back', l.x, l.y + 64);
 }
 
 function remainColor(left: number): string {

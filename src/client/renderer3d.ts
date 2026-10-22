@@ -9,6 +9,8 @@ import {
   slopeAttitude,
   terrainHeightAt,
   toCarKind,
+  missedGate,
+  nearestSampleIndex,
   bridgeSpan,
   BRIDGE_DECK_MARGIN,
   inWater,
@@ -1302,11 +1304,25 @@ export class Renderer3D {
     this.updateCamera(positions, humanIds, w / Math.max(1, h), frameDt);
     this.gl.render(this.scene, this.camera);
 
+    const toScreen = (v: THREE.Vector3) => {
+      const p = v.clone().project(this.camera);
+      return { x: ((p.x + 1) / 2) * w, y: ((1 - p.y) / 2) * h };
+    };
     const labels: Label[] = humanIds.map((id) => {
-      const p = positions[id].clone();
-      p.y += 34;
-      p.project(this.camera);
-      return { text: curr.cars[id].name, x: ((p.x + 1) / 2) * w, y: ((1 - p.y) / 2) * h };
+      const at = toScreen(positions[id].clone().setY(positions[id].y + 34));
+      const label: Label = { text: curr.cars[id].name, x: at.x, y: at.y };
+      const car = curr.cars[id];
+      if (curr.phase === 'racing' && car.finishTick === null) {
+        const idx = nearestSampleIndex(this.track, car.x, car.y);
+        if (missedGate(this.track, car, idx)) {
+          const gate = this.track.gates[car.nextCheckpoint];
+          const from = toScreen(positions[id]);
+          const to = toScreen(new THREE.Vector3(gate.center.x, terrainHeightAt(this.track, gate.center.x, gate.center.y), gate.center.y));
+          const len = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+          label.missed = { dx: (to.x - from.x) / len, dy: (to.y - from.y) / len };
+        }
+      }
+      return label;
     });
     this.hud.clearRect(0, 0, w, h);
     drawHud(

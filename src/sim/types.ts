@@ -118,7 +118,9 @@ export type Phase = 'countdown' | 'racing' | 'finished';
 export type AiPitPhase = 'race' | 'enter' | 'hold' | 'box' | 'exit';
 
 export interface AiMemory {
+  /** Lateral offset used while lining up for the pits (centerline driving). */
   laneOffset: number;
+  /** Driving level 0..1 (from the race's AI level plus a small per-car spread). */
   skill: number;
   stuckTicks: number;
   reverseTicks: number;
@@ -126,6 +128,18 @@ export interface AiMemory {
   pitPhase: AiPitPhase;
   /** Reserved stall index, or -1. */
   pitBox: number;
+  /** Current sideways shift off the racing line, for passing (smoothed). */
+  passOffset?: number;
+  /** Gate the car drove past without crossing, or -1. */
+  recoverGate?: number;
+  /** 0 = heading back before the gate, 1 = driving through it again. */
+  recoverStage?: number;
+  /** Ticks left of a late-braking mistake. */
+  mistakeTicks?: number;
+  /** Steering held while reversing out (-1 / 1), so the car turns one way. */
+  reverseSteer?: number;
+  /** Times stuck in a row; each reverse lasts longer. */
+  stuckCount?: number;
 }
 
 export interface CarState {

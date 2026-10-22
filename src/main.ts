@@ -41,7 +41,12 @@ function selected(name: string): string {
 
 const p1Setup = mountSetupFields(document.querySelector<HTMLElement>('#p1-setup')!, 'p1setup');
 const p2Setup = mountSetupFields(document.querySelector<HTMLElement>('#p2-setup')!, 'p2setup');
-const rules = mountRulesFields(document.querySelector<HTMLElement>('#rules')!, 'rule');
+const rules = mountRulesFields(
+  document.querySelector<HTMLElement>('#rules')!,
+  'rule',
+  undefined,
+  document.querySelector<HTMLElement>('#ai-level')!,
+);
 
 /** A one-make grid locks both pickers to that car. */
 function lockCarPicks(oneMake: string | null) {
