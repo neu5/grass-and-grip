@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CAR_COLORS, clampLaps, parseLaps } from '../src/net/protocol';
+import { CAR_COLORS, MAX_PLAYERS, clampAiCount, clampLaps, parseLaps } from '../src/net/protocol';
 import { COUNTDOWN_SECONDS, RESULTS_TICKS, Room } from '../src/net/room';
 import { TICK_RATE } from '../src/sim';
 
@@ -20,10 +20,11 @@ describe('room joining', () => {
     expect(room.join('b', 'B', YELLOW)).toBe('Already joined');
   });
 
-  it('caps the room at 4 players', () => {
-    const room = roomWith(RED, BLUE, YELLOW, GREEN);
+  it('caps the room at 8 players', () => {
+    const room = roomWith(...CAR_COLORS);
     expect(room.join('e', 'E', RED)).toBe('Room is full');
-    expect(room.players).toHaveLength(4);
+    expect(room.players).toHaveLength(8);
+    expect(CAR_COLORS).toHaveLength(MAX_PLAYERS);
   });
 
   it('trims names and falls back to a default', () => {
@@ -44,14 +45,26 @@ describe('room joining', () => {
 });
 
 describe('room settings', () => {
-  it('keeps humans + AI within 4 cars', () => {
+  it('keeps humans + AI within 8 cars', () => {
     const room = roomWith(RED);
-    expect(room.aiCount).toBe(3);
+    expect(room.aiCount).toBe(7);
     room.join('b', 'B', BLUE);
-    expect(room.aiCount).toBe(2);
-    expect(room.setSettings('p0', { aiCount: 3 })).toBe('Too many cars');
+    expect(room.aiCount).toBe(6);
+    expect(room.setSettings('p0', { aiCount: 7 })).toBe('Too many cars');
+    expect(room.setSettings('p0', { aiCount: 8 })).toBe('Too many cars');
     expect(room.setSettings('p0', { aiCount: 0 })).toBeNull();
     expect(room.aiCount).toBe(0);
+    expect(clampAiCount(1, 9)).toBe(7);
+    expect(clampAiCount(8, 1)).toBe(0);
+  });
+
+  it('fills remaining grid slots with uniquely colored AI up to 8', () => {
+    const room = roomWith(RED);
+    expect(room.setSettings('p0', { aiCount: 7 })).toBeNull();
+    room.setReady('p0', true);
+    expect(room.race!.cars).toHaveLength(8);
+    expect(room.race!.cars.filter((c) => c.controller === 'ai')).toHaveLength(7);
+    expect(new Set(room.race!.cars.map((c) => c.color)).size).toBe(8);
   });
 
   it('only lets the host change settings', () => {
@@ -132,9 +145,39 @@ describe('ready flow', () => {
     expect(room.join('p0', 'Ada', RED, 'f1')).toBeNull();
     room.setSettings('p0', { aiCount: 1 });
     room.setReady('p0', true);
+    expect(room.carMode).toBe('mixed');
+    expect(room.view().carMode).toBe('mixed');
     expect(room.race!.cars[0].kind).toBe('f1');
     expect(room.race!.cars[1].kind).toBe('rally');
     expect(room.race!.cars[1].controller).toBe('ai');
+  });
+
+  it('F1 mode spawns every car as F1 and ignores rally picks', () => {
+    const room = new Room('f1grid');
+    expect(room.join('p0', 'Ada', RED, 'rally')).toBeNull();
+    expect(room.join('p1', 'Bea', BLUE, 'rally')).toBeNull();
+    expect(room.setSettings('p0', { carMode: 'f1', aiCount: 2 })).toBeNull();
+    expect(room.view().carMode).toBe('f1');
+    room.setReady('p0', true);
+    room.setReady('p1', true);
+    expect(room.race!.cars.map((c) => c.kind)).toEqual(['f1', 'f1', 'f1', 'f1']);
+    expect(room.race!.cars.map((c) => c.controller)).toEqual(['human', 'human', 'ai', 'ai']);
+    expect(new Set(room.race!.cars.map((c) => c.color)).size).toBe(4);
+  });
+
+  it('only the host can set car mode, and mixed stays pick-your-car', () => {
+    const room = roomWith(RED, BLUE);
+    expect(room.setSettings('p1', { carMode: 'f1' })).toBe('Only the host can change settings');
+    expect(room.carMode).toBe('mixed');
+    expect(room.setSettings('p0', { carMode: 'truck' })).toBe('Unknown car mode');
+    expect(room.setSettings('p0', { carMode: 'f1' })).toBeNull();
+    expect(room.carMode).toBe('f1');
+    expect(room.setSettings('p0', { carMode: 'mixed', aiCount: 0 })).toBeNull();
+    room.players[0].car = 'rally';
+    room.players[1].car = 'f1';
+    room.setReady('p0', true);
+    room.setReady('p1', true);
+    expect(room.race!.cars.map((c) => c.kind)).toEqual(['rally', 'f1']);
   });
 
   it('builds the grid from humans plus AI in free colors', () => {

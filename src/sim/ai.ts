@@ -272,9 +272,12 @@ function pitSteer(car: CarState, ai: AiMemory, track: Track, cars: CarState[]): 
     }
     ai.reverseTicks = 0;
     const speed = Math.hypot(car.vx, car.vy);
-    if (pitBoxIndex(track, car.x, car.y) === ai.pitBox && speed < PIT.stopSpeed) {
-      ai.pitPhase = 'box';
-      return sit();
+    if (pitBoxIndex(track, car.x, car.y) === ai.pitBox) {
+      if (speed < PIT.stopSpeed) {
+        ai.pitPhase = 'box';
+        return sit();
+      }
+      return { throttle: -1, steer: 0, handbrake: true };
     }
     if (inPitLane(track, car.x, car.y)) {
       return driveTo(car, c.x, c.y, 0.55, true);

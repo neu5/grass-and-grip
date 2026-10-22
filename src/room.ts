@@ -4,7 +4,7 @@ import { mountLapsPicker } from './client/lapsPicker';
 import { drawNetDebug } from './client/netDebug';
 import { Renderer3D } from './client/renderer3d';
 import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
-import { SNAPSHOT_HZ, CAR_COLORS, CAR_KINDS, CAR_KIND_NAMES, COLOR_NAMES, MAX_PLAYERS, TRACK_IDS, TRACK_NAMES, type ClientMessage, type CompactSnapshot, type LobbyState, type ServerMessage, type TrackId } from './net/protocol';
+import { SNAPSHOT_HZ, CAR_COLORS, CAR_KINDS, CAR_KIND_NAMES, CAR_MODES, CAR_MODE_NAMES, COLOR_NAMES, MAX_PLAYERS, TRACK_IDS, TRACK_NAMES, type CarKind, type ClientMessage, type CompactSnapshot, type LobbyState, type ServerMessage, type TrackId } from './net/protocol';
 import { SnapshotBuffer, mergeOwn } from './net/interpolate';
 import { InputQueue, lerpCar, reconcile, replaceCar } from './net/prediction';
 import { decodeSnapshot } from './net/snapshot';
@@ -65,7 +65,8 @@ function radios(container: HTMLElement, name: string, values: readonly (string |
 }
 radios($('#colors'), 'color', CAR_COLORS, (c) => COLOR_NAMES[c], (c) => `background:${c}33;border-color:${c}`);
 radios($('#cars'), 'car', CAR_KINDS, (k) => CAR_KIND_NAMES[k as keyof typeof CAR_KIND_NAMES]);
-radios($('#ai'), 'ai', [0, 1, 2, 3], (v) => v);
+radios($('#ai'), 'ai', Array.from({ length: MAX_PLAYERS }, (_, i) => i), (v) => v);
+radios($('#carmode'), 'carmode', CAR_MODES, (v) => CAR_MODE_NAMES[v as keyof typeof CAR_MODE_NAMES] ?? v);
 radios($('#track'), 'track', TRACK_IDS, (v) => TRACK_NAMES[v as TrackId] ?? v);
 const lapsPicker = mountLapsPicker($('#laps'), (laps) => {
   if (laps !== lobby?.laps) send({ t: 'settings', laps });
@@ -125,6 +126,7 @@ function renderLobby() {
   if (!lobby) return;
 
   const taken = lobby.players.map((p) => p.color);
+  const f1Grid = lobby.carMode === 'f1';
   for (const input of joinForm.querySelectorAll<HTMLInputElement>('input[name=color]')) {
     input.disabled = taken.includes(input.value);
     if (input.disabled && input.checked) input.checked = false;
@@ -133,20 +135,29 @@ function renderLobby() {
     const free = joinForm.querySelector<HTMLInputElement>('input[name=color]:not(:disabled)');
     if (free) free.checked = true;
   }
+  for (const input of joinForm.querySelectorAll<HTMLInputElement>('input[name=car]')) {
+    input.disabled = f1Grid;
+    if (f1Grid && input.value === 'f1') input.checked = true;
+  }
   joinForm.querySelector<HTMLButtonElement>('button')!.disabled = lobby.players.length >= MAX_PLAYERS;
   if (!me) return;
 
+  const shownKind = (car: CarKind) => CAR_KIND_NAMES[f1Grid ? 'f1' : car] ?? 'Rally';
   $('#players').innerHTML = lobby.players
     .map(
       (p) => `<li><span class="swatch" style="background:${p.color}"></span><span class="grow">${escapeHtml(p.name)}${
         p.id === myId ? ' <span class="badge">(you)</span>' : ''
-      }${p.host ? ' <span class="badge">host</span>' : ''} <span class="badge">${CAR_KIND_NAMES[p.car] ?? 'Rally'}</span></span><span class="${p.ready ? 'ready' : 'badge'}">${p.ready ? 'READY' : 'not ready'}</span></li>`,
+      }${p.host ? ' <span class="badge">host</span>' : ''} <span class="badge">${shownKind(p.car)}</span></span><span class="${p.ready ? 'ready' : 'badge'}">${p.ready ? 'READY' : 'not ready'}</span></li>`,
     )
     .join('');
   const isHost = me.host;
   for (const input of lobbyEl.querySelectorAll<HTMLInputElement>('input[name=ai]')) {
     input.checked = Number(input.value) === lobby.aiCount;
     input.disabled = !isHost || Number(input.value) > MAX_PLAYERS - lobby.players.length;
+  }
+  for (const input of lobbyEl.querySelectorAll<HTMLInputElement>('input[name=carmode]')) {
+    input.checked = input.value === lobby.carMode;
+    input.disabled = !isHost;
   }
   lapsPicker.setValue(lobby.laps);
   lapsPicker.setDisabled(!isHost);
@@ -157,7 +168,7 @@ function renderLobby() {
   const waiting = lobby.players.filter((p) => !p.ready).length;
   $('#status').textContent = `${lobby.players.length} human${lobby.players.length > 1 ? 's' : ''} + ${lobby.aiCount} AI. ${
     waiting ? `Waiting for ${waiting} driver${waiting > 1 ? 's' : ''} to get ready.` : ''
-  }${isHost ? '' : ' The host picks AI, laps and track.'}`;
+  }${isHost ? '' : ' The host picks AI, laps, track and mode.'}`;
   readyBtn.textContent = me.ready ? 'Ready! (click to cancel)' : 'Ready';
   readyBtn.classList.toggle('on', me.ready);
 }
@@ -169,7 +180,10 @@ function escapeHtml(s: string) {
 joinForm.addEventListener('submit', (e) => {
   e.preventDefault();
   const color = joinForm.querySelector<HTMLInputElement>('input[name=color]:checked')?.value ?? '';
-  const car = joinForm.querySelector<HTMLInputElement>('input[name=car]:checked')?.value === 'f1' ? 'f1' : 'rally';
+  const car =
+    lobby?.carMode === 'f1' || joinForm.querySelector<HTMLInputElement>('input[name=car]:checked')?.value === 'f1'
+      ? 'f1'
+      : 'rally';
   localStorage.setItem('gg-name', nameInput.value.trim());
   send({ t: 'join', name: nameInput.value, color, car });
 });
@@ -181,6 +195,7 @@ lobbyEl.addEventListener('change', (e) => {
   const input = e.target as HTMLInputElement;
   if (input.name === 'ai') send({ t: 'settings', aiCount: Number(input.value) });
   if (input.name === 'track') send({ t: 'settings', trackId: input.value });
+  if (input.name === 'carmode') send({ t: 'settings', carMode: input.value === 'f1' ? 'f1' : 'mixed' });
 });
 
 function myCarId(): number | undefined {

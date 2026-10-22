@@ -1,17 +1,50 @@
-import type { CarKind, Phase, PlayerInput } from '../sim';
+import type { CarKind, CarMode, Phase, PlayerInput } from '../sim';
 
 export type { CarKind };
-export { CAR_KINDS, CAR_KIND_NAMES, TRACK_IDS, TRACK_NAMES, isTrackId } from '../sim';
-export type { TrackId } from '../sim';
+export {
+  CAR_KINDS,
+  CAR_KIND_NAMES,
+  CAR_MODES,
+  CAR_MODE_NAMES,
+  DEFAULT_CAR_MODE,
+  TRACK_IDS,
+  TRACK_NAMES,
+  isTrackId,
+  parseCarMode,
+} from '../sim';
+export type { CarMode, TrackId } from '../sim';
 
-export const MAX_PLAYERS = 4;
-export const CAR_COLORS = ['#e8443a', '#3a8ee8', '#f2c230', '#3fbf5f'] as const;
+/** Humans + AI in one race. Humans 1–8; AI fills the rest. */
+export const MAX_PLAYERS = 8;
+export const CAR_COLORS = [
+  '#e8443a',
+  '#3a8ee8',
+  '#f2c230',
+  '#3fbf5f',
+  '#9b59d0',
+  '#f0f0f0',
+  '#e67e22',
+  '#1abc9c',
+] as const;
 export const COLOR_NAMES: Record<string, string> = {
   '#e8443a': 'Red',
   '#3a8ee8': 'Blue',
   '#f2c230': 'Yellow',
   '#3fbf5f': 'Green',
+  '#9b59d0': 'Purple',
+  '#f0f0f0': 'White',
+  '#e67e22': 'Orange',
+  '#1abc9c': 'Teal',
 };
+export const AI_NAMES = ['Rosa', 'Viktor', 'Kenji', 'Mina', 'Luca', 'Asha', 'Omar'] as const;
+
+/** AI slots left after `humanCount` humans, clamped to the 8-car field. */
+export function clampAiCount(humanCount: number, aiCount: number): number {
+  const humans = Math.max(0, Math.min(MAX_PLAYERS, Math.floor(Number(humanCount)) || 0));
+  const n = Math.floor(Number(aiCount));
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(n, MAX_PLAYERS - humans);
+}
 export const MIN_LAPS = 1;
 export const MAX_LAPS = 99;
 export const DEFAULT_LAPS = 3;
@@ -52,6 +85,8 @@ export interface LobbyState {
   aiCount: number;
   laps: number;
   trackId: string;
+  /** Host-set. Default mixed (pick your car). F1 forces every spawned car. */
+  carMode: CarMode;
   /** car id per player id in the current race */
   cars: Record<string, number>;
 }
@@ -59,7 +94,7 @@ export interface LobbyState {
 export type ClientMessage =
   | { t: 'join'; name: string; color: string; car?: CarKind }
   | { t: 'ready'; ready: boolean }
-  | { t: 'settings'; aiCount?: number; laps?: number; trackId?: string }
+  | { t: 'settings'; aiCount?: number; laps?: number; trackId?: string; carMode?: CarMode }
   | { t: 'input'; seq: number; tick: number; input: PlayerInput }
   | { t: 'ping'; t0: number };
 

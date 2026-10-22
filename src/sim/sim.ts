@@ -7,29 +7,95 @@ import type { CarState, GameState, PlayerInput, RaceConfig, TickInputs } from '.
 export const TICK_RATE = 60;
 export const DT = 1 / TICK_RATE;
 
-const GRID_SAMPLE_SPACING = 3;
-const GRID_LANE_OFFSET = 22;
+/** 2-wide staggered grid. World units, not sample counts — Harbor samples are denser. */
+export const GRID_SLOTS = 8;
+const GRID_ROW_GAP = 62;
+const GRID_STAGGER = 20;
+const GRID_LANE = 28;
+/** Pole sits behind S/F (negative = against race direction). Nose stays short of the line. */
+const GRID_POLE_ALONG = -28;
+
+type GridPose = { x: number; y: number; angle: number };
+
+/** Slot 0 = pole (front, pit-side). Even slots left of the line, odd slots right and slightly back. */
+export function gridSlotPose(track: Track, slot: number): GridPose {
+  const along = GRID_POLE_ALONG - Math.floor(slot / 2) * GRID_ROW_GAP - (slot % 2) * GRID_STAGGER;
+  const pose = pointAlongTrack(track, along);
+  const lane = slot % 2 === 0 ? -GRID_LANE : GRID_LANE;
+  return {
+    x: pose.x + pose.nx * lane,
+    y: pose.y + pose.ny * lane,
+    angle: pose.angle,
+  };
+}
+
+/** Positive distance = race direction from samples[0] (the S/F line). */
+function pointAlongTrack(
+  track: Track,
+  distance: number,
+): { x: number; y: number; angle: number; nx: number; ny: number } {
+  const n = track.samples.length;
+  const lens = track.segmentLengths;
+  let left = distance;
+  let i = 0;
+  if (left >= 0) {
+    for (let step = 0; step < n; step++) {
+      const len = lens[i];
+      if (left <= len) {
+        const t = len > 0 ? left / len : 0;
+        const a = track.samples[i];
+        const b = track.samples[(i + 1) % n];
+        return {
+          x: a.x + (b.x - a.x) * t,
+          y: a.y + (b.y - a.y) * t,
+          angle: track.tangentAngles[i],
+          nx: track.normals[i].x,
+          ny: track.normals[i].y,
+        };
+      }
+      left -= len;
+      i = (i + 1) % n;
+    }
+  } else {
+    left = -left;
+    for (let step = 0; step < n; step++) {
+      const prev = (i - 1 + n) % n;
+      const len = lens[prev];
+      if (left <= len) {
+        const t = len > 0 ? left / len : 0;
+        const a = track.samples[i];
+        const b = track.samples[prev];
+        return {
+          x: a.x + (b.x - a.x) * t,
+          y: a.y + (b.y - a.y) * t,
+          angle: track.tangentAngles[prev],
+          nx: track.normals[prev].x,
+          ny: track.normals[prev].y,
+        };
+      }
+      left -= len;
+      i = prev;
+    }
+  }
+  const p = track.samples[0];
+  return { x: p.x, y: p.y, angle: track.tangentAngles[0], nx: track.normals[0].x, ny: track.normals[0].y };
+}
 
 export function createRace(config: RaceConfig): GameState {
   const track = getTrack(config.trackId);
-  const n = track.samples.length;
   const cars: CarState[] = config.cars.map((c, i) => {
-    const row = Math.floor(i / 2);
-    const idx = (n - 2 - row * GRID_SAMPLE_SPACING) % n;
-    const p = track.samples[idx];
-    const nrm = track.normals[idx];
-    const lane = i % 2 === 0 ? -GRID_LANE_OFFSET : GRID_LANE_OFFSET;
+    const pose = gridSlotPose(track, i);
     return {
       id: i,
       name: c.name,
       color: c.color,
       kind: c.kind === 'f1' ? 'f1' : 'rally',
       controller: c.controller,
-      x: p.x + nrm.x * lane,
-      y: p.y + nrm.y * lane,
+      x: pose.x,
+      y: pose.y,
       vx: 0,
       vy: 0,
-      angle: track.tangentAngles[idx],
+      angle: pose.angle,
       slip: 0,
       tyreWear: 0,
       fuel: 1,

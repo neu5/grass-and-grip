@@ -7,6 +7,36 @@ export type Surface = 'asphalt' | 'grass' | 'sand' | 'water';
 export const TRACK_IDS = ['meadow', 'harbor'] as const;
 export type TrackId = (typeof TRACK_IDS)[number];
 
+/** Marked stalls on tracks that have a pit lane. */
+export const PIT_STALLS = 4;
+const PIT_BOX_W = 90;
+const PIT_BOX_H = 54;
+const PIT_BOX_GAP = 12;
+const PIT_BOX_Y = 32;
+const PIT_LANE_PAD = 20;
+
+function pitComplex(firstBoxX: number): { pitLane: Rect; pitBoxes: Rect[] } {
+  const pitBoxes: Rect[] = [];
+  for (let i = 0; i < PIT_STALLS; i++) {
+    pitBoxes.push({
+      x: firstBoxX + i * (PIT_BOX_W + PIT_BOX_GAP),
+      y: PIT_BOX_Y,
+      w: PIT_BOX_W,
+      h: PIT_BOX_H,
+    });
+  }
+  const last = pitBoxes[PIT_STALLS - 1];
+  return {
+    pitLane: {
+      x: firstBoxX - PIT_LANE_PAD,
+      y: 12,
+      w: last.x + last.w + PIT_LANE_PAD - (firstBoxX - PIT_LANE_PAD),
+      h: 180,
+    },
+    pitBoxes,
+  };
+}
+
 export const TRACK_NAMES: Record<TrackId, string> = {
   meadow: 'Meadow Ring',
   harbor: 'Harbor Bridge',
@@ -454,7 +484,7 @@ export const TRACKS: Record<string, TrackDef> = {
     height: 1050,
     halfWidth: 58,
     checkpointCount: 8,
-    // Shifted south a bit vs the original layout so two pit stalls fit
+    // Shifted south a bit vs the original layout so four pit stalls fit
     // off the racing line, outside the start/finish straight.
     controlPoints: [
       { x: 420, y: 220 },
@@ -494,11 +524,7 @@ export const TRACKS: Record<string, TrackDef> = {
       { x: 970, y: 390, r: 16, kind: 'tree' },
     ],
     // After the S/F line (x≈420), outside the racing line (smaller y).
-    pitLane: { x: 450, y: 12, w: 290, h: 180 },
-    pitBoxes: [
-      { x: 500, y: 32, w: 90, h: 54 },
-      { x: 612, y: 32, w: 90, h: 54 },
-    ],
+    ...pitComplex(500),
   },
   harbor: {
     id: 'harbor',
@@ -552,14 +578,10 @@ export const TRACKS: Record<string, TrackDef> = {
       { x: 430, y: 340, r: 15, kind: 'tree' },
       { x: 980, y: 980, r: 17, kind: 'tree' },
       { x: 250, y: 980, r: 14, kind: 'tree' },
-      { x: 700, y: 140, r: 16, kind: 'tree' },
+      { x: 1240, y: 115, r: 16, kind: 'tree' },
       { x: 1550, y: 780, r: 15, kind: 'tree' },
     ],
-    pitLane: { x: 430, y: 12, w: 290, h: 180 },
-    pitBoxes: [
-      { x: 480, y: 32, w: 90, h: 54 },
-      { x: 592, y: 32, w: 90, h: 54 },
-    ],
+    ...pitComplex(480),
   },
 };
 

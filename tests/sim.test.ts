@@ -375,14 +375,21 @@ describe('pit stops', () => {
     car.tyreWear = tyreWear;
   }
 
-  it('has two marked pit boxes off the racing line but on asphalt', () => {
-    expect(track.def.pitBoxes).toHaveLength(2);
-    for (const b of track.def.pitBoxes) {
-      const cx = b.x + b.w / 2;
-      const cy = b.y + b.h / 2;
-      expect(distanceToCenterline(track, cx, cy)).toBeGreaterThan(track.def.halfWidth);
-      expect(surfaceAt(track, cx, cy)).toBe('asphalt');
-      expect(pitBoxIndex(track, cx, cy)).toBeGreaterThanOrEqual(0);
+  it('has four marked pit boxes off the racing line but on asphalt', () => {
+    for (const id of ['meadow', 'harbor'] as const) {
+      const t = getTrack(id);
+      expect(t.def.pitBoxes).toHaveLength(4);
+      const seen = new Set<number>();
+      for (const b of t.def.pitBoxes) {
+        const cx = b.x + b.w / 2;
+        const cy = b.y + b.h / 2;
+        expect(distanceToCenterline(t, cx, cy)).toBeGreaterThan(t.def.halfWidth);
+        expect(surfaceAt(t, cx, cy)).toBe('asphalt');
+        const idx = pitBoxIndex(t, cx, cy);
+        expect(idx).toBeGreaterThanOrEqual(0);
+        seen.add(idx);
+      }
+      expect(seen.size).toBe(4);
     }
     expect(surfaceAt(track, 30, 30)).toBe('grass');
   });
@@ -743,7 +750,7 @@ describe('AI pit stops', () => {
     expect(pitBoxIndex(track, s.cars[0].x, s.cars[0].y)).toBeGreaterThanOrEqual(0);
   });
 
-  it('skips the pits when both boxes are busy instead of blocking the racing line', () => {
+  it('takes a later stall when the first three are busy', () => {
     const track = getTrack('meadow');
     let s = createRace({
       trackId: 'meadow',
@@ -752,6 +759,40 @@ describe('AI pit stops', () => {
         { name: 'AI', color: '#36f', controller: 'ai', kind: 'f1' },
         { name: 'Park 1', color: '#e33', controller: 'human' },
         { name: 'Park 2', color: '#3a8', controller: 'human' },
+        { name: 'Park 3', color: '#fc3', controller: 'human' },
+      ],
+      countdownSeconds: 0,
+    });
+    s.phase = 'racing';
+    s.startTick = 0;
+    placeApproach(s);
+    s.cars[0].fuel = 0.05;
+    s.cars[0].tyreWear = 0.92;
+    s.cars[0].damage = 0.8;
+    for (let i = 0; i < 3; i++) {
+      const b = track.def.pitBoxes[i];
+      const car = s.cars[i + 1];
+      car.x = b.x + b.w / 2;
+      car.y = b.y + b.h / 2;
+      car.vx = 0;
+      car.vy = 0;
+      car.angle = 0;
+    }
+    s = runUntil(s, 60 * 14, (st) => isStoppedInPit(track, st.cars[0]));
+    expect(pitBoxIndex(track, s.cars[0].x, s.cars[0].y)).toBe(3);
+  });
+
+  it('skips the pits when every stall is busy instead of blocking the racing line', () => {
+    const track = getTrack('meadow');
+    let s = createRace({
+      trackId: 'meadow',
+      totalLaps: 5,
+      cars: [
+        { name: 'AI', color: '#36f', controller: 'ai', kind: 'f1' },
+        { name: 'Park 1', color: '#e33', controller: 'human' },
+        { name: 'Park 2', color: '#3a8', controller: 'human' },
+        { name: 'Park 3', color: '#fc3', controller: 'human' },
+        { name: 'Park 4', color: '#3f6', controller: 'human' },
       ],
       countdownSeconds: 0,
     });
@@ -771,7 +812,7 @@ describe('AI pit stops', () => {
     });
     const racingY = track.samples[0].y;
     let stoppedOnLine = 0;
-    for (let i = 0; i < 60 * 8; i++) {
+    for (let i = 0; i < 60 * 12; i++) {
       s = step(s, {});
       const ai = s.cars[0];
       const speed = Math.hypot(ai.vx, ai.vy);
@@ -779,7 +820,8 @@ describe('AI pit stops', () => {
       if (onLine && speed < 12 && i > 90) stoppedOnLine++;
     }
     expect(pitBoxIndex(track, s.cars[0].x, s.cars[0].y)).toBe(-1);
-    expect(s.cars[0].x).toBeGreaterThan(track.def.pitLane.x + track.def.pitLane.w - 40);
+    const lastBox = track.def.pitBoxes[track.def.pitBoxes.length - 1];
+    expect(s.cars[0].x).toBeGreaterThan(lastBox.x + lastBox.w - 80);
     expect(stoppedOnLine).toBeLessThan(45);
   });
 
