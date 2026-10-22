@@ -65,7 +65,7 @@ export function racingLine(track: Track): RacingLine {
   const arc = [0];
   for (let i = 1; i < n; i++) arc.push(arc[i - 1] + track.segmentLengths[i - 1]);
   const length = arc[n - 1] + track.segmentLengths[n - 1];
-  const gateIndex = track.gates.map((_, g) => Math.floor((g * n) / track.gates.length));
+  const gateIndex = track.gates.map((g) => g.index);
   const line = { offset, points, curvature, arc, length, gateIndex };
   lines.set(track, line);
   return line;

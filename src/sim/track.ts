@@ -158,6 +158,8 @@ export interface Gate {
   /** Unit tangent: direction of travel through the gate. */
   tx: number;
   ty: number;
+  /** Centerline sample the gate stands on. */
+  index: number;
 }
 
 export interface HeightGrid {
@@ -264,17 +266,19 @@ export function buildTrack(def: TrackDef, opts: { grid?: boolean } = {}): Track 
     curvature.push((turn < 0 ? -turn : turn) / arc);
   }
   const gates: Gate[] = [];
-  const gateHalf = def.halfWidth + 30;
   for (let g = 0; g < def.checkpointCount; g++) {
-    const idx = Math.floor((g * m) / def.checkpointCount);
+    const idx = gateSample(g, def.checkpointCount, curvature);
     const c = samples[idx];
     const nrm = normals[idx];
+    const reachA = gateReach(def, samples, segmentLengths, idx, -1);
+    const reachB = gateReach(def, samples, segmentLengths, idx, 1);
     gates.push({
-      a: { x: c.x - nrm.x * gateHalf, y: c.y - nrm.y * gateHalf },
-      b: { x: c.x + nrm.x * gateHalf, y: c.y + nrm.y * gateHalf },
+      a: { x: c.x - nrm.x * reachA, y: c.y - nrm.y * reachA },
+      b: { x: c.x + nrm.x * reachB, y: c.y + nrm.y * reachB },
       center: { x: c.x, y: c.y },
       tx: nrm.y,
       ty: -nrm.x,
+      index: idx,
     });
   }
   const heightGrid = def.terrain && opts.grid !== false ? buildHeightGrid(def, samples, sampleHeights, rivers) : null;
@@ -330,6 +334,75 @@ function patchAt(track: Track, x: number, y: number, overRoad: boolean): Surface
     if (pointInPolygon(x, y, p.points)) return p.surface;
   }
   return null;
+}
+
+/** How far a gate reaches past the road edge, so a car running a bit wide still counts. */
+const GATE_SPILL = 30;
+/** A gate stops this far short of any other stretch of road. */
+const GATE_CLEARANCE = 12;
+
+/**
+ * Sample for gate `g`: spread evenly round the lap, but nudged to the
+ * straightest spot nearby so no gate sits on a hairpin apex. Gate 0 (the
+ * finish line) stays at sample 0.
+ */
+function gateSample(g: number, count: number, curvature: number[]): number {
+  const m = curvature.length;
+  const ideal = Math.floor((g * m) / count);
+  if (g === 0) return 0;
+  const window = Math.floor(m / count / 3);
+  let best = ideal;
+  let bestScore = Infinity;
+  for (let k = -window; k <= window; k++) {
+    const i = (ideal + k + m) % m;
+    // Mostly how bent the road is; a little for drifting off the even spacing.
+    const score = curvature[i] + Math.abs(k) * 0.00002;
+    if (score < bestScore) {
+      bestScore = score;
+      best = i;
+    }
+  }
+  return best;
+}
+
+/**
+ * Half-length of a gate on one side (`side` = -1 or 1 along the normal):
+ * past the road edge by GATE_SPILL, but cut short before it reaches another
+ * part of the road (the other side of a hairpin, a parallel straight).
+ */
+function gateReach(def: TrackDef, samples: Vec2[], seg: number[], idx: number, side: number): number {
+  const m = samples.length;
+  const c = samples[idx];
+  const n = samples[(idx + 1) % m];
+  const p = samples[(idx - 1 + m) % m];
+  const dx = n.x - p.x;
+  const dy = n.y - p.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = (-dy / len) * side;
+  const ny = (dx / len) * side;
+  // Samples close along the road belong to this stretch; the rest are "other road".
+  const near = new Uint8Array(m);
+  const span = def.halfWidth * 4;
+  for (const dir of [1, -1]) {
+    let d = 0;
+    for (let k = 0; k < m && d <= span; k++) {
+      const i = (idx + dir * k + m * 2) % m;
+      near[i] = 1;
+      d += seg[dir > 0 ? i : (i - 1 + m) % m];
+    }
+  }
+  const min = def.halfWidth + 4;
+  for (let r = def.halfWidth + GATE_SPILL; r > min; r -= 2) {
+    const x = c.x + nx * r;
+    const y = c.y + ny * r;
+    let clear = true;
+    for (let i = 0; i < m && clear; i++) {
+      if (near[i] || near[(i + 1) % m]) continue;
+      if (distToSegmentSq(x, y, samples[i], samples[(i + 1) % m]) < (def.halfWidth + GATE_CLEARANCE) ** 2) clear = false;
+    }
+    if (clear) return r;
+  }
+  return min;
 }
 
 function buildRiverLine(r: River): RiverLine {

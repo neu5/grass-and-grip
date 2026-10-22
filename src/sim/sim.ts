@@ -182,15 +182,13 @@ export function step(prev: GameState, inputs: TickInputs): GameState {
   const canDrive = state.phase !== 'countdown';
   const rules = state.rules ?? DEFAULT_RULES;
 
+  // Where each car started this tick: gates are checked against the whole
+  // move, including any shove from a collision below.
+  const start = state.cars.map((c) => ({ x: c.x, y: c.y }));
   for (const car of state.cars) {
     const input = car.controller === 'ai' ? aiInput(car, track, canDrive, state.cars, state.tick) : canDrive ? sanitize(inputs[car.id]) : NO_INPUT;
-    const px = car.x;
-    const py = car.y;
     stepCarPhysics(car, input, surfaceAt(track, car.x, car.y), DT, rules);
-    if (canDrive) {
-      applyPitService(car, track, DT);
-      updateCheckpoints(state, car, track, px, py);
-    }
+    if (canDrive) applyPitService(car, track, DT);
   }
 
   const cars = state.cars;
@@ -207,6 +205,7 @@ export function step(prev: GameState, inputs: TickInputs): GameState {
     collideBounds(car, track.def.width, track.def.height, rules);
   }
   stepProps(state, track, heights);
+  if (canDrive) cars.forEach((car, i) => updateCheckpoints(state, car, track, start[i].x, start[i].y));
 
   if (state.phase === 'racing') {
     const humans = cars.filter((c) => c.controller === 'human');
@@ -234,12 +233,10 @@ export function stepOwnCar(prev: GameState, carId: number, input: PlayerInput): 
   const px = car.x;
   const py = car.y;
   stepCarPhysics(car, use, surfaceAt(track, car.x, car.y), DT, rules);
-  if (canDrive) {
-    applyPitService(car, track, DT);
-    updateCheckpoints(state, car, track, px, py);
-  }
+  if (canDrive) applyPitService(car, track, DT);
   collideObstacles(car, heightAt(track, car.x, car.y), track, rules);
   collideBounds(car, track.def.width, track.def.height, rules);
+  if (canDrive) updateCheckpoints(state, car, track, px, py);
   return state;
 }
 
