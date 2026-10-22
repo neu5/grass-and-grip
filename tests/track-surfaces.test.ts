@@ -12,6 +12,7 @@ import {
   inBridge,
   slopeAttitude,
   step,
+  terrainHeightAt,
   surfaceAt,
   TRACKS,
   type GameState,
@@ -115,6 +116,33 @@ describe('harbor layout', () => {
       }
     }
     expect(maxDh).toBeLessThan(1.0);
+  });
+
+  it('has no cliffs or creases in the terrain around lakes and the bridge', () => {
+    let steepest = 0;
+    let crease = 0;
+    for (let y = 8; y < track.def.height - 8; y += 8) {
+      for (let x = 8; x < track.def.width - 8; x += 8) {
+        if (inBridge(track, x, y)) continue;
+        const h = terrainHeightAt(track, x, y);
+        const e = terrainHeightAt(track, x + 4, y);
+        const w = terrainHeightAt(track, x - 4, y);
+        const s = terrainHeightAt(track, x, y + 4);
+        const n = terrainHeightAt(track, x, y - 4);
+        steepest = Math.max(steepest, Math.hypot(e - w, s - n) / 8);
+        crease = Math.max(crease, Math.abs(e + w + s + n - 4 * h) / 16);
+      }
+    }
+    expect(steepest).toBeLessThan(1.5);
+    expect(crease).toBeLessThan(0.5);
+  });
+
+  it('holds the deck flat and level with the road', () => {
+    const b = TRACKS.harbor.bridges![0];
+    for (let i = 0; i < track.samples.length; i++) {
+      const p = track.samples[i];
+      if (inBridge(track, p.x, p.y)) expect(track.sampleHeights[i]).toBeCloseTo(b.height, 5);
+    }
   });
 
   it('keeps car pitch continuous along the ramp', () => {

@@ -40,17 +40,11 @@ function chaseSample(car: CarState, track: Track, targetIdx: number, look: numbe
 /** Auto-drive Harbor Bridge for `?demo=map`: overview, bridge, water crawl, sand. */
 export function mapDemoOptions(renderer: Renderer3D): GameOptions {
   const track = getTrack('harbor');
-  let bridgeIdx = 0;
-  let bestH = -Infinity;
-  track.samples.forEach((p, i) => {
-    const h = heightAt(track, p.x, p.y);
-    if (h > bestH) {
-      bestH = h;
-      bridgeIdx = i;
-    }
-  });
+  const deck = track.def.bridges![0];
+  const bridgeIdx = nearestSampleIndex(track, deck.x + deck.w / 2, deck.y + deck.h / 2);
   const approachIdx = Math.max(0, bridgeIdx - Math.floor(track.samples.length * 0.2));
-  const water = { x: 1340, y: 680 };
+  // The channel just west of the deck.
+  const water = { x: 1300, y: 560 };
   const sand = { x: 1200, y: 740 };
   type Phase = 'show' | 'toBridge' | 'onBridge' | 'toWater' | 'inWater' | 'toSand';
   let phase: Phase = 'show';

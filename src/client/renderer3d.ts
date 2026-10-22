@@ -26,6 +26,7 @@ const ISO_ELEVATION = Math.atan(1 / Math.SQRT2);
 const CAMERA_DISTANCE = 3000;
 const FOLLOW_MIN_EXTENT = 620;
 const SURFACE_RES = 2;
+const CAR_FALL_GRAVITY = 900;
 
 function lerpAngle(a: number, b: number, t: number): number {
   let d = b - a;
@@ -642,6 +643,9 @@ export class Renderer3D {
   private carKeys: string[] = [];
   private carPitch: number[] = [];
   private carRoll: number[] = [];
+  /** Shown car height and fall speed, so drops off the deck are not a snap. */
+  private carY: number[] = [];
+  private carVy: number[] = [];
   private crew: CrewActor[] = [];
   private hud: CanvasRenderingContext2D;
   private lastFrame = performance.now();
@@ -751,6 +755,8 @@ export class Renderer3D {
     this.puffWait = [];
     this.carPitch = this.carPitch.map(() => 0);
     this.carRoll = this.carRoll.map(() => 0);
+    this.carY = [];
+    this.carVy = [];
     for (const p of this.smokePuffs) {
       p.age = p.life;
       p.mesh.visible = false;
@@ -828,6 +834,8 @@ export class Renderer3D {
     this.carKeys = keys;
     this.carPitch = this.carMeshes.map(() => 0);
     this.carRoll = this.carMeshes.map(() => 0);
+    this.carY = [];
+    this.carVy = [];
   }
 
   private resize(): { w: number; h: number } {
@@ -1003,13 +1011,23 @@ export class Renderer3D {
         this.carPitch[i] += (slope.pitch - this.carPitch[i]) * follow;
         this.carRoll[i] += (targetRoll - this.carRoll[i]) * follow;
       }
-      mesh.position.set(x, h, y);
+      // Drop under gravity (off the deck, into the lake); climb straight away.
+      const lastY = this.carY[i];
+      if (lastY == null || h >= lastY) {
+        this.carY[i] = h;
+        this.carVy[i] = 0;
+      } else {
+        this.carVy[i] = (this.carVy[i] ?? 0) + CAR_FALL_GRAVITY * dt;
+        this.carY[i] = Math.max(h, lastY - this.carVy[i] * dt);
+      }
+      const carY = this.carY[i];
+      mesh.position.set(x, carY, y);
       mesh.rotation.y = -angle;
       mesh.rotation.x = this.carRoll[i];
       mesh.rotation.z = this.carPitch[i];
       const dmg = (a.damage ?? 0) + ((b.damage ?? 0) - (a.damage ?? 0)) * alpha;
       updateFireFx(mesh, dmg, performance.now() / 1000);
-      positions.push(new THREE.Vector3(x, h, y));
+      positions.push(new THREE.Vector3(x, carY, y));
     }
 
     this.updateSmokePuffs(prev, curr, alpha, dt);

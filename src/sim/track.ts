@@ -132,6 +132,12 @@ export interface Track {
 const SAMPLES_PER_SEGMENT = 24;
 const HEIGHT_GRID_STEP = 4;
 const HEIGHT_SMOOTH_PASSES = 8;
+/** Arc length over which the road eases onto a flat bridge deck. */
+const BRIDGE_RAMP = 160;
+/** How far the land shape may drift from its target; bigger = rounder hills. */
+const TERRAIN_SMOOTH_LENGTH = 72;
+/** Distance from shore to full lake depth. */
+const SHORE_SLOPE = 44;
 
 function catmullRom1(p0: number, p1: number, p2: number, p3: number, t: number): number {
   const t2 = t * t;
@@ -164,7 +170,10 @@ export function buildTrack(def: TrackDef): Track {
       sampleHeights.push(catmullRom1(h0, h1, h2, h3, t));
     }
   }
-  if (def.controlHeights) smoothClosed(sampleHeights, HEIGHT_SMOOTH_PASSES);
+  if (def.controlHeights) {
+    smoothClosed(sampleHeights, HEIGHT_SMOOTH_PASSES);
+    for (const b of def.bridges ?? []) easeOntoBridge(samples, sampleHeights, b);
+  }
   const m = samples.length;
   const tangentAngles: number[] = [];
   const normals: Vec2[] = [];
@@ -220,6 +229,28 @@ function smoothClosed(values: number[], passes: number): void {
   }
 }
 
+/** Holds the road at deck height on the bridge and eases it in over `BRIDGE_RAMP`. */
+function easeOntoBridge(samples: Vec2[], heights: number[], b: Bridge): void {
+  const n = samples.length;
+  const dist = samples.map((p) => (pointInRect(p.x, p.y, b) ? 0 : Infinity));
+  // Arc distance to the deck, both ways round the closed loop.
+  for (let pass = 0; pass < 2; pass++) {
+    for (let k = 0; k < n * 2; k++) {
+      const i = pass === 0 ? k % n : (n * 2 - 1 - k) % n;
+      const j = pass === 0 ? (i - 1 + n) % n : (i + 1) % n;
+      const a = samples[i];
+      const c = samples[j];
+      const d = dist[j] + Math.hypot(a.x - c.x, a.y - c.y);
+      if (d < dist[i]) dist[i] = d;
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    const t = Math.min(1, dist[i] / BRIDGE_RAMP);
+    const w = 1 - t * t * (3 - 2 * t);
+    heights[i] += (b.height - heights[i]) * w;
+  }
+}
+
 function projectCenterline(
   samples: Vec2[],
   heights: number[],
@@ -266,19 +297,138 @@ function buildHeightGrid(def: TrackDef, samples: Vec2[], heights: number[]): Hei
   const inner = def.halfWidth + 6;
   const outer = def.halfWidth + 220;
   const span = outer - inner;
+  // Rough land shape, plus cells that must keep their height: the road
+  // (off the bridge) and the lake bed.
+  const target = new Float32Array(cols * rows);
+  const pinned = new Uint8Array(cols * rows);
+  const water = new Uint8Array(cols * rows);
   for (let r = 0; r < rows; r++) {
     const y = r * step;
     for (let c = 0; c < cols; c++) {
       const x = c * step;
+      const i = r * cols + c;
       const hit = projectCenterline(samples, heights, x, y);
       let t = (hit.dist - inner) / span;
       t = t < 0 ? 0 : t > 1 ? 1 : t;
       const s = t * t * (3 - 2 * t);
-      data[r * cols + c] = hit.height * (1 - s) + base * s;
+      target[i] = hit.height * (1 - s) + base * s;
+      const wet = inAnyRect(x, y, def.water);
+      // Road over water is a bridge deck; on land it is solid (the abutments).
+      if (hit.dist <= def.halfWidth + 4 && !(wet && inAnyRect(x, y, def.bridges))) {
+        target[i] = hit.height;
+        pinned[i] = 1;
+      } else if (wet) {
+        water[i] = 1;
+      }
     }
   }
+  const shore = distanceToLand(water, cols, rows, step);
+  for (let i = 0; i < data.length; i++) {
+    if (!water[i]) continue;
+    const t = Math.min(1, shore[i] / SHORE_SLOPE);
+    target[i] = WATER_BED * t * (2 - t);
+    pinned[i] = 1;
+  }
+  // Coarse to fine: each level starts from the one below, so hills settle fast.
+  let coarse: { h: Float32Array; cols: number; rows: number; f: number } | null = null;
+  for (const f of [4, 2, 1]) {
+    const lc = Math.floor((cols - 1) / f) + 1;
+    const lr = Math.floor((rows - 1) / f) + 1;
+    const h = new Float32Array(lc * lr);
+    const lt = new Float32Array(lc * lr);
+    const lp = new Uint8Array(lc * lr);
+    for (let r = 0; r < lr; r++) {
+      for (let c = 0; c < lc; c++) {
+        const fi = r * f * cols + c * f;
+        lt[r * lc + c] = target[fi];
+        lp[r * lc + c] = pinned[fi];
+        h[r * lc + c] = coarse ? upsample(coarse, (c * f) / coarse.f, (r * f) / coarse.f) : target[fi];
+      }
+    }
+    const k = (step * f) / TERRAIN_SMOOTH_LENGTH;
+    relaxTerrain(h, lt, lp, lc, lr, k * k, f === 1 ? 80 : 400);
+    coarse = { h, cols: lc, rows: lr, f };
+  }
+  data.set(coarse!.h);
   blurHeightGrid(data, cols, rows, 2);
   return { cols, rows, step, data };
+}
+
+/** Bilinear read of a coarser level at fractional cell (cx, cy). */
+function upsample(lv: { h: Float32Array; cols: number; rows: number }, cx: number, cy: number): number {
+  cx = Math.min(cx, lv.cols - 1);
+  cy = Math.min(cy, lv.rows - 1);
+  const c0 = Math.min(lv.cols - 2, Math.floor(cx));
+  const r0 = Math.min(lv.rows - 2, Math.floor(cy));
+  const tx = cx - c0;
+  const ty = cy - r0;
+  const a = lv.h[r0 * lv.cols + c0] * (1 - tx) + lv.h[r0 * lv.cols + c0 + 1] * tx;
+  const b = lv.h[(r0 + 1) * lv.cols + c0] * (1 - tx) + lv.h[(r0 + 1) * lv.cols + c0 + 1] * tx;
+  return a * (1 - ty) + b * ty;
+}
+
+/**
+ * Smooths free cells toward their neighbours with a light pull to `target`
+ * (Gauss-Seidel on a screened Laplace). Pinned cells hold still.
+ */
+function relaxTerrain(
+  h: Float32Array,
+  target: Float32Array,
+  pinned: Uint8Array,
+  cols: number,
+  rows: number,
+  pull: number,
+  iterations: number,
+): void {
+  for (let it = 0; it < iterations; it++) {
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const i = r * cols + c;
+        if (pinned[i]) {
+          h[i] = target[i];
+          continue;
+        }
+        // Mirror at the map edge so the border stays flat, not dragged.
+        const left = h[c > 0 ? i - 1 : i + 1];
+        const right = h[c < cols - 1 ? i + 1 : i - 1];
+        const up = h[r > 0 ? i - cols : i + cols];
+        const down = h[r < rows - 1 ? i + cols : i - cols];
+        h[i] = (left + right + up + down + pull * target[i]) / (4 + pull);
+      }
+    }
+  }
+}
+
+/** World distance from each water cell to the nearest dry cell (chamfer). */
+function distanceToLand(water: Uint8Array, cols: number, rows: number, step: number): Float32Array {
+  const d = new Float32Array(water.length);
+  for (let i = 0; i < d.length; i++) d[i] = water[i] ? Infinity : 0;
+  const diag = step * Math.SQRT2;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c;
+      if (!water[i]) continue;
+      let v = d[i];
+      if (c > 0) v = Math.min(v, d[i - 1] + step);
+      if (r > 0) v = Math.min(v, d[i - cols] + step);
+      if (r > 0 && c > 0) v = Math.min(v, d[i - cols - 1] + diag);
+      if (r > 0 && c < cols - 1) v = Math.min(v, d[i - cols + 1] + diag);
+      d[i] = v;
+    }
+  }
+  for (let r = rows - 1; r >= 0; r--) {
+    for (let c = cols - 1; c >= 0; c--) {
+      const i = r * cols + c;
+      if (!water[i]) continue;
+      let v = d[i];
+      if (c < cols - 1) v = Math.min(v, d[i + 1] + step);
+      if (r < rows - 1) v = Math.min(v, d[i + cols] + step);
+      if (r < rows - 1 && c < cols - 1) v = Math.min(v, d[i + cols + 1] + diag);
+      if (r < rows - 1 && c > 0) v = Math.min(v, d[i + cols - 1] + diag);
+      d[i] = v;
+    }
+  }
+  return d;
 }
 
 function blurHeightGrid(data: Float32Array, cols: number, rows: number, passes: number): void {
@@ -403,21 +553,21 @@ function fieldHeight(track: Track, x: number, y: number): number {
   return 0;
 }
 
+/** What wheels roll on: the deck on a bridge, the terrain elsewhere. */
+function driveHeight(track: Track, x: number, y: number): number {
+  const b = bridgeAt(track, x, y);
+  return b ? b.height : fieldHeight(track, x, y);
+}
+
 /** Ground height under a point. Smooth along the road; water sits below the surface. */
 export function heightAt(track: Track, x: number, y: number): number {
   if (surfaceAt(track, x, y) === 'water') return WATER_FLOAT;
-  return fieldHeight(track, x, y);
+  return driveHeight(track, x, y);
 }
 
-/** Visual terrain, including a sloped lake bed. Cars use `heightAt`. */
+/** Visual terrain, banks and lake bed included. Under a bridge this is the ground below the deck. */
 export function terrainHeightAt(track: Track, x: number, y: number): number {
-  const h = fieldHeight(track, x, y);
-  if (onRacingSurface(track, x, y)) return h;
-  if (!inWater(track, x, y)) return h;
-  const d = distanceToCenterline(track, x, y);
-  const t = Math.min(1, Math.max(0, (d - track.def.halfWidth) / 56));
-  const s = t * t * (3 - 2 * t);
-  return h + (WATER_BED - h) * s;
+  return fieldHeight(track, x, y);
 }
 
 /** Pitch (nose) and roll from the height field. Continuous — no per-tile snaps. */
@@ -432,10 +582,10 @@ export function slopeAttitude(
   const sa = Math.sin(angle);
   const along = 18;
   const across = 14;
-  const hF = fieldHeight(track, x + along * ca, y + along * sa);
-  const hB = fieldHeight(track, x - along * ca, y - along * sa);
-  const hL = fieldHeight(track, x - across * sa, y + across * ca);
-  const hR = fieldHeight(track, x + across * sa, y - across * ca);
+  const hF = driveHeight(track, x + along * ca, y + along * sa);
+  const hB = driveHeight(track, x - along * ca, y - along * sa);
+  const hL = driveHeight(track, x - across * sa, y + across * ca);
+  const hR = driveHeight(track, x + across * sa, y - across * ca);
   return {
     pitch: Math.max(-0.38, Math.min(0.38, Math.atan2(hB - hF, along * 2))),
     roll: Math.max(-0.28, Math.min(0.28, Math.atan2(hL - hR, across * 2))),
@@ -557,12 +707,15 @@ export const TRACKS: Record<string, TrackDef> = {
       { x: 280, y: 235 },
     ],
     // Long gentle grade onto the deck — climb starts on the north straight.
-    controlHeights: [6, 8, 11, 15, 20, 26, 33, 41, 48, 52, 48, 40, 31, 23, 16, 12, 9, 7, 6, 6, 6],
+    // The deck itself is held flat at bridge height (see easeOntoBridge).
+    controlHeights: [6, 8, 13, 21, 31, 40, 47, 51, 52, 52, 51, 48, 42, 32, 21, 12, 7, 6, 6, 6, 6],
+    // Lakes stay clear of the raised road; only the channel runs under the deck.
     water: [
       { x: 360, y: 390, w: 640, h: 300 },
-      { x: 980, y: 405, w: 600, h: 285 },
+      { x: 1000, y: 405, w: 250, h: 255 },
+      { x: 1250, y: 480, w: 350, h: 140 },
     ],
-    bridges: [{ x: 1408, y: 488, w: 130, h: 120, height: 52 }],
+    bridges: [{ x: 1360, y: 440, w: 205, h: 220, height: 52 }],
     sand: [
       { x: 1080, y: 720, w: 380, h: 155 },
       { x: 180, y: 730, w: 270, h: 130 },
