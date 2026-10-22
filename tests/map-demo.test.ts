@@ -33,7 +33,7 @@ describe('map demo', () => {
     expect(sawBridge).toBe(true);
     expect(sawWater).toBe(true);
     expect(sawSand).toBe(true);
-    expect(maxH).toBeGreaterThan(40);
+    expect(maxH).toBeGreaterThan(25);
     expect(renderer.cameraMode).toBe('follow');
   });
 });

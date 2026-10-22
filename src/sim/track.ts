@@ -54,7 +54,10 @@ export interface Rect {
   h: number;
 }
 
-/** Elevated asphalt deck over water. */
+/**
+ * Elevated deck over water. The rect marks which stretch of road is bridged;
+ * the deck itself follows the road, `BRIDGE_DECK_MARGIN` past each edge.
+ */
 export interface Bridge {
   x: number;
   y: number;
@@ -87,12 +90,38 @@ export interface TrackDef {
   pitBoxes: Rect[];
   /** Off-track sand (beaches, runoff). Track/bridge still win. */
   sand?: Rect[];
-  /** Lakes / rivers. Bridge and racing line stay asphalt. */
-  water?: Rect[];
+  /** Rivers. Bridge and racing line stay asphalt. */
+  rivers?: River[];
   /** Elevated decks over water. */
   bridges?: Bridge[];
-  /** Height at each control point (same length). Default 0. */
-  controlHeights?: number[];
+  /** Rolling ground. Flat at 0 when absent. */
+  terrain?: Terrain;
+}
+
+/** Water within `halfWidth` of a smooth line through `points` (may run off the map). */
+export interface River {
+  points: Vec2[];
+  halfWidth: number;
+}
+
+/** A round bump of `h` units, falling off over radius `r`. */
+export interface Hill {
+  x: number;
+  y: number;
+  r: number;
+  h: number;
+}
+
+/** Land height: `base` plus hills; valleys dip to the river banks. The road follows it, smoothed. */
+export interface Terrain {
+  base: number;
+  hills: Hill[];
+}
+
+export interface RiverLine {
+  points: Vec2[];
+  halfWidth: number;
+  box: Rect;
 }
 
 export interface Gate {
@@ -125,6 +154,8 @@ export interface Track {
   sampleHeights: number[];
   /** Dense 2D height field. Null when the track is flat. */
   heightGrid: HeightGrid | null;
+  /** Dense river center lines. */
+  rivers: RiverLine[];
   /** gates[0] is the start/finish line. */
   gates: Gate[];
 }
@@ -132,6 +163,20 @@ export interface Track {
 const SAMPLES_PER_SEGMENT = 24;
 const HEIGHT_GRID_STEP = 4;
 const HEIGHT_SMOOTH_PASSES = 8;
+/** Arc length over which the road eases onto a flat bridge deck. */
+const BRIDGE_RAMP = 220;
+/** How far the land shape may drift from its target; bigger = rounder hills. */
+const TERRAIN_SMOOTH_LENGTH = 36;
+/** Distance from shore to full river depth. */
+const SHORE_SLOPE = 30;
+/** Land eases down to the river over this distance from the bank. */
+const RIVER_VALLEY = 190;
+/** Hills flatten out over this distance from the map edge. */
+const EDGE_FADE = 140;
+/** Land height right at a river bank. */
+const BANK_HEIGHT = 2;
+/** Arc length the road grade is averaged over, so it rolls instead of copying every bump. */
+const ROAD_GRADE_SMOOTH = 85;
 
 function catmullRom1(p0: number, p1: number, p2: number, p3: number, t: number): number {
   const t2 = t * t;
@@ -146,25 +191,23 @@ function catmullRom(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, t: number): Vec2 {
 export function buildTrack(def: TrackDef): Track {
   const cp = def.controlPoints;
   const n = cp.length;
-  const hz = def.controlHeights ?? cp.map(() => 0);
   const samples: Vec2[] = [];
-  const sampleHeights: number[] = [];
   for (let i = 0; i < n; i++) {
     const p0 = cp[(i - 1 + n) % n];
     const p1 = cp[i];
     const p2 = cp[(i + 1) % n];
     const p3 = cp[(i + 2) % n];
-    const h0 = hz[(i - 1 + n) % n];
-    const h1 = hz[i];
-    const h2 = hz[(i + 1) % n];
-    const h3 = hz[(i + 2) % n];
     for (let s = 0; s < SAMPLES_PER_SEGMENT; s++) {
-      const t = s / SAMPLES_PER_SEGMENT;
-      samples.push(catmullRom(p0, p1, p2, p3, t));
-      sampleHeights.push(catmullRom1(h0, h1, h2, h3, t));
+      samples.push(catmullRom(p0, p1, p2, p3, s / SAMPLES_PER_SEGMENT));
     }
   }
-  if (def.controlHeights) smoothClosed(sampleHeights, HEIGHT_SMOOTH_PASSES);
+  const rivers = (def.rivers ?? []).map(buildRiverLine);
+  const sampleHeights = samples.map((p) => (def.terrain ? landHeight(def, rivers, p.x, p.y) : 0));
+  if (def.terrain) {
+    smoothAlongArc(samples, sampleHeights, ROAD_GRADE_SMOOTH);
+    smoothClosed(sampleHeights, HEIGHT_SMOOTH_PASSES);
+    for (const b of def.bridges ?? []) easeOntoBridge(samples, sampleHeights, b);
+  }
   const m = samples.length;
   const tangentAngles: number[] = [];
   const normals: Vec2[] = [];
@@ -205,8 +248,92 @@ export function buildTrack(def: TrackDef): Track {
       ty: -nrm.x,
     });
   }
-  const heightGrid = def.controlHeights ? buildHeightGrid(def, samples, sampleHeights) : null;
-  return { def, samples, tangentAngles, normals, segmentLengths, curvature, sampleHeights, heightGrid, gates };
+  const heightGrid = def.terrain ? buildHeightGrid(def, samples, sampleHeights, rivers) : null;
+  return { def, samples, tangentAngles, normals, segmentLengths, curvature, sampleHeights, heightGrid, rivers, gates };
+}
+
+function buildRiverLine(r: River): RiverLine {
+  const cp = r.points;
+  const n = cp.length;
+  const points: Vec2[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    const p0 = cp[Math.max(0, i - 1)];
+    const p3 = cp[Math.min(n - 1, i + 2)];
+    for (let s = 0; s < 16; s++) points.push(catmullRom(p0, cp[i], cp[i + 1], p3, s / 16));
+  }
+  points.push(cp[n - 1]);
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of points) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  }
+  const pad = r.halfWidth;
+  return { points, halfWidth: r.halfWidth, box: { x: minX - pad, y: minY - pad, w: maxX - minX + pad * 2, h: maxY - minY + pad * 2 } };
+}
+
+/** Distance from (x, y) to the nearest river bank; negative in the water. */
+function riverEdge(rivers: RiverLine[], x: number, y: number, reach = Infinity): number {
+  let best = Infinity;
+  for (const r of rivers) {
+    const b = r.box;
+    if (x < b.x - reach || x > b.x + b.w + reach || y < b.y - reach || y > b.y + b.h + reach) continue;
+    let d2 = Infinity;
+    for (let i = 0; i < r.points.length - 1; i++) {
+      const d = distToSegmentSq(x, y, r.points[i], r.points[i + 1]);
+      if (d < d2) d2 = d;
+    }
+    best = Math.min(best, Math.sqrt(d2) - r.halfWidth);
+  }
+  return best;
+}
+
+function landHeight(def: TrackDef, rivers: RiverLine[], x: number, y: number, edge = riverEdge(rivers, x, y)): number {
+  const t = def.terrain!;
+  let hills = 0;
+  for (const k of t.hills) {
+    const dx = x - k.x;
+    const dy = y - k.y;
+    hills += k.h * Math.exp(-(dx * dx + dy * dy) / (k.r * k.r));
+  }
+  // Hills settle back to base at the map edge, where the boundary wall stands.
+  let f = Math.min(1, Math.max(0, Math.min(x, y, def.width - x, def.height - y) / EDGE_FADE));
+  f = f * f * (3 - 2 * f);
+  const h = t.base + hills * f;
+  let s = Math.min(1, Math.max(0, edge / RIVER_VALLEY));
+  s = s * s * (3 - 2 * s);
+  return BANK_HEIGHT + (h - BANK_HEIGHT) * s;
+}
+
+/** Gaussian average along the closed centerline, by arc length rather than sample count. */
+function smoothAlongArc(samples: Vec2[], values: number[], sigma: number): void {
+  const n = samples.length;
+  const step: number[] = samples.map((p, i) => {
+    const q = samples[(i + 1) % n];
+    return Math.hypot(q.x - p.x, q.y - p.y);
+  });
+  const src = values.slice();
+  const reach = sigma * 3;
+  for (let i = 0; i < n; i++) {
+    let sum = src[i];
+    let wsum = 1;
+    for (const dir of [1, -1]) {
+      let d = 0;
+      for (let k = 1; k < n; k++) {
+        const j = (i + dir * k + n * 2) % n;
+        d += dir > 0 ? step[(j - 1 + n) % n] : step[j];
+        if (d > reach) break;
+        const w = Math.exp(-(d * d) / (2 * sigma * sigma));
+        sum += src[j] * w;
+        wsum += w;
+      }
+    }
+    values[i] = sum / wsum;
+  }
 }
 
 function smoothClosed(values: number[], passes: number): void {
@@ -217,6 +344,28 @@ function smoothClosed(values: number[], passes: number): void {
       tmp[i] = 0.25 * values[(i - 1 + n) % n] + 0.5 * values[i] + 0.25 * values[(i + 1) % n];
     }
     for (let i = 0; i < n; i++) values[i] = tmp[i];
+  }
+}
+
+/** Holds the road at deck height on the bridge and eases it in over `BRIDGE_RAMP`. */
+function easeOntoBridge(samples: Vec2[], heights: number[], b: Bridge): void {
+  const n = samples.length;
+  const dist = samples.map((p) => (pointInRect(p.x, p.y, b) ? 0 : Infinity));
+  // Arc distance to the deck, both ways round the closed loop.
+  for (let pass = 0; pass < 2; pass++) {
+    for (let k = 0; k < n * 2; k++) {
+      const i = pass === 0 ? k % n : (n * 2 - 1 - k) % n;
+      const j = pass === 0 ? (i - 1 + n) % n : (i + 1) % n;
+      const a = samples[i];
+      const c = samples[j];
+      const d = dist[j] + Math.hypot(a.x - c.x, a.y - c.y);
+      if (d < dist[i]) dist[i] = d;
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    const t = Math.min(1, dist[i] / BRIDGE_RAMP);
+    const w = 1 - t * t * (3 - 2 * t);
+    heights[i] += (b.height - heights[i]) * w;
   }
 }
 
@@ -256,29 +405,147 @@ function projectCenterline(
   return { dist: Math.sqrt(best), height };
 }
 
-function buildHeightGrid(def: TrackDef, samples: Vec2[], heights: number[]): HeightGrid {
+function buildHeightGrid(def: TrackDef, samples: Vec2[], heights: number[], rivers: RiverLine[]): HeightGrid {
   const step = HEIGHT_GRID_STEP;
   const cols = Math.floor(def.width / step) + 1;
   const rows = Math.floor(def.height / step) + 1;
   const data = new Float32Array(cols * rows);
-  let base = heights[0] ?? 0;
-  for (const h of heights) if (h < base) base = h;
   const inner = def.halfWidth + 6;
-  const outer = def.halfWidth + 220;
+  const outer = def.halfWidth + 140;
   const span = outer - inner;
+  // Rough land shape, plus cells that must keep their height: the road
+  // (off the bridge) and the lake bed.
+  const target = new Float32Array(cols * rows);
+  const pinned = new Uint8Array(cols * rows);
+  const water = new Uint8Array(cols * rows);
   for (let r = 0; r < rows; r++) {
     const y = r * step;
     for (let c = 0; c < cols; c++) {
       const x = c * step;
+      const i = r * cols + c;
       const hit = projectCenterline(samples, heights, x, y);
       let t = (hit.dist - inner) / span;
       t = t < 0 ? 0 : t > 1 ? 1 : t;
       const s = t * t * (3 - 2 * t);
-      data[r * cols + c] = hit.height * (1 - s) + base * s;
+      const edge = riverEdge(rivers, x, y);
+      target[i] = hit.height * (1 - s) + landHeight(def, rivers, x, y, edge) * s;
+      const wet = edge <= 0;
+      // Road over water is a bridge deck; on land it is solid (the abutments).
+      if (hit.dist <= def.halfWidth + 4 && !(wet && inAnyRect(x, y, def.bridges))) {
+        target[i] = hit.height;
+        pinned[i] = 1;
+      } else if (wet) {
+        water[i] = 1;
+      }
     }
   }
+  const shore = distanceToLand(water, cols, rows, step);
+  for (let i = 0; i < data.length; i++) {
+    if (!water[i]) continue;
+    const t = Math.min(1, shore[i] / SHORE_SLOPE);
+    target[i] = WATER_BED * t * (2 - t);
+    pinned[i] = 1;
+  }
+  // Coarse to fine: each level starts from the one below, so hills settle fast.
+  let coarse: { h: Float32Array; cols: number; rows: number; f: number } | null = null;
+  for (const f of [4, 2, 1]) {
+    const lc = Math.floor((cols - 1) / f) + 1;
+    const lr = Math.floor((rows - 1) / f) + 1;
+    const h = new Float32Array(lc * lr);
+    const lt = new Float32Array(lc * lr);
+    const lp = new Uint8Array(lc * lr);
+    for (let r = 0; r < lr; r++) {
+      for (let c = 0; c < lc; c++) {
+        const fi = r * f * cols + c * f;
+        lt[r * lc + c] = target[fi];
+        lp[r * lc + c] = pinned[fi];
+        h[r * lc + c] = coarse ? upsample(coarse, (c * f) / coarse.f, (r * f) / coarse.f) : target[fi];
+      }
+    }
+    const k = (step * f) / TERRAIN_SMOOTH_LENGTH;
+    relaxTerrain(h, lt, lp, lc, lr, k * k, f === 1 ? 80 : 400);
+    coarse = { h, cols: lc, rows: lr, f };
+  }
+  data.set(coarse!.h);
   blurHeightGrid(data, cols, rows, 2);
   return { cols, rows, step, data };
+}
+
+/** Bilinear read of a coarser level at fractional cell (cx, cy). */
+function upsample(lv: { h: Float32Array; cols: number; rows: number }, cx: number, cy: number): number {
+  cx = Math.min(cx, lv.cols - 1);
+  cy = Math.min(cy, lv.rows - 1);
+  const c0 = Math.min(lv.cols - 2, Math.floor(cx));
+  const r0 = Math.min(lv.rows - 2, Math.floor(cy));
+  const tx = cx - c0;
+  const ty = cy - r0;
+  const a = lv.h[r0 * lv.cols + c0] * (1 - tx) + lv.h[r0 * lv.cols + c0 + 1] * tx;
+  const b = lv.h[(r0 + 1) * lv.cols + c0] * (1 - tx) + lv.h[(r0 + 1) * lv.cols + c0 + 1] * tx;
+  return a * (1 - ty) + b * ty;
+}
+
+/**
+ * Smooths free cells toward their neighbours with a light pull to `target`
+ * (Gauss-Seidel on a screened Laplace). Pinned cells hold still.
+ */
+function relaxTerrain(
+  h: Float32Array,
+  target: Float32Array,
+  pinned: Uint8Array,
+  cols: number,
+  rows: number,
+  pull: number,
+  iterations: number,
+): void {
+  for (let it = 0; it < iterations; it++) {
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const i = r * cols + c;
+        if (pinned[i]) {
+          h[i] = target[i];
+          continue;
+        }
+        // Mirror at the map edge so the border stays flat, not dragged.
+        const left = h[c > 0 ? i - 1 : i + 1];
+        const right = h[c < cols - 1 ? i + 1 : i - 1];
+        const up = h[r > 0 ? i - cols : i + cols];
+        const down = h[r < rows - 1 ? i + cols : i - cols];
+        h[i] = (left + right + up + down + pull * target[i]) / (4 + pull);
+      }
+    }
+  }
+}
+
+/** World distance from each water cell to the nearest dry cell (chamfer). */
+function distanceToLand(water: Uint8Array, cols: number, rows: number, step: number): Float32Array {
+  const d = new Float32Array(water.length);
+  for (let i = 0; i < d.length; i++) d[i] = water[i] ? Infinity : 0;
+  const diag = step * Math.SQRT2;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c;
+      if (!water[i]) continue;
+      let v = d[i];
+      if (c > 0) v = Math.min(v, d[i - 1] + step);
+      if (r > 0) v = Math.min(v, d[i - cols] + step);
+      if (r > 0 && c > 0) v = Math.min(v, d[i - cols - 1] + diag);
+      if (r > 0 && c < cols - 1) v = Math.min(v, d[i - cols + 1] + diag);
+      d[i] = v;
+    }
+  }
+  for (let r = rows - 1; r >= 0; r--) {
+    for (let c = cols - 1; c >= 0; c--) {
+      const i = r * cols + c;
+      if (!water[i]) continue;
+      let v = d[i];
+      if (c < cols - 1) v = Math.min(v, d[i + 1] + step);
+      if (r < rows - 1) v = Math.min(v, d[i + cols] + step);
+      if (r < rows - 1 && c < cols - 1) v = Math.min(v, d[i + cols + 1] + diag);
+      if (r < rows - 1 && c > 0) v = Math.min(v, d[i + cols - 1] + diag);
+      d[i] = v;
+    }
+  }
+  return d;
 }
 
 function blurHeightGrid(data: Float32Array, cols: number, rows: number, passes: number): void {
@@ -362,18 +629,35 @@ function inAnyRect(x: number, y: number, rects: Rect[] | undefined): boolean {
 }
 
 export function inWater(track: Track, x: number, y: number): boolean {
-  return inAnyRect(x, y, track.def.water);
+  return track.rivers.length > 0 && riverEdge(track.rivers, x, y, 0) <= 0;
 }
 
 export function inSand(track: Track, x: number, y: number): boolean {
   return inAnyRect(x, y, track.def.sand);
 }
 
+/** Deck width past each road edge: curb stripe plus a footway under the rail. */
+export const BRIDGE_DECK_MARGIN = 15;
+
 export function bridgeAt(track: Track, x: number, y: number): Bridge | null {
   const bridges = track.def.bridges;
   if (!bridges) return null;
-  for (const b of bridges) if (pointInRect(x, y, b)) return b;
+  for (const b of bridges) {
+    if (pointInRect(x, y, b) && distanceToCenterline(track, x, y) <= track.def.halfWidth + BRIDGE_DECK_MARGIN) return b;
+  }
   return null;
+}
+
+/** Centerline sample indices on a bridge, in driving order. */
+export function bridgeSpan(track: Track, b: Bridge): number[] {
+  const s = track.samples;
+  const n = s.length;
+  const inside = (i: number) => pointInRect(s[i].x, s[i].y, b);
+  let start = 0;
+  while (start < n && !(inside(start) && !inside((start - 1 + n) % n))) start++;
+  const span: number[] = [];
+  for (let k = 0; k < n && inside((start + k) % n); k++) span.push((start + k) % n);
+  return span;
 }
 
 export function inBridge(track: Track, x: number, y: number): boolean {
@@ -403,21 +687,21 @@ function fieldHeight(track: Track, x: number, y: number): number {
   return 0;
 }
 
+/** What wheels roll on: the deck on a bridge, the terrain elsewhere. */
+function driveHeight(track: Track, x: number, y: number): number {
+  const b = bridgeAt(track, x, y);
+  return b ? b.height : fieldHeight(track, x, y);
+}
+
 /** Ground height under a point. Smooth along the road; water sits below the surface. */
 export function heightAt(track: Track, x: number, y: number): number {
   if (surfaceAt(track, x, y) === 'water') return WATER_FLOAT;
-  return fieldHeight(track, x, y);
+  return driveHeight(track, x, y);
 }
 
-/** Visual terrain, including a sloped lake bed. Cars use `heightAt`. */
+/** Visual terrain, banks and lake bed included. Under a bridge this is the ground below the deck. */
 export function terrainHeightAt(track: Track, x: number, y: number): number {
-  const h = fieldHeight(track, x, y);
-  if (onRacingSurface(track, x, y)) return h;
-  if (!inWater(track, x, y)) return h;
-  const d = distanceToCenterline(track, x, y);
-  const t = Math.min(1, Math.max(0, (d - track.def.halfWidth) / 56));
-  const s = t * t * (3 - 2 * t);
-  return h + (WATER_BED - h) * s;
+  return fieldHeight(track, x, y);
 }
 
 /** Pitch (nose) and roll from the height field. Continuous — no per-tile snaps. */
@@ -432,10 +716,10 @@ export function slopeAttitude(
   const sa = Math.sin(angle);
   const along = 18;
   const across = 14;
-  const hF = fieldHeight(track, x + along * ca, y + along * sa);
-  const hB = fieldHeight(track, x - along * ca, y - along * sa);
-  const hL = fieldHeight(track, x - across * sa, y + across * ca);
-  const hR = fieldHeight(track, x + across * sa, y - across * ca);
+  const hF = driveHeight(track, x + along * ca, y + along * sa);
+  const hB = driveHeight(track, x - along * ca, y - along * sa);
+  const hL = driveHeight(track, x - across * sa, y + across * ca);
+  const hR = driveHeight(track, x + across * sa, y - across * ca);
   return {
     pitch: Math.max(-0.38, Math.min(0.38, Math.atan2(hB - hF, along * 2))),
     roll: Math.max(-0.28, Math.min(0.28, Math.atan2(hL - hR, across * 2))),
@@ -533,53 +817,98 @@ export const TRACKS: Record<string, TrackDef> = {
     height: 1050,
     halfWidth: 54,
     checkpointCount: 8,
+    // Clockwise, but the south side folds up into the infield: a left-hand
+    // hairpin between two right-handers.
     controlPoints: [
       { x: 400, y: 210 },
       { x: 620, y: 196 },
       { x: 840, y: 190 },
       { x: 1060, y: 205 },
-      { x: 1240, y: 248 },
-      { x: 1365, y: 310 },
-      { x: 1434, y: 385 },
-      { x: 1466, y: 460 },
-      { x: 1476, y: 535 },
-      { x: 1466, y: 610 },
-      { x: 1424, y: 688 },
-      { x: 1335, y: 768 },
-      { x: 1180, y: 845 },
-      { x: 960, y: 902 },
-      { x: 720, y: 914 },
-      { x: 480, y: 880 },
-      { x: 280, y: 790 },
-      { x: 168, y: 640 },
-      { x: 158, y: 470 },
-      { x: 190, y: 330 },
-      { x: 280, y: 235 },
+      { x: 1260, y: 250 },
+      { x: 1400, y: 330 },
+      { x: 1470, y: 450 },
+      { x: 1478, y: 580 },
+      { x: 1435, y: 710 },
+      { x: 1335, y: 810 },
+      { x: 1190, y: 870 },
+      { x: 1070, y: 840 },
+      { x: 1000, y: 760 },
+      { x: 975, y: 650 },
+      { x: 920, y: 560 },
+      { x: 830, y: 540 },
+      { x: 750, y: 590 },
+      { x: 720, y: 700 },
+      { x: 690, y: 820 },
+      { x: 600, y: 900 },
+      { x: 450, y: 930 },
+      { x: 300, y: 895 },
+      { x: 190, y: 800 },
+      { x: 150, y: 660 },
+      { x: 160, y: 520 },
+      { x: 200, y: 390 },
+      { x: 270, y: 270 },
     ],
-    // Long gentle grade onto the deck — climb starts on the north straight.
-    controlHeights: [6, 8, 11, 15, 20, 26, 33, 41, 48, 52, 48, 40, 31, 23, 16, 12, 9, 7, 6, 6, 6],
-    water: [
-      { x: 360, y: 390, w: 640, h: 300 },
-      { x: 980, y: 405, w: 600, h: 285 },
+    // Enters from the east, winds through the infield, leaves to the west.
+    rivers: [
+      {
+        halfWidth: 30,
+        points: [
+          { x: 1760, y: 560 },
+          { x: 1600, y: 535 },
+          { x: 1470, y: 515 },
+          { x: 1320, y: 470 },
+          { x: 1160, y: 405 },
+          { x: 1000, y: 372 },
+          { x: 850, y: 380 },
+          { x: 700, y: 420 },
+          { x: 560, y: 485 },
+          { x: 420, y: 560 },
+          { x: 290, y: 600 },
+          { x: 150, y: 605 },
+          { x: 0, y: 595 },
+          { x: -160, y: 590 },
+        ],
+      },
     ],
-    bridges: [{ x: 1408, y: 488, w: 130, h: 120, height: 52 }],
+    terrain: {
+      base: 12,
+      hills: [
+        { x: 1215, y: 665, r: 135, h: 115 },
+        { x: 470, y: 745, r: 160, h: 105 },
+        { x: 860, y: 900, r: 125, h: 95 },
+        { x: 1200, y: 320, r: 110, h: 40 },
+        { x: 600, y: 330, r: 95, h: 32 },
+        { x: 1600, y: 760, r: 170, h: 65 },
+        { x: 1580, y: 40, r: 210, h: 90 },
+        { x: 1600, y: 1050, r: 270, h: 130 },
+        { x: 0, y: 1050, r: 250, h: 120 },
+        { x: 0, y: 0, r: 210, h: 85 },
+      ],
+    },
+    bridges: [
+      { x: 1385, y: 438, w: 180, h: 160, height: 40 },
+      { x: 64, y: 528, w: 176, h: 160, height: 28 },
+    ],
     sand: [
-      { x: 1080, y: 720, w: 380, h: 155 },
-      { x: 180, y: 730, w: 270, h: 130 },
+      { x: 1440, y: 190, w: 150, h: 150 },
+      { x: 795, y: 610, w: 120, h: 90 },
+      { x: 50, y: 760, w: 110, h: 190 },
     ],
     obstacles: [
-      { x: 620, y: 430, r: 16, kind: 'tyres' },
-      { x: 860, y: 360, r: 18, kind: 'tyres' },
-      { x: 1180, y: 360, r: 16, kind: 'tyres' },
-      { x: 1540, y: 180, r: 16, kind: 'tree' },
-      { x: 120, y: 120, r: 15, kind: 'tree' },
-      { x: 90, y: 980, r: 18, kind: 'tree' },
+      { x: 1545, y: 300, r: 16, kind: 'tyres' },
+      { x: 880, y: 440, r: 16, kind: 'tyres' },
+      { x: 60, y: 820, r: 16, kind: 'tyres' },
+      { x: 1230, y: 690, r: 17, kind: 'tree' },
+      { x: 1290, y: 640, r: 15, kind: 'tree' },
+      { x: 470, y: 745, r: 17, kind: 'tree' },
+      { x: 410, y: 700, r: 15, kind: 'tree' },
+      { x: 860, y: 930, r: 16, kind: 'tree' },
       { x: 1520, y: 980, r: 16, kind: 'tree' },
-      { x: 430, y: 340, r: 15, kind: 'tree' },
-      { x: 980, y: 980, r: 17, kind: 'tree' },
-      { x: 250, y: 980, r: 14, kind: 'tree' },
-      { x: 1240, y: 115, r: 16, kind: 'tree' },
-      { x: 1550, y: 780, r: 15, kind: 'tree' },
+      { x: 90, y: 990, r: 18, kind: 'tree' },
+      { x: 1540, y: 70, r: 16, kind: 'tree' },
+      { x: 80, y: 90, r: 15, kind: 'tree' },
+      { x: 1225, y: 345, r: 14, kind: 'tree' },
+      { x: 430, y: 360, r: 15, kind: 'tree' },
     ],
     ...pitComplex(480),
   },

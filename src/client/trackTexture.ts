@@ -78,15 +78,49 @@ function paintSand(ctx: CanvasRenderingContext2D, track: Track) {
   }
 }
 
+/**
+ * Lifts the road paint under each bridge into its own canvas (for the deck)
+ * and paints water back over the ground below, so no asphalt shows through.
+ */
+export function splitBridgeDecks(surface: HTMLCanvasElement, track: Track, res: number): HTMLCanvasElement[] {
+  const ctx = surface.getContext('2d')!;
+  return (track.def.bridges ?? []).map((b) => {
+    const deck = document.createElement('canvas');
+    deck.width = Math.round(b.w * res);
+    deck.height = Math.round(b.h * res);
+    deck.getContext('2d')!.drawImage(surface, b.x * res, b.y * res, b.w * res, b.h * res, 0, 0, deck.width, deck.height);
+    ctx.save();
+    ctx.setTransform(res, 0, 0, res, 0, 0);
+    ctx.beginPath();
+    ctx.rect(b.x, b.y, b.w, b.h);
+    ctx.clip();
+    paintWater(ctx, track);
+    ctx.restore();
+    return deck;
+  });
+}
+
 function paintWater(ctx: CanvasRenderingContext2D, track: Track) {
-  for (const r of track.def.water ?? []) {
-    ctx.fillStyle = '#2a6fa8';
-    ctx.fillRect(r.x, r.y, r.w, r.h);
-    ctx.fillStyle = '#3480b8';
-    for (let y = r.y; y < r.y + r.h; y += 28) ctx.fillRect(r.x, y, r.w, 10);
-    ctx.fillStyle = 'rgba(180, 220, 255, 0.18)';
-    for (let x = r.x; x < r.x + r.w; x += 70) ctx.fillRect(x, r.y, 16, r.h);
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  for (const r of track.rivers) {
+    ctx.beginPath();
+    r.points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+    ctx.strokeStyle = '#2a6fa8';
+    ctx.lineWidth = r.halfWidth * 2;
+    ctx.stroke();
+    ctx.setLineDash([46, 34]);
+    ctx.strokeStyle = '#3480b8';
+    ctx.lineWidth = r.halfWidth * 0.9;
+    ctx.stroke();
+    ctx.setLineDash([14, 70]);
+    ctx.strokeStyle = 'rgba(180, 220, 255, 0.22)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
+  ctx.restore();
 }
 
 function paintPitLane(ctx: CanvasRenderingContext2D, track: Track) {

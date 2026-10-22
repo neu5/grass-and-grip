@@ -1,7 +1,7 @@
 import { aiInput, createAiMemory } from './ai';
 import { collideBounds, collideCars, collideCircle, NO_INPUT, stepCarPhysics } from './physics';
 import { applyPitService } from './pits';
-import { HEIGHT_SEPARATION, getTrack, heightAt, segmentsIntersect, surfaceAt, type Track } from './track';
+import { HEIGHT_SEPARATION, getTrack, heightAt, segmentsIntersect, surfaceAt, terrainHeightAt, type Track } from './track';
 import { copyFastestLaps, insertFastestLap } from './fastestLaps';
 import type { CarState, GameState, PlayerInput, RaceConfig, TickInputs } from './types';
 
@@ -198,9 +198,7 @@ export function step(prev: GameState, inputs: TickInputs): GameState {
   }
   for (let i = 0; i < cars.length; i++) {
     const car = cars[i];
-    if (heights[i] <= HEIGHT_SEPARATION) {
-      for (const o of track.def.obstacles) collideCircle(car, o.x, o.y, o.r);
-    }
+    collideObstacles(car, heights[i], track);
     collideBounds(car, track.def.width, track.def.height);
   }
 
@@ -233,11 +231,17 @@ export function stepOwnCar(prev: GameState, carId: number, input: PlayerInput): 
     applyPitService(car, track, DT);
     updateCheckpoints(state, car, track, px, py);
   }
-  if (heightAt(track, car.x, car.y) <= HEIGHT_SEPARATION) {
-    for (const o of track.def.obstacles) collideCircle(car, o.x, o.y, o.r);
-  }
+  collideObstacles(car, heightAt(track, car.x, car.y), track);
   collideBounds(car, track.def.width, track.def.height);
   return state;
+}
+
+/** Obstacles stand on the ground; a car on a bridge above them passes over. */
+function collideObstacles(car: CarState, height: number, track: Track) {
+  for (const o of track.def.obstacles) {
+    if (Math.abs(height - terrainHeightAt(track, o.x, o.y)) > HEIGHT_SEPARATION) continue;
+    collideCircle(car, o.x, o.y, o.r);
+  }
 }
 
 /** Race order, leader first. */
