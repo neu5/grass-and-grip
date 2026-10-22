@@ -87,6 +87,43 @@ describe('car kinds', () => {
   });
 });
 
+describe('balance', () => {
+  it('gives every car a similar lap pace across the tracks (AI, Medium)', () => {
+    const lap = (trackId: string, kind: CarKind) => {
+      let s = createRace({
+        trackId,
+        totalLaps: 2,
+        countdownSeconds: 0,
+        cars: [{ name: 'A', color: '#fff', controller: 'ai', kind }],
+        rules: { damage: 1, tyreWear: 0, fuel: 0, collisions: true, aiLevel: 70 },
+      });
+      s.phase = 'racing';
+      for (let i = 0; i < 60 * 60 && s.phase !== 'finished'; i++) s = step(s, {});
+      return s.cars[0].bestLapTicks!;
+    };
+    const tracks = ['meadow', 'harbor', 'alpine'];
+    const rally = tracks.map((t) => lap(t, 'rally'));
+    for (const kind of CAR_KINDS) {
+      // Geometric mean of lap time relative to Rally.
+      const ratio = Math.exp(tracks.reduce((sum, t, i) => sum + Math.log(lap(t, kind) / rally[i]), 0) / tracks.length);
+      expect(ratio, kind).toBeGreaterThan(0.96);
+      expect(ratio, kind).toBeLessThan(1.04);
+    }
+  });
+
+  it('keeps each car its own strengths', () => {
+    // F1 fastest on tarmac, worst off it; buggy best off-road.
+    const top = (k: CarKind, surface: Surface) => speedAfter(k, surface, 1500);
+    for (const k of CAR_KINDS) if (k !== 'f1') expect(top('f1', 'asphalt')).toBeGreaterThan(top(k, 'asphalt'));
+    for (const surface of ['grass', 'sand', 'gravel', 'snow'] as const) {
+      for (const k of CAR_KINDS) {
+        if (k !== 'f1') expect(top('f1', surface), surface).toBeLessThan(top(k, surface));
+        if (k !== 'buggy') expect(top('buggy', surface), surface).toBeGreaterThan(top(k, surface));
+      }
+    }
+  });
+});
+
 describe('car setup', () => {
   it('trades acceleration for top speed with gearing', () => {
     const long = { gearing: 2, steering: 0, grip: 0 };

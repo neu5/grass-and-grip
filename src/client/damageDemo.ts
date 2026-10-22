@@ -86,18 +86,23 @@ export function damageDemoOptions(): GameOptions {
         if (car.y > 280 && speed < 140) phase = 'ram';
         return { throttle: -1, steer: 0, handbrake: false };
       }
+      const inBox = car.x >= box.x && car.x < box.x + box.w && car.y >= box.y && car.y < box.y + box.h;
       if (phase === 'toPit') {
-        const inBox = car.x >= box.x && car.x < box.x + box.w && car.y >= box.y && car.y < box.y + box.h;
         if (inBox && speed < 12) phase = 'wait';
         if (car.y < boxY - 4) return { throttle: -0.55, steer: 0, handbrake: speed > 50 };
         return arrive(car, boxX, boxY, 0.4, true);
       }
       if (phase === 'wait') {
+        // Rolled out of the stall: go back in.
+        if (!inBox) {
+          phase = 'toPit';
+          return arrive(car, boxX, boxY, 0.4, true);
+        }
         const healthy = car.damage <= 0.02 && car.fuel >= 0.995 && car.tyreWear <= 0.005;
         if (healthy) servedTicks++;
         else servedTicks = 0;
         if (servedTicks > 45) phase = 'out';
-        return { throttle: 0, steer: 0, handbrake: false };
+        return { throttle: 0, steer: 0, handbrake: true };
       }
       return arrive(car, boxX + 16, 230, 0.5, false);
     },

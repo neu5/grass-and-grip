@@ -95,6 +95,8 @@ describe('championship', () => {
       ],
     });
     st.phase = 'racing';
+    // Cars are balanced: a battered car is the reliable way to be slow.
+    st.cars[0].damage = 0.7;
     for (let i = 0; i < 60 * 60 && st.phase !== 'finished'; i++) st = step(st, {});
     expect(raceOrder(st)).toEqual(['Fast', 'Slow']);
   });

@@ -54,13 +54,18 @@ export interface CarStats {
   offroad: number;
 }
 
-/** Rally: stock sliding car. Formula 1: faster, more grip, less slide. */
+/**
+ * Balanced so every car laps within a few percent of the others on average,
+ * each with its own strengths. Rally: the all-rounder that slides.
+ * Formula 1: a touch quicker on tarmac (top speed, grip) but fragile and
+ * hopeless off the road.
+ */
 export const CARS: Record<CarKind, CarStats> = {
   rally: {
     length: 32,
     width: 17,
     radius: 14,
-    engineAccel: 520,
+    engineAccel: 535,
     brakeDecel: 900,
     reverseAccel: 260,
     maxReverse: 150,
@@ -83,15 +88,15 @@ export const CARS: Record<CarKind, CarStats> = {
     length: 38,
     width: 20,
     radius: 14,
-    engineAccel: 720,
-    brakeDecel: 1100,
+    engineAccel: 540,
+    brakeDecel: 950,
     reverseAccel: 280,
     maxReverse: 140,
-    airDrag: 0.00072,
+    airDrag: 0.00118,
     coastDrag: 0.38,
-    lateralGrip: 1850,
-    slideThreshold: 125,
-    slideGripFactor: 0.9,
+    lateralGrip: 1300,
+    slideThreshold: 100,
+    slideGripFactor: 0.85,
     handbrakeGripFactor: 0.5,
     handbrakeDecel: 300,
     slideScrub: 0.0016,
@@ -99,21 +104,21 @@ export const CARS: Record<CarKind, CarStats> = {
     steerFullSpeed: 160,
     steerDampSpeed: 1200,
     mass: 1,
-    toughness: 1,
-    offroad: 0,
+    toughness: 0.75,
+    offroad: -0.35,
   },
-  /** Slow on asphalt, best on grass and sand, shrugs off knocks. */
+  /** A little slower on tarmac, best on grass, sand and gravel, shrugs off knocks. */
   buggy: {
     length: 30,
     width: 18,
     radius: 14,
-    engineAccel: 500,
+    engineAccel: 555,
     brakeDecel: 850,
     reverseAccel: 260,
     maxReverse: 150,
-    airDrag: 0.0016,
+    airDrag: 0.0014,
     coastDrag: 0.5,
-    lateralGrip: 1050,
+    lateralGrip: 1150,
     slideThreshold: 75,
     slideGripFactor: 0.74,
     handbrakeGripFactor: 0.32,
@@ -126,31 +131,31 @@ export const CARS: Record<CarKind, CarStats> = {
     toughness: 1.25,
     offroad: 0.5,
   },
-  /** Heavy and slow, hard to hurt, shoves everyone else aside. */
+  /** Heavy: slowest to turn and stop, hard to hurt, shoves everyone else aside. */
   truck: {
     length: 44,
     width: 22,
     radius: 17,
-    engineAccel: 380,
-    brakeDecel: 700,
+    engineAccel: 520,
+    brakeDecel: 880,
     reverseAccel: 220,
     maxReverse: 120,
-    airDrag: 0.0013,
+    airDrag: 0.00115,
     coastDrag: 0.5,
-    lateralGrip: 980,
+    lateralGrip: 1250,
     slideThreshold: 60,
     slideGripFactor: 0.76,
     handbrakeGripFactor: 0.36,
     handbrakeDecel: 240,
     slideScrub: 0.004,
-    steerRate: 2.6,
+    steerRate: 3.0,
     steerFullSpeed: 120,
     steerDampSpeed: 900,
     mass: 2.4,
     toughness: 2,
     offroad: 0.2,
   },
-  /** Tiny and twitchy: quick off the line and into corners, low top speed, hates grass. */
+  /** Tiny and twitchy: quickest off the line and in tight corners, lowest top speed, hates grass. */
   kart: {
     length: 22,
     width: 14,
@@ -159,9 +164,9 @@ export const CARS: Record<CarKind, CarStats> = {
     brakeDecel: 1000,
     reverseAccel: 260,
     maxReverse: 130,
-    airDrag: 0.0019,
+    airDrag: 0.00178,
     coastDrag: 0.45,
-    lateralGrip: 1500,
+    lateralGrip: 1600,
     slideThreshold: 95,
     slideGripFactor: 0.82,
     handbrakeGripFactor: 0.4,
@@ -229,9 +234,18 @@ function surfaceFor(C: CarStats, surface: Surface): SurfaceParams {
   const s = SURFACES[surface];
   // Off-road tyres help on loose ground, not on tarmac or bare ice.
   if (surface === 'asphalt' || surface === 'ice' || C.offroad === 0) return s;
+  if (C.offroad > 0) {
+    // Good off-road tyres close part of the gap to tarmac.
+    return {
+      grip: s.grip + (1 - s.grip) * C.offroad,
+      engine: s.engine + (1 - s.engine) * C.offroad,
+      rolling: s.rolling * (1 - C.offroad * 0.5),
+    };
+  }
+  // Road tyres lose a share of what grip and drive there is (never below zero).
   return {
-    grip: s.grip + (1 - s.grip) * C.offroad,
-    engine: s.engine + (1 - s.engine) * C.offroad,
+    grip: s.grip * (1 + C.offroad),
+    engine: s.engine * (1 + C.offroad * 0.5),
     rolling: s.rolling * (1 - C.offroad * 0.5),
   };
 }

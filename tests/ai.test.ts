@@ -135,10 +135,13 @@ describe('AI racing', () => {
   });
 
   it('gets the fast cars past the slow ones', () => {
-    const s = run(aiRace('harbor', MIXED, 70, 3), 60 * 120);
-    const order = [...s.cars].sort((x, y) => x.finishTick! - y.finishTick!).map((c) => c.kind);
-    // The two F1s start at the back of the grid.
-    expect(order.slice(0, 2)).toEqual(['f1', 'f1']);
+    // Cars are balanced, so slow the front of the grid down with damage instead.
+    const start = aiRace('harbor', Array<CarKind>(8).fill('rally'), 70, 3);
+    for (const c of start.cars.slice(0, 6)) c.damage = 0.9;
+    const s = run(start, 60 * 150);
+    const order = [...s.cars].sort((x, y) => x.finishTick! - y.finishTick!).map((c) => c.id);
+    // The two healthy cars start at the back of the grid.
+    expect(order.slice(0, 2).sort()).toEqual([6, 7]);
   });
 });
 
