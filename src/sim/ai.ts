@@ -12,6 +12,11 @@ const PLAN_BRAKE = 650;
 const PLAN_SAMPLES = 45;
 const MAX_PLAN_SPEED = 600;
 
+/** Lift off the throttle this close to the road edge. */
+const EDGE_LIFT = 8;
+/** Share of the line's bend steered in directly, before the aim-point correction. */
+const FEED_FORWARD = 0.5;
+
 /** How the 0..1 driving level shapes the AI. */
 export const AI_LEVEL = {
   /** Share of the planned speed at level 0 and 1. */
@@ -328,7 +333,8 @@ function raceDrive(car: CarState, ai: AiMemory, track: Track, cars: CarState[], 
   for (let d = 0; d < look; j = (j + 1) % n) d += track.segmentLengths[j];
 
   // Off the road: just get back on; passing can wait.
-  const offRoad = distanceToCenterline(track, car.x, car.y) > track.def.halfWidth;
+  const fromCenter = distanceToCenterline(track, car.x, car.y);
+  const offRoad = fromCenter > track.def.halfWidth;
   // Only pull out to pass where the line is not braking for a corner.
   const profile = speedProfile(track, car);
   const cornering = profile[(idx + 8) % n] < speed + 30;
@@ -350,7 +356,16 @@ function raceDrive(car: CarState, ai: AiMemory, track: Track, cars: CarState[], 
     const beta = normalizeAngle(datan2(car.vy, car.vx) - car.angle);
     if (Math.abs(beta) < Math.PI / 2) slipAngle = beta;
   }
-  const steer = clamp(err * 2.4 + slipAngle * 0.9, -1, 1);
+  // Feed-forward: part of the lock the line's bend needs at this speed, so
+  // long corners are steered through rather than chased (which runs wide).
+  // The aim point covers the rest; the full amount would oversteer.
+  const C = carStats(car);
+  const fwd = Math.max(0, car.vx * dcos(car.angle) + car.vy * dsin(car.angle));
+  const yaw = (C.steerRate * Math.min(1, fwd / C.steerFullSpeed)) / (1 + fwd / C.steerDampSpeed);
+  const bend = line.bend[(idx + 2) % n];
+  const feed = yaw > 0.05 ? clamp((bend * fwd) / yaw, -1, 1) * FEED_FORWARD : 0;
+  const wanted = feed + err * 2.2 + slipAngle * 0.9;
+  const steer = clamp(wanted, -1, 1);
 
   // Target speed: own profile, a few samples ahead, slower on worn tyres.
   const grip = tyreFactor(car.tyreWear ?? 0, TYRE.wornGrip);
@@ -371,6 +386,10 @@ function raceDrive(car: CarState, ai: AiMemory, track: Track, cars: CarState[], 
   else if (diff > -18 || speed < 20) throttle = 0;
   else throttle = -clamp(-diff / 70, 0.35, 1);
   if (Math.abs(err) > 1.3 && speed > 120) throttle = -1;
+  // Out of steering lock: more speed only makes it run wider, so lift.
+  if (Math.abs(wanted) > 1.1 && speed > 100) throttle = Math.min(throttle, Math.abs(wanted) > 1.6 ? -0.4 : 0);
+  // Running out of road (usually a wide exit): ease off so the nose tucks in.
+  if (!offRoad && fromCenter > track.def.halfWidth - EDGE_LIFT && throttle > 0.3) throttle = 0.3;
 
   // Light cars flick the handbrake into tight hairpins.
   const kind = car.kind;

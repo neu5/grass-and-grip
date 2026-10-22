@@ -6,6 +6,7 @@ import {
   distanceToCenterline,
   getTrack,
   hashState,
+  nearestSampleIndex,
   racingLine,
   step,
   surfaceAt,
@@ -57,6 +58,27 @@ describe('racing line', () => {
   it('uses the width of the road in corners', () => {
     const line = racingLine(getTrack('meadow'));
     expect(Math.max(...line.offset.map(Math.abs))).toBeGreaterThan(30);
+  });
+});
+
+describe('corner speed', () => {
+  it('takes the long Meadow hairpin wide instead of crawling round a kink at its end', () => {
+    const track = getTrack('meadow');
+    const line = racingLine(track);
+    const from = track.gates[3].index;
+    const to = track.gates[4].index;
+    let tightest = 0;
+    for (let i = from; i <= to; i++) tightest = Math.max(tightest, line.curvature[i]);
+    expect(1 / tightest).toBeGreaterThan(70);
+    let s = aiRace('meadow', ['f1'], 70, 2);
+    let slowest = Infinity;
+    s = run(s, 60 * 40, (st) => {
+      const c = st.cars[0];
+      if (c.lapsCompleted !== 1) return;
+      const idx = nearestSampleIndex(track, c.x, c.y);
+      if (idx > from + 20 && idx < to) slowest = Math.min(slowest, Math.hypot(c.vx, c.vy));
+    });
+    expect(slowest).toBeGreaterThan(170);
   });
 });
 

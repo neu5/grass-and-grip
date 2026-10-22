@@ -8,6 +8,11 @@ const LINE_MARGIN = 18;
 const LINE_SCALES = [24, 12, 6, 3, 1];
 const LINE_ITERATIONS = 60;
 const LINE_STEP = 0.5;
+/** Curvature-evening passes, wide neighbours first. */
+const EVEN_SCALES = [12, 6, 3, 2, 1];
+const EVEN_ITERATIONS = 60;
+const EVEN_STEP = 0.4;
+const EVEN_PROBE = 0.5;
 
 export interface RacingLine {
   /** Lateral offset from the centerline sample, along its normal. */
@@ -15,6 +20,8 @@ export interface RacingLine {
   points: Vec2[];
   /** 1 / radius of the line at each sample. */
   curvature: number[];
+  /** Signed curvature: positive bends right (clockwise on the map). */
+  bend: number[];
   /** Arc length from samples[0] to each sample, along the centerline. */
   arc: number[];
   /** Centerline lap length. */
@@ -55,6 +62,29 @@ export function racingLine(track: Track): RacingLine {
       }
     }
   }
+  // Then even out the bending (K1999-style): nudge each point sideways until
+  // its curvature is the average of its neighbours'. Smoothing alone hugs the
+  // inside of a long hairpin and leaves a very tight kink at its end; evening
+  // out the curvature takes that kink wide instead.
+  for (const span of EVEN_SCALES) {
+    for (let it = 0; it < EVEN_ITERATIONS; it++) {
+      for (let i = 0; i < n; i++) {
+        const prev = at(i - span);
+        const next = at(i + span);
+        const want = (signedCurvature(at(i - 2 * span), prev, at(i)) + signedCurvature(at(i), next, at(i + 2 * span))) / 2;
+        const o = offset[i];
+        const k = ((i % n) + n) % n;
+        const here = signedCurvature(prev, at(i), next);
+        offset[k] = o + EVEN_PROBE;
+        const probe = signedCurvature(prev, at(i), next);
+        offset[k] = o;
+        const slope = (probe - here) / EVEN_PROBE;
+        if (Math.abs(slope) < 1e-9) continue;
+        const moved = o + ((want - here) / slope) * EVEN_STEP;
+        offset[k] = moved < -limit ? -limit : moved > limit ? limit : moved;
+      }
+    }
+  }
   const points = offset.map((_, i) => at(i));
   const curvature = points.map((_, i) => {
     const a = points[(i - 3 + n) % n];
@@ -62,13 +92,26 @@ export function racingLine(track: Track): RacingLine {
     const b = points[(i + 3) % n];
     return circleCurvature(a, p, b);
   });
+  const bend = points.map((_, i) => signedCurvature(points[(i - 3 + n) % n], points[i], points[(i + 3) % n]));
   const arc = [0];
   for (let i = 1; i < n; i++) arc.push(arc[i - 1] + track.segmentLengths[i - 1]);
   const length = arc[n - 1] + track.segmentLengths[n - 1];
   const gateIndex = track.gates.map((g) => g.index);
-  const line = { offset, points, curvature, arc, length, gateIndex };
+  const line = { offset, points, curvature, bend, arc, length, gateIndex };
   lines.set(track, line);
   return line;
+}
+
+/** Curvature through three points, positive when turning toward the normal side. */
+function signedCurvature(a: Vec2, b: Vec2, c: Vec2): number {
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const bcx = c.x - b.x;
+  const bcy = c.y - b.y;
+  const acx = c.x - a.x;
+  const acy = c.y - a.y;
+  const d = Math.sqrt((abx * abx + aby * aby) * (bcx * bcx + bcy * bcy) * (acx * acx + acy * acy));
+  return d > 0 ? (2 * (abx * bcy - aby * bcx)) / d : 0;
 }
 
 /** 1 / radius of the circle through three points (0 when straight). */
@@ -92,7 +135,7 @@ export const PLAN_BRAKE = 0.75;
  * Yaw the plan counts on, as a share of full steering lock. Above 1 because
  * a sliding car rotates more than its steering alone allows.
  */
-export const PLAN_STEER = 1.3;
+export const PLAN_STEER = 1.1;
 const MAX_PLAN_SPEED = 900;
 
 /** Per track (so an edited track gets fresh plans), then per kind + setup. */
