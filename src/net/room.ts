@@ -1,7 +1,14 @@
 import {
   createRace,
   DEFAULT_CAR_MODE,
+  DEFAULT_RULES,
   isTrackId,
+  normalizeRules,
+  parseTrackDef,
+  registerTrack,
+  validateTrack,
+  normalizeSetup,
+  parseCarKind,
   parseCarMode,
   spawnAiKind,
   spawnKind,
@@ -10,14 +17,19 @@ import {
   type CarConfig,
   type CarKind,
   type CarMode,
+  type CarSetup,
   type FastestLap,
   type GameState,
   type PlayerInput,
+  type RaceRules,
   type TickInputs,
+  type TrackDef,
 } from '../sim';
-import { AI_NAMES, CAR_COLORS, CAR_KINDS, DEFAULT_LAPS, MAX_PLAYERS, clampAiCount, parseLaps, type LobbyState, type RoomPhase } from './protocol';
+import { AI_NAMES, CAR_COLORS, DEFAULT_LAPS, MAX_PLAYERS, clampAiCount, parseLaps, type LobbyState, type RoomPhase } from './protocol';
 
 export const COUNTDOWN_SECONDS = 5;
+/** A custom track's JSON may not be bigger than this. */
+export const MAX_CUSTOM_TRACK_BYTES = 60_000;
 export const RESULTS_TICKS = 6 * TICK_RATE;
 export const MAX_RACE_TICKS = 15 * 60 * TICK_RATE;
 const MAX_NAME_LENGTH = 16;
@@ -27,6 +39,7 @@ export interface RoomPlayer {
   name: string;
   color: string;
   car: CarKind;
+  setup: CarSetup;
   ready: boolean;
 }
 
@@ -45,6 +58,9 @@ export class Room {
   laps = DEFAULT_LAPS;
   trackId = 'meadow';
   carMode: CarMode = DEFAULT_CAR_MODE;
+  rules: RaceRules = { ...DEFAULT_RULES };
+  /** Set while the room races on a track from the host's editor. */
+  customTrack: TrackDef | null = null;
   phase: RoomPhase = 'lobby';
   race: GameState | null = null;
   /** Per-track top 3 for this room process. */
@@ -68,15 +84,15 @@ export class Room {
   }
 
   /** Returns an error message, or null on success. */
-  join(id: string, rawName: string, color: string, car?: string): string | null {
+  join(id: string, rawName: string, color: string, car?: string, setup?: unknown): string | null {
     if (this.players.some((p) => p.id === id)) return 'Already joined';
     if (this.players.length >= MAX_PLAYERS) return 'Room is full';
     if (!(CAR_COLORS as readonly string[]).includes(color)) return 'Unknown color';
     if (this.takenColors().includes(color)) return 'Color already taken';
-    const kind = parseCarKind(car);
+    const kind = car === undefined || car === '' ? 'rally' : parseCarKind(car);
     if (!kind) return 'Unknown car';
     const name = String(rawName ?? '').trim().slice(0, MAX_NAME_LENGTH) || `Player ${this.players.length + 1}`;
-    this.players.push({ id, name, color, car: kind, ready: false });
+    this.players.push({ id, name, color, car: kind, setup: normalizeSetup(setup), ready: false });
     this.aiCount = clampAiCount(this.players.length, this.aiCount);
     this.changed();
     return null;
@@ -107,7 +123,20 @@ export class Room {
     return null;
   }
 
-  setSettings(id: string, s: { aiCount?: number; laps?: number; trackId?: string; carMode?: string }): string | null {
+  /** A player's own garage setup, changeable in the lobby. */
+  setSetup(id: string, setup: unknown): string | null {
+    const p = this.players.find((q) => q.id === id);
+    if (!p) return 'Join the room first';
+    if (this.phase !== 'lobby') return 'Race in progress';
+    p.setup = normalizeSetup(setup);
+    this.changed();
+    return null;
+  }
+
+  setSettings(
+    id: string,
+    s: { aiCount?: number; laps?: number; trackId?: string; carMode?: string; rules?: Partial<RaceRules>; customTrack?: unknown },
+  ): string | null {
     if (id !== this.hostId) return 'Only the host can change settings';
     if (this.phase !== 'lobby') return 'Race in progress';
     if (s.aiCount !== undefined) {
@@ -120,14 +149,26 @@ export class Room {
       if (n === null) return 'Invalid lap count';
       this.laps = n;
     }
-    if (s.trackId !== undefined) {
+    if (s.customTrack !== undefined) {
+      const def = parseTrackDef(s.customTrack);
+      if (!def || JSON.stringify(def).length > MAX_CUSTOM_TRACK_BYTES) return 'That track cannot be used';
+      if (validateTrack(def).length) return 'That track has problems; fix them in the editor';
+      registerTrack(def);
+      this.customTrack = def;
+      this.trackId = def.id;
+    } else if (s.trackId !== undefined) {
       if (!isTrackId(s.trackId)) return 'Unknown track';
       this.trackId = s.trackId;
+      this.customTrack = null;
     }
     if (s.carMode !== undefined) {
       const mode = parseCarMode(s.carMode);
       if (!mode) return 'Unknown car mode';
       this.carMode = mode;
+    }
+    if (s.rules !== undefined) {
+      if (!s.rules || typeof s.rules !== 'object') return 'Invalid options';
+      this.rules = normalizeRules({ ...this.rules, ...s.rules });
     }
     this.changed();
     return null;
@@ -173,6 +214,8 @@ export class Room {
       laps: this.laps,
       trackId: this.trackId,
       carMode: this.carMode,
+      rules: { ...this.rules },
+      ...(this.customTrack ? { customTrack: this.customTrack } : {}),
       cars: Object.fromEntries(this.carOf),
       fastestLaps: this.fastestByTrack[this.trackId] ?? [],
     };
@@ -189,7 +232,13 @@ export class Room {
     const humanKinds = this.players.map((p) => spawnKind(p.car, this.carMode));
     const cars: CarConfig[] = [
       ...this.players.map(
-        (p): CarConfig => ({ name: p.name, color: p.color, controller: 'human', kind: spawnKind(p.car, this.carMode) }),
+        (p): CarConfig => ({
+          name: p.name,
+          color: p.color,
+          controller: 'human',
+          kind: spawnKind(p.car, this.carMode),
+          setup: p.setup,
+        }),
       ),
       ...freeColors.slice(0, this.aiCount).map(
         (color, i): CarConfig => ({ name: AI_NAMES[i] ?? `AI ${i + 1}`, color, controller: 'ai', kind: spawnAiKind(i, humanKinds, this.carMode) }),
@@ -204,6 +253,7 @@ export class Room {
       totalLaps: this.laps,
       cars,
       countdownSeconds: COUNTDOWN_SECONDS,
+      rules: this.rules,
       fastestLaps: this.fastestByTrack[this.trackId],
     });
     this.phase = 'racing';
@@ -225,7 +275,3 @@ export class Room {
   }
 }
 
-function parseCarKind(car: string | undefined): CarKind | null {
-  if (car === undefined || car === '') return 'rally';
-  return (CAR_KINDS as readonly string[]).includes(car) ? (car as CarKind) : null;
-}

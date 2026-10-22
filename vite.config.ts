@@ -5,6 +5,6 @@ export default defineConfig({
   preview: { port: 47316 },
   build: {
     chunkSizeWarningLimit: 800,
-    rollupOptions: { input: { main: resolve(import.meta.dirname, 'index.html'), room: resolve(import.meta.dirname, 'room.html') } },
+    rollupOptions: { input: { main: resolve(import.meta.dirname, 'index.html'), room: resolve(import.meta.dirname, 'room.html'), editor: resolve(import.meta.dirname, 'editor.html') } },
   },
 });

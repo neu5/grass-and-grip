@@ -73,7 +73,7 @@ describe('harbor layout', () => {
 
   it('has water, sand, a high bridge, and pits on asphalt', () => {
     expect(TRACKS.harbor.rivers?.length).toBeGreaterThan(0);
-    expect(TRACKS.harbor.sand?.length).toBeGreaterThan(0);
+    expect(TRACKS.harbor.patches?.some((p) => p.surface === 'sand')).toBe(true);
     expect(TRACKS.harbor.bridges).toHaveLength(2);
     for (const b of TRACKS.harbor.bridges!) {
       const bx = b.x + b.w / 2;
@@ -214,7 +214,7 @@ describe('surfaces', () => {
     return { x: 0, y: 0 };
   })();
   const sand = (() => {
-    const r = TRACKS.harbor.sand![0];
+    const r = harbor.patches.find((p) => p.surface === 'sand')!.box;
     for (let x = r.x; x < r.x + r.w; x += 10) {
       for (let y = r.y; y < r.y + r.h; y += 10) {
         if (surfaceAt(harbor, x, y) === 'sand') return { x, y };
@@ -258,7 +258,7 @@ describe('surfaces', () => {
   it('keeps meadow off-track as grass, not water or sand', () => {
     expect(surfaceAt(meadow, 30, 30)).toBe('grass');
     expect(meadow.def.rivers).toBeUndefined();
-    expect(meadow.def.sand).toBeUndefined();
+    expect(meadow.def.patches).toBeUndefined();
     expect(meadow.def.bridges).toBeUndefined();
     expect(heightAt(meadow, meadow.samples[0].x, meadow.samples[0].y)).toBeCloseTo(0, 5);
   });

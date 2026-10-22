@@ -1,10 +1,12 @@
-import { standings, ticksToTime, TICK_RATE, type GameState } from '../sim';
+import { CAR_KIND_SHORT, DEFAULT_RULES, standings, ticksToTime, TICK_RATE, toCarKind, type GameState } from '../sim';
 import { cameraHudHint } from './touchMap';
 
 export interface Label {
   text: string;
   x: number;
   y: number;
+  /** Screen direction to a checkpoint this car drove past, if any. */
+  missed?: { dx: number; dy: number };
 }
 
 export function drawHud(
@@ -31,11 +33,18 @@ export function drawHud(
     ctx.strokeText(l.text, l.x, l.y);
     ctx.fillStyle = '#fff';
     ctx.fillText(l.text, l.x, l.y);
+    if (l.missed) drawMissedGate(ctx, l);
   }
   ctx.textAlign = 'left';
 
+  const rules = state.rules ?? DEFAULT_RULES;
+  // Bars only for systems this race uses.
+  const bars: ('Tyres' | 'Fuel' | 'Damage')[] = [];
+  if (rules.tyreWear) bars.push('Tyres');
+  if (rules.fuel) bars.push('Fuel');
+  if (rules.damage) bars.push('Damage');
   const panelW = 230;
-  const panelH = 171;
+  const panelH = 120 + bars.length * 17;
   humanIds.forEach((id, k) => {
     const car = state.cars[id];
     const pos = order.findIndex((c) => c.id === id) + 1;
@@ -71,9 +80,8 @@ export function drawHud(
     const tyreLeft = 1 - Math.min(1, Math.max(0, car.tyreWear ?? 0));
     const fuelLeft = Math.min(1, Math.max(0, car.fuel ?? 1));
     const bodyLeft = 1 - Math.min(1, Math.max(0, car.damage ?? 0));
-    drawRemainBar(ctx, 'Tyres', tyreLeft, x, y + 48 + 4 * 17, panelW);
-    drawRemainBar(ctx, 'Fuel', fuelLeft, x, y + 48 + 5 * 17, panelW);
-    drawRemainBar(ctx, 'Damage', bodyLeft, x, y + 48 + 6 * 17, panelW);
+    const left = { Tyres: tyreLeft, Fuel: fuelLeft, Damage: bodyLeft };
+    bars.forEach((label, i) => drawRemainBar(ctx, label, left[label], x, y + 48 + (4 + i) * 17, panelW));
   });
 
   const boardX = humanIds.length > 1 ? cw / 2 - 124 : cw - 260;
@@ -152,11 +160,40 @@ function drawFastestBoard(ctx: CanvasRenderingContext2D, state: GameState, x: nu
     ctx.fillText(`${i + 1}. ${e.name}`, x + 30, rowY);
     ctx.textAlign = 'right';
     ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.fillText(e.car === 'f1' ? 'F1' : 'Rally', x + 168, rowY);
+    ctx.fillText(CAR_KIND_SHORT[toCarKind(e.car)], x + 168, rowY);
     ctx.fillStyle = i === 0 ? '#ffd54a' : '#fff';
     ctx.fillText(ticksToTime(e.ticks), x + 236, rowY);
     ctx.textAlign = 'left';
   }
+}
+
+/** Pointer from the car label toward the checkpoint it skipped. */
+function drawMissedGate(ctx: CanvasRenderingContext2D, l: Label) {
+  const { dx, dy } = l.missed!;
+  const cx = l.x + dx * 46;
+  const cy = l.y - 20 + dy * 46;
+  const a = Math.atan2(dy, dx);
+  const blink = Math.floor(performance.now() / 300) % 2 === 0;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(a);
+  ctx.beginPath();
+  ctx.moveTo(16, 0);
+  ctx.lineTo(-10, -11);
+  ctx.lineTo(-4, 0);
+  ctx.lineTo(-10, 11);
+  ctx.closePath();
+  ctx.fillStyle = blink ? '#ffd54a' : '#ff6b4a';
+  ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.fill();
+  ctx.restore();
+  ctx.font = 'bold 13px system-ui, sans-serif';
+  ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+  ctx.strokeText('Missed checkpoint — go back', l.x, l.y + 64);
+  ctx.fillStyle = '#ffd54a';
+  ctx.fillText('Missed checkpoint — go back', l.x, l.y + 64);
 }
 
 function remainColor(left: number): string {

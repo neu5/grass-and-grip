@@ -12,10 +12,12 @@
       <canvas id="hud"></canvas>
     </div>
     <div id="menu">
-      <form id="menu-form" class="card">
+      <form id="menu-form" class="card wide">
         <h1>Grass <span>&amp;</span> Grip</h1>
-        <p class="tag">Isometric arcade racing. Meadow Ring is grass vs asphalt; Harbor Bridge adds hills, a lake, sand and a bridge over water.</p>
+        <p class="tag">Isometric arcade racing. Meadow Ring is grass vs asphalt; Harbor Bridge adds hills, a river, sand and two bridges.</p>
 
+        <div class="cols">
+        <div class="col">
         <fieldset>
           <legend>Drivers</legend>
           <label><input type="radio" name="humans" value="1" checked /><span>1 player</span></label>
@@ -24,22 +26,51 @@
 
         <fieldset>
           <legend>Mode</legend>
-          <label><input type="radio" name="carmode" value="mixed" checked /><span>Mixed</span></label>
-          <label><input type="radio" name="carmode" value="f1" /><span>F1</span></label>
+          <label><input type="radio" name="series" value="single" checked /><span>Single race</span></label>
+          <label><input type="radio" name="series" value="season" /><span>Championship</span></label>
         </fieldset>
 
-        <fieldset id="p1-car">
+        <fieldset class="car-kinds">
+          <legend>Grid</legend>
+          <label><input type="radio" name="carmode" value="mixed" checked /><span>Mixed</span></label>
+          <label><input type="radio" name="carmode" value="rally" /><span>Rally</span></label>
+          <label><input type="radio" name="carmode" value="f1" /><span>F1</span></label>
+          <label><input type="radio" name="carmode" value="buggy" /><span>Buggy</span></label>
+          <label><input type="radio" name="carmode" value="truck" /><span>Truck</span></label>
+          <label><input type="radio" name="carmode" value="kart" /><span>Kart</span></label>
+        </fieldset>
+
+        <fieldset id="p1-car" class="car-kinds">
           <legend>Player 1 car</legend>
           <label><input type="radio" name="p1car" value="rally" checked /><span>Rally</span></label>
-          <label><input type="radio" name="p1car" value="f1" /><span>Formula 1</span></label>
+          <label><input type="radio" name="p1car" value="f1" /><span>F1</span></label>
+          <label><input type="radio" name="p1car" value="buggy" /><span>Buggy</span></label>
+          <label><input type="radio" name="p1car" value="truck" /><span>Truck</span></label>
+          <label><input type="radio" name="p1car" value="kart" /><span>Kart</span></label>
         </fieldset>
 
-        <fieldset id="p2-car" hidden>
+        <fieldset id="p2-car" class="car-kinds" hidden>
           <legend>Player 2 car</legend>
           <label><input type="radio" name="p2car" value="rally" checked /><span>Rally</span></label>
-          <label><input type="radio" name="p2car" value="f1" /><span>Formula 1</span></label>
+          <label><input type="radio" name="p2car" value="f1" /><span>F1</span></label>
+          <label><input type="radio" name="p2car" value="buggy" /><span>Buggy</span></label>
+          <label><input type="radio" name="p2car" value="truck" /><span>Truck</span></label>
+          <label><input type="radio" name="p2car" value="kart" /><span>Kart</span></label>
         </fieldset>
 
+        <details class="more">
+          <summary>Car setup</summary>
+          <div id="p1-setup"><p class="setup-who">Player 1</p></div>
+          <div id="p2-setup" hidden><p class="setup-who">Player 2</p></div>
+        </details>
+
+        <details class="more">
+          <summary>Race options</summary>
+          <div id="rules"></div>
+        </details>
+
+        </div>
+        <div class="col">
         <fieldset id="ai">
           <legend>AI opponents</legend>
           <label><input type="radio" name="ai" value="0" /><span>0</span></label>
@@ -52,10 +83,20 @@
           <label><input type="radio" name="ai" value="7" checked /><span>7</span></label>
         </fieldset>
 
-        <fieldset>
+        <div id="ai-level"></div>
+
+        <fieldset id="season-tracks" hidden>
+          <legend>Championship tracks <i>raced in this order</i></legend>
+          <label><input type="checkbox" name="season-track" value="meadow" checked /><span>Meadow Ring</span></label>
+          <label><input type="checkbox" name="season-track" value="harbor" checked /><span>Harbor Bridge</span></label>
+          <label><input type="checkbox" name="season-track" value="alpine" checked /><span>Alpine Pass</span></label>
+        </fieldset>
+
+        <fieldset id="single-track">
           <legend>Track</legend>
           <label><input type="radio" name="track" value="meadow" checked /><span>Meadow Ring</span></label>
           <label><input type="radio" name="track" value="harbor" /><span>Harbor Bridge</span></label>
+          <label><input type="radio" name="track" value="alpine" /><span>Alpine Pass</span></label>
         </fieldset>
 
         <fieldset class="laps-picker">
@@ -70,6 +111,9 @@
           <ol></ol>
         </div>
 
+        </div>
+        </div>
+
         <div class="controls">
           <div id="hint-solo" data-kb-hint>
             <b>Drive</b> Arrows or WASD &nbsp;·&nbsp; <b>Handbrake</b> Space / Shift
@@ -78,16 +122,36 @@
             <div><b>Player 1</b> Arrows · handbrake Right Shift / Enter</div>
             <div><b>Player 2</b> WASD · handbrake Left Shift / Space</div>
           </div>
-          <div class="muted" data-kb-hint>C switches camera · R restarts · Esc returns to this menu</div>
+          <div class="muted" data-kb-hint>C switches camera · M mutes sound · R restarts · Esc returns to this menu</div>
           <div data-touch-hint hidden>
             <b>Drive</b> hold FWD / REV &nbsp;·&nbsp; <b>Brake</b> BRAKE &nbsp;·&nbsp; <b>Steer</b> right stick &nbsp;·&nbsp; <b>Camera</b> CAM
           </div>
           <div class="muted" data-touch-hint hidden>Landscape only · rotate phone · FULL hides browser chrome</div>
         </div>
 
-        <button type="submit">Start race</button>
-        <p class="online-link"><a href="/room">Play online with friends →</a></p>
+        <button type="button" id="resume-season" class="secondary" hidden>Continue championship</button>
+        <button type="submit" id="start">Start race</button>
+        <p class="online-link"><a href="/room">Play online with friends →</a> &nbsp;·&nbsp; <a href="/editor">Track editor →</a></p>
       </form>
+    </div>
+    <div id="season" hidden>
+      <div class="card">
+        <h2 id="season-title"></h2>
+        <p id="season-sub" class="muted"></p>
+        <div id="season-podium" class="podium" hidden></div>
+        <div class="season-tables">
+          <div id="season-race-box">
+            <legend>Race</legend>
+            <table id="season-race" class="season-table"></table>
+          </div>
+          <div>
+            <legend>Championship</legend>
+            <table id="season-standings" class="season-table"></table>
+          </div>
+        </div>
+        <button type="button" id="season-next">Next race</button>
+        <button type="button" id="season-menu" class="secondary">Back to menu</button>
+      </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

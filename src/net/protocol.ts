@@ -1,9 +1,15 @@
-import type { CarKind, CarMode, FastestLap, Phase, PlayerInput } from '../sim';
+import type { CarKind, CarMode, CarSetup, FastestLap, Phase, PlayerInput, RaceRules, TrackDef } from '../sim';
 
 export type { CarKind };
 export {
   CAR_KINDS,
   CAR_KIND_NAMES,
+  CAR_KIND_SHORT,
+  DEFAULT_RULES,
+  DEFAULT_SETUP,
+  normalizeRules,
+  normalizeSetup,
+  parseCarKind,
   CAR_MODES,
   CAR_MODE_NAMES,
   DEFAULT_CAR_MODE,
@@ -12,7 +18,7 @@ export {
   isTrackId,
   parseCarMode,
 } from '../sim';
-export type { CarMode, TrackId } from '../sim';
+export type { CarMode, CarSetup, RaceRules, TrackId } from '../sim';
 
 /** Humans + AI in one race. Humans 1–8; AI fills the rest. */
 export const MAX_PLAYERS = 8;
@@ -74,6 +80,7 @@ export interface LobbyPlayer {
   name: string;
   color: string;
   car: CarKind;
+  setup: CarSetup;
   ready: boolean;
   host: boolean;
 }
@@ -87,6 +94,10 @@ export interface LobbyState {
   trackId: string;
   /** Host-set. Default mixed (pick your car). F1 forces every spawned car. */
   carMode: CarMode;
+  /** Host-set race options (damage, wear, fuel, collisions, AI level). */
+  rules: RaceRules;
+  /** The full track when the host picked one made in the editor. */
+  customTrack?: TrackDef;
   /** car id per player id in the current race */
   cars: Record<string, number>;
   /** Room top 3 for the current track (server memory). */
@@ -94,9 +105,19 @@ export interface LobbyState {
 }
 
 export type ClientMessage =
-  | { t: 'join'; name: string; color: string; car?: CarKind }
+  | { t: 'join'; name: string; color: string; car?: CarKind; setup?: CarSetup }
   | { t: 'ready'; ready: boolean }
-  | { t: 'settings'; aiCount?: number; laps?: number; trackId?: string; carMode?: CarMode }
+  | {
+      t: 'settings';
+      aiCount?: number;
+      laps?: number;
+      trackId?: string;
+      carMode?: CarMode;
+      rules?: Partial<RaceRules>;
+      /** A track from the host's editor; validated and shared with the room. */
+      customTrack?: unknown;
+    }
+  | { t: 'setup'; setup: CarSetup }
   | { t: 'input'; seq: number; tick: number; input: PlayerInput }
   | { t: 'ping'; t0: number };
 
@@ -113,6 +134,8 @@ export interface CompactCar {
   n: string;
   col: string;
   knd: CarKind;
+  /** Setup as [gearing, steering, grip]; missing means stock. */
+  su?: [number, number, number];
   ctl: 'human' | 'ai';
   x: number;
   y: number;
@@ -150,7 +173,11 @@ export interface CompactSnapshot {
   st: number;
   tl: number;
   tid: string;
+  /** Rules as [damage, tyreWear, fuel, collisions 0/1, aiLevel]; missing means defaults. */
+  ru?: [number, number, number, number, number];
   c: CompactCar[];
+  /** Cones as flat [x, y (tenths), angle (hundredths), down 0/1] per cone. */
+  pr?: number[];
   /** Fastest-first top 3 for this track. */
   fl?: CompactFastestLap[];
   /** Last input seq the server applied for the receiving client. */

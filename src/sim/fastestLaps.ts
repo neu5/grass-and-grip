@@ -1,4 +1,4 @@
-import type { CarKind, FastestLap } from './types';
+import { toCarKind, type CarKind, type FastestLap } from './types';
 
 export type { FastestLap };
 
@@ -13,7 +13,7 @@ function normalizeLap(entry: FastestLap): FastestLap | null {
   if (!Number.isFinite(ticks) || ticks <= 0) return null;
   const name = String(entry.name ?? '').trim().slice(0, 16) || 'Driver';
   const trackId = String(entry.trackId ?? '').trim() || 'meadow';
-  const car: CarKind = entry.car === 'f1' ? 'f1' : 'rally';
+  const car: CarKind = toCarKind(entry.car);
   const color = String(entry.color ?? '').trim() || '#888888';
   return { name, ticks, trackId, car, color };
 }

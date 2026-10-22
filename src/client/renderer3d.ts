@@ -8,6 +8,10 @@ import {
   pitBoxIndex,
   slopeAttitude,
   terrainHeightAt,
+  toCarKind,
+  BARRIER_HALF,
+  missedGate,
+  nearestSampleIndex,
   bridgeSpan,
   BRIDGE_DECK_MARGIN,
   inWater,
@@ -19,7 +23,9 @@ import {
   type GameState,
   type Track,
 } from '../sim';
+import type { SoundEngine } from './audio';
 import { checkpointDebugPose } from './checkpointDebug';
+import { soundEvents } from './soundEvents';
 import { drawHud, type Label } from './hud';
 import { paintTrackSurface, SkidMarks, splitBridgeDecks } from './trackTexture';
 
@@ -29,7 +35,10 @@ const ISO_AZIMUTH = Math.PI / 4;
 const ISO_ELEVATION = Math.atan(1 / Math.SQRT2);
 const CAMERA_DISTANCE = 3000;
 const FOLLOW_MIN_EXTENT = 620;
-const SURFACE_RES = 2;
+/** Ground texture pixels per world unit, capped so big maps stay within GPU texture limits. */
+function surfaceRes(track: Track): number {
+  return Math.min(2, 4096 / Math.max(track.def.width, track.def.height));
+}
 const CAR_FALL_GRAVITY = 900;
 
 function lerpAngle(a: number, b: number, t: number): number {
@@ -57,10 +66,115 @@ const wheelMat = std('#151515', { roughness: 0.9 });
 const glassMat = std('#1b2633', { roughness: 0.25, metalness: 0.3 });
 const carbon = std('#1a1a1a', { roughness: 0.35, metalness: 0.45 });
 
+const CAR_BUILDERS: Record<CarKind, (color: string) => THREE.Group> = {
+  rally: buildRallyMesh,
+  f1: buildF1Mesh,
+  buggy: buildBuggyMesh,
+  truck: buildTruckMesh,
+  kart: buildKartMesh,
+};
+
 function buildCarMesh(color: string, kind: CarKind = 'rally'): THREE.Group {
-  const g = kind === 'f1' ? buildF1Mesh(color) : buildRallyMesh(color);
+  const g = (CAR_BUILDERS[kind] ?? buildRallyMesh)(color);
   attachDamageFx(g, kind);
   return g;
+}
+
+function addWheels(g: THREE.Group, geo: THREE.BufferGeometry, y: number, spots: [number, number][]) {
+  for (const [x, z] of spots) {
+    const w = new THREE.Mesh(geo, wheelMat);
+    w.position.set(x, y, z);
+    g.add(w);
+  }
+}
+
+function box(g: THREE.Group, mat: THREE.Material, size: [number, number, number], pos: [number, number, number]) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(...size), mat);
+  m.position.set(...pos);
+  g.add(m);
+  return m;
+}
+
+const buggyWheelGeo = new THREE.CylinderGeometry(6, 6, 5, 14).rotateX(Math.PI / 2);
+const truckWheelGeo = new THREE.CylinderGeometry(5.4, 5.4, 4.6, 14).rotateX(Math.PI / 2);
+const kartWheelGeo = new THREE.CylinderGeometry(3, 3, 3.2, 12).rotateX(Math.PI / 2);
+const cageMat = std('#2b2b2b', { roughness: 0.5, metalness: 0.5 });
+const skinMat = std('#e0b48a', { roughness: 0.8 });
+
+/** Open frame, roll cage and fat tyres standing proud of the body. */
+function buildBuggyMesh(color: string): THREE.Group {
+  const L = CARS.buggy.length;
+  const W = CARS.buggy.width;
+  const g = new THREE.Group();
+  g.rotation.order = 'YXZ';
+  const paint = std(color, { roughness: 0.5, metalness: 0.1 });
+  box(g, paint, [L * 0.8, 3, W * 0.6], [0, 7, 0]);
+  box(g, paint, [L * 0.3, 2.4, W * 0.8], [L * 0.38, 6.4, 0]);
+  box(g, cageMat, [L * 0.18, 4, W * 0.5], [-L * 0.32, 9.6, 0]);
+  // Cage: four posts and a top frame.
+  for (const x of [-L * 0.16, L * 0.12]) {
+    for (const z of [-W * 0.26, W * 0.26]) box(g, cageMat, [1.2, 9, 1.2], [x, 13, z]);
+  }
+  box(g, cageMat, [L * 0.32, 1.2, W * 0.56], [-L * 0.02, 17.4, 0]);
+  box(g, glassMat, [L * 0.18, 3, W * 0.36], [-L * 0.02, 10.4, 0]);
+  addWheels(g, buggyWheelGeo, 6, [
+    [-L * 0.34, -W * 0.56],
+    [-L * 0.34, W * 0.56],
+    [L * 0.32, -W * 0.56],
+    [L * 0.32, W * 0.56],
+  ]);
+  return shadowed(g);
+}
+
+/** Tall cab up front, flat bed behind: reads as heavy from far away. */
+function buildTruckMesh(color: string): THREE.Group {
+  const L = CARS.truck.length;
+  const W = CARS.truck.width;
+  const g = new THREE.Group();
+  g.rotation.order = 'YXZ';
+  const paint = std(color, { roughness: 0.5, metalness: 0.15 });
+  const dark = std('#3a3a3a', { roughness: 0.8 });
+  box(g, dark, [L, 3, W * 0.9], [0, 5.5, 0]);
+  box(g, paint, [L * 0.34, 12, W], [L * 0.32, 13, 0]);
+  box(g, glassMat, [1, 5, W * 0.8], [L * 0.49, 15.5, 0]);
+  box(g, paint, [L * 0.6, 2, W], [-L * 0.18, 8, 0]);
+  for (const z of [-W / 2, W / 2]) box(g, paint, [L * 0.6, 5, 1], [-L * 0.18, 11, z]);
+  box(g, paint, [1, 5, W], [-L * 0.48, 11, 0]);
+  box(g, std('#ffd54a', { roughness: 0.4 }), [L * 0.12, 1.2, W * 0.5], [L * 0.32, 19.6, 0]);
+  addWheels(g, truckWheelGeo, 5.4, [
+    [-L * 0.36, -W / 2],
+    [-L * 0.36, W / 2],
+    [-L * 0.18, -W / 2],
+    [-L * 0.18, W / 2],
+    [L * 0.3, -W / 2],
+    [L * 0.3, W / 2],
+  ]);
+  return shadowed(g);
+}
+
+/** Low tube frame with the driver sitting on top. */
+function buildKartMesh(color: string): THREE.Group {
+  const L = CARS.kart.length;
+  const W = CARS.kart.width;
+  const g = new THREE.Group();
+  g.rotation.order = 'YXZ';
+  const paint = std(color, { roughness: 0.4, metalness: 0.2 });
+  box(g, cageMat, [L * 0.9, 1, W * 0.7], [0, 2.4, 0]);
+  box(g, paint, [L * 0.26, 2.4, W * 0.8], [L * 0.4, 3.2, 0]);
+  for (const z of [-W * 0.42, W * 0.42]) box(g, paint, [L * 0.4, 2, 2], [0, 3.4, z]);
+  box(g, paint, [L * 0.18, 4.6, W * 0.46], [-L * 0.08, 5, 0]);
+  box(g, paint, [L * 0.2, 5.2, W * 0.44], [-L * 0.06, 9.6, 0]);
+  const helmet = new THREE.Mesh(new THREE.SphereGeometry(2.6, 10, 8), std('#f4f4f4', { roughness: 0.3 }));
+  helmet.position.set(-L * 0.04, 14, 0);
+  g.add(helmet);
+  box(g, skinMat, [1.6, 1, W * 0.5], [L * 0.12, 8.6, 0]);
+  addWheels(g, kartWheelGeo, 3, [
+    [-L * 0.36, -W / 2],
+    [-L * 0.36, W / 2],
+    [L * 0.34, -W / 2],
+    [L * 0.34, W / 2],
+  ]);
+  return shadowed(g);
 }
 
 const SMOKE_START = 0.16;
@@ -255,7 +369,10 @@ interface TreeSpot {
 const TREE_GREENS = ['#2f6e2a', '#3a7d31', '#2a6326'].map((c) => new THREE.Color(c));
 
 /** All trees as a handful of instanced meshes: one draw call per tree part. */
-function buildForest(spots: TreeSpot[]): THREE.Group {
+const SNOW_TOP = new THREE.Color('#eef3f6');
+
+/** Pines; on a snowy map the top tier is white. */
+function buildForest(spots: TreeSpot[], winter = false): THREE.Group {
   const g = new THREE.Group();
   const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.18, 0.24, 0.9, 7).translate(0, 0.45, 0), std('#6b4a2b'), spots.length);
   const tiers = [0, 1, 2].map(
@@ -275,10 +392,56 @@ function buildForest(spots: TreeSpot[]): THREE.Group {
     trunk.setMatrixAt(i, m);
     tiers.forEach((tier, k) => {
       tier.setMatrixAt(i, m);
-      tier.setColorAt(i, TREE_GREENS[(i + k) % 3]);
+      tier.setColorAt(i, winter && k === 2 ? SNOW_TOP : TREE_GREENS[(i + k) % 3]);
     });
   });
   g.add(trunk, ...tiers);
+  return shadowed(g);
+}
+
+/** Red and white concrete blocks along each barrier line, riding the ground. */
+function buildBarriers(track: Track): THREE.Group {
+  const g = new THREE.Group();
+  const red = std('#c9372c', { roughness: 0.8 });
+  const white = std('#e9e6df', { roughness: 0.85 });
+  const block = 22;
+  for (const b of track.def.barriers ?? []) {
+    const dx = b.b.x - b.a.x;
+    const dy = b.b.y - b.a.y;
+    const len = Math.hypot(dx, dy);
+    const n = Math.max(1, Math.round(len / block));
+    const angle = Math.atan2(dy, dx);
+    for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n;
+      const x = b.a.x + dx * t;
+      const z = b.a.y + dy * t;
+      const m = new THREE.Mesh(new THREE.BoxGeometry((len / n) * 0.96, 9, BARRIER_HALF * 2), i % 2 ? white : red);
+      m.position.set(x, terrainHeightAt(track, x, z) + 4, z);
+      m.rotation.y = -angle;
+      g.add(m);
+    }
+  }
+  return shadowed(g);
+}
+
+const coneMat = std('#ff6a1a', { roughness: 0.6 });
+const coneBandMat = std('#f4f4f4', { roughness: 0.5 });
+const coneBaseMat = std('#262626', { roughness: 0.8 });
+
+/** Traffic cone, base on the ground at the origin. */
+function buildConeMesh(): THREE.Group {
+  const g = new THREE.Group();
+  g.rotation.order = 'YXZ';
+  const body = new THREE.Group();
+  body.name = 'body';
+  const base = new THREE.Mesh(new THREE.BoxGeometry(10, 1.2, 10), coneBaseMat);
+  base.position.y = 0.6;
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(4, 13, 10), coneMat);
+  cone.position.y = 7.4;
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(2.55, 3.05, 2.2, 10), coneBandMat);
+  band.position.y = 7.6;
+  body.add(base, cone, band);
+  g.add(body);
   return shadowed(g);
 }
 
@@ -550,7 +713,8 @@ function sceneryTrees(width: number, height: number): TreeSpot[] {
 
 function buildHeightGround(track: Track, map: THREE.Texture): THREE.Mesh {
   const { width, height } = track.def;
-  const geo = new THREE.PlaneGeometry(width, height, 400, 262);
+  // About one vertex every 4 units, whatever the map size.
+  const geo = new THREE.PlaneGeometry(width, height, Math.round(width / 4), Math.round(height / 4));
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
@@ -776,6 +940,14 @@ export class Renderer3D {
     Math.cos(ISO_AZIMUTH) * Math.cos(ISO_ELEVATION),
   );
   private camTarget = new THREE.Vector3();
+  /** Optional sound; the renderer feeds it states and the listening point. */
+  sound: SoundEngine | null = null;
+  private lastTick: GameState | null = null;
+
+  /** Where the player "hears" from: the camera's focus on the ground. */
+  private listener(): { x: number; y: number } {
+    return { x: this.camTarget.x, y: this.camTarget.z };
+  }
   private camHalfHeight = 400;
   private camInitialized = false;
   private track: Track;
@@ -789,6 +961,7 @@ export class Renderer3D {
   private carRoll: number[] = [];
   /** Shown car height and fall speed, so drops off the deck are not a snap. */
   private carY: number[] = [];
+  private coneMeshes: THREE.Group[] = [];
   private carVy: number[] = [];
   private crew: CrewActor[] = [];
   private hud: CanvasRenderingContext2D;
@@ -816,13 +989,11 @@ export class Renderer3D {
     this.scene.background = new THREE.Color('#9fd3f0');
 
     this.scene.add(new THREE.HemisphereLight('#dff1ff', '#3d5a2a', 1.15));
-    const { width, height } = this.track.def;
     const sun = new THREE.DirectionalLight('#fff4e0', 2.6);
-    sun.position.set(width / 2 - 600, 760, height / 2 - 800);
-    sun.target.position.set(width / 2, 0, height / 2);
+    this.sun = sun;
+    this.aimSun();
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    Object.assign(sun.shadow.camera, { left: -1300, right: 1300, top: 1300, bottom: -1300, near: 10, far: 4000 });
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.6;
     this.scene.add(sun, sun.target);
@@ -834,8 +1005,9 @@ export class Renderer3D {
     return this.track.def.id;
   }
 
-  setTrack(trackId: string) {
-    if (this.track.def.id === trackId) return;
+  /** `force` rebuilds even for the same id (the editor changed it). */
+  setTrack(trackId: string, force = false) {
+    if (this.track.def.id === trackId && !force) return;
     this.track = getTrack(trackId);
     this.buildWorld();
     this.resetRace();
@@ -848,7 +1020,21 @@ export class Renderer3D {
     return t;
   }
 
+  private sun!: THREE.DirectionalLight;
+
+  /** Centre the sun and its shadow box on the current map (sizes differ). */
+  private aimSun() {
+    const { width, height } = this.track.def;
+    const sun = this.sun;
+    sun.position.set(width / 2 - 600, 760, height / 2 - 800);
+    sun.target.position.set(width / 2, 0, height / 2);
+    const half = Math.max(1300, Math.hypot(width, height) / 2 + 100);
+    Object.assign(sun.shadow.camera, { left: -half, right: half, top: half, bottom: -half, near: 10, far: 4000 });
+    sun.shadow.camera.updateProjectionMatrix();
+  }
+
   private buildWorld() {
+    if (this.sun) this.aimSun();
     const debugOn = this.checkpointDebug?.visible ?? false;
     while (this.world.children.length) {
       const child = this.world.children[0];
@@ -866,13 +1052,14 @@ export class Renderer3D {
       new THREE.Vector2(width / 2 - far, height / 2 + far),
     ]);
     frame.holes.push(new THREE.Path([new THREE.Vector2(0, 0), new THREE.Vector2(0, height), new THREE.Vector2(width, height), new THREE.Vector2(width, 0)]));
-    const outer = new THREE.Mesh(new THREE.ShapeGeometry(frame).rotateX(Math.PI / 2), std('#4b9c40', { roughness: 1, side: THREE.DoubleSide }));
+    const outer = new THREE.Mesh(new THREE.ShapeGeometry(frame).rotateX(Math.PI / 2), std(this.track.def.ground === 'snow' ? '#e3eaef' : '#4b9c40', { roughness: 1, side: THREE.DoubleSide }));
     outer.position.y = outsideLevel(this.track) - 0.5;
     outer.receiveShadow = true;
     this.world.add(outer);
 
-    const surface = paintTrackSurface(this.track, SURFACE_RES);
-    const deckTex = splitBridgeDecks(surface, this.track, SURFACE_RES).map((c) => this.canvasTexture(c));
+    const res = surfaceRes(this.track);
+    const surface = paintTrackSurface(this.track, res);
+    const deckTex = splitBridgeDecks(surface, this.track, res).map((c) => this.canvasTexture(c));
     this.world.add(buildHeightGround(this.track, this.canvasTexture(surface)));
     this.world.add(buildWater(this.track));
     this.world.add(buildBridges(this.track, deckTex));
@@ -903,10 +1090,12 @@ export class Renderer3D {
     for (const c of this.crew) this.world.add(c.mesh);
     this.checkpointDebug = buildCheckpointDebug(this.track);
     this.checkpointDebug.visible = debugOn;
-    this.world.add(buildPitDecor(this.track), buildGantry(this.track), buildWalls(this.track), buildForest(trees), this.checkpointDebug);
+    this.world.add(buildPitDecor(this.track), buildGantry(this.track), buildWalls(this.track), buildBarriers(this.track), buildForest(trees, this.track.def.ground === 'snow'), this.checkpointDebug);
   }
 
   resetRace() {
+    this.lastTick = null;
+    this.sound?.silence();
     const ctx = this.skids.canvas.getContext('2d')!;
     ctx.clearRect(0, 0, this.skids.canvas.width, this.skids.canvas.height);
     this.skidTexture.needsUpdate = true;
@@ -976,6 +1165,12 @@ export class Renderer3D {
 
   /** Called once per simulated tick. */
   onTick(state: GameState) {
+    if (this.sound) {
+      if (this.lastTick && this.lastTick.trackId === state.trackId && state.tick > this.lastTick.tick) {
+        this.sound.play(soundEvents(this.lastTick, state), state, this.listener());
+      }
+      this.lastTick = state;
+    }
     this.skids.update(state);
     if (this.skids.dirty && state.tick - this.skidUploadTick >= 4) {
       this.skidTexture.needsUpdate = true;
@@ -984,11 +1179,32 @@ export class Renderer3D {
     }
   }
 
+  /** Cones follow the sim; knocked-over ones lie on their side. */
+  private updateCones(prev: GameState, curr: GameState, alpha: number) {
+    const props = curr.props ?? [];
+    while (this.coneMeshes.length < props.length) {
+      const m = buildConeMesh();
+      this.scene.add(m);
+      this.coneMeshes.push(m);
+    }
+    while (this.coneMeshes.length > props.length) this.scene.remove(this.coneMeshes.pop()!);
+    props.forEach((b, i) => {
+      const a = prev.props?.[i] ?? b;
+      const x = a.x + (b.x - a.x) * alpha;
+      const z = a.y + (b.y - a.y) * alpha;
+      const m = this.coneMeshes[i];
+      const ground = terrainHeightAt(this.track, x, z);
+      m.position.set(x, ground + (b.down ? 4 : 0), z);
+      m.rotation.y = -(a.angle + (b.angle - a.angle) * alpha);
+      m.rotation.z = b.down ? Math.PI / 2 : 0;
+    });
+  }
+
   private syncCars(state: GameState) {
     const keys = state.cars.map((c) => `${c.kind ?? 'rally'}:${c.color}`);
     if (keys.join() === this.carKeys.join()) return;
     for (const m of this.carMeshes) this.scene.remove(m);
-    this.carMeshes = state.cars.map((c) => buildCarMesh(c.color, c.kind === 'f1' ? 'f1' : 'rally'));
+    this.carMeshes = state.cars.map((c) => buildCarMesh(c.color, toCarKind(c.kind)));
     for (const m of this.carMeshes) this.scene.add(m);
     this.carKeys = keys;
     this.carPitch = this.carMeshes.map(() => 0);
@@ -1094,7 +1310,7 @@ export class Renderer3D {
       puff = { mesh, age: 0, life: 1, vx: 0, vy: 0, vz: 0, base: 1, fade: 0.42 };
       this.smokePuffs.push(puff);
     }
-    const L = CARS[kind === 'f1' ? 'f1' : 'rally'].length;
+    const L = CARS[toCarKind(kind)].length;
     const rear = L * 0.38;
     const jitter = 2.2;
     puff.age = 0;
@@ -1150,6 +1366,7 @@ export class Renderer3D {
   /** `frameDt` overrides wall-clock camera smoothing, e.g. for offline capture. */
   render(prev: GameState, curr: GameState, alpha: number, humanIds: number[], frameDt?: number) {
     this.syncCars(curr);
+    this.updateCones(prev, curr, alpha);
     const { w, h } = this.resize();
     const positions: THREE.Vector3[] = [];
     const dt = frameDt ?? Math.min(0.1, (performance.now() - this.lastFrame) / 1000);
@@ -1194,13 +1411,28 @@ export class Renderer3D {
     this.updateSmokePuffs(prev, curr, alpha, dt);
     this.updateCrew(curr, dt);
     this.updateCamera(positions, humanIds, w / Math.max(1, h), frameDt);
+    this.sound?.update(curr, this.track, this.listener(), true);
     this.gl.render(this.scene, this.camera);
 
+    const toScreen = (v: THREE.Vector3) => {
+      const p = v.clone().project(this.camera);
+      return { x: ((p.x + 1) / 2) * w, y: ((1 - p.y) / 2) * h };
+    };
     const labels: Label[] = humanIds.map((id) => {
-      const p = positions[id].clone();
-      p.y += 34;
-      p.project(this.camera);
-      return { text: curr.cars[id].name, x: ((p.x + 1) / 2) * w, y: ((1 - p.y) / 2) * h };
+      const at = toScreen(positions[id].clone().setY(positions[id].y + 34));
+      const label: Label = { text: curr.cars[id].name, x: at.x, y: at.y };
+      const car = curr.cars[id];
+      if (curr.phase === 'racing' && car.finishTick === null) {
+        const idx = nearestSampleIndex(this.track, car.x, car.y);
+        if (missedGate(this.track, car, idx)) {
+          const gate = this.track.gates[car.nextCheckpoint];
+          const from = toScreen(positions[id]);
+          const to = toScreen(new THREE.Vector3(gate.center.x, terrainHeightAt(this.track, gate.center.x, gate.center.y), gate.center.y));
+          const len = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+          label.missed = { dx: (to.x - from.x) / len, dy: (to.y - from.y) / len };
+        }
+      }
+      return label;
     });
     this.hud.clearRect(0, 0, w, h);
     drawHud(

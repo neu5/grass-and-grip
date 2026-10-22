@@ -67,6 +67,43 @@ body {
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
+/* Menu and lobby: wide two-column card on big screens, one column on phones. */
+@media (min-width: 900px) {
+  .card.wide,
+  html.gg-touch .card.wide {
+    width: min(1040px, 100%);
+    padding: 32px 36px;
+  }
+
+  .cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0 36px;
+    align-items: start;
+  }
+
+  .cols[hidden] {
+    display: none;
+  }
+}
+
+/* Phones: one column, with the lobby's status and Ready button at the very end. */
+@media (max-width: 899px) {
+  #lobby:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+  }
+
+  #lobby .col {
+    display: contents;
+  }
+
+  #lobby #status,
+  #lobby #ready {
+    order: 1;
+  }
+}
+
 h1 {
   margin: 0;
   font-size: 34px;
@@ -239,6 +276,73 @@ fieldset.laps-picker {
 .laps-input:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+fieldset.car-kinds {
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+fieldset.car-kinds label {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+fieldset.car-kinds span {
+  font-size: 13px;
+}
+
+fieldset.compact {
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+fieldset.compact span {
+  padding: 6px 0;
+  font-size: 13px;
+}
+
+legend i {
+  font-style: normal;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+fieldset input.ai-slider {
+  position: static;
+  opacity: 1;
+  pointer-events: auto;
+  flex: 1 1 100%;
+  margin: 4px 0 0;
+  accent-color: #e8443a;
+}
+
+details.more {
+  margin: 0 0 14px;
+  padding: 10px 12px 2px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+details.more summary {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+}
+
+details.more [hidden] {
+  display: none;
+}
+
+.setup-who {
+  margin: 4px 0 6px;
+  font-weight: 700;
 }
 
 fieldset input:disabled + span {
@@ -577,4 +681,129 @@ html.gg-touch .card {
 
 html.gg-portrait-block #stage {
   filter: brightness(0.35);
+}
+
+button.secondary {
+  margin-top: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+#season {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(6, 10, 14, 0.6);
+  z-index: 20;
+}
+
+#season[hidden] {
+  display: none;
+}
+
+#season .card {
+  width: min(640px, 100%);
+  max-height: 100%;
+  overflow: auto;
+}
+
+#season h2 {
+  margin: 0 0 4px;
+}
+
+.season-tables {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 14px 0 16px;
+}
+
+@media (max-width: 560px) {
+  .season-tables {
+    grid-template-columns: 1fr;
+  }
+}
+
+.season-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.season-table td {
+  padding: 5px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.season-table td.num {
+  text-align: right;
+  font-weight: 700;
+}
+
+.season-table .swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 2px;
+}
+
+.season-table tr.you td {
+  color: #ffd54a;
+}
+
+.podium {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 10px;
+  margin: 16px 0 4px;
+}
+
+.podium[hidden] {
+  display: none;
+}
+
+.podium div {
+  flex: 0 1 150px;
+  padding: 10px 8px;
+  border-radius: 10px 10px 0 0;
+  text-align: center;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.podium .p1 {
+  min-height: 120px;
+  background: rgba(255, 213, 74, 0.25);
+}
+
+.podium .p2 {
+  min-height: 95px;
+  background: rgba(220, 224, 230, 0.18);
+}
+
+.podium .p3 {
+  min-height: 75px;
+  background: rgba(205, 127, 50, 0.22);
+}
+
+.podium span {
+  display: block;
+  font-size: 26px;
+}
+
+/* Six car buttons don't fit a phone row: three per line. */
+@media (max-width: 520px) {
+  fieldset.car-kinds {
+    flex-wrap: wrap;
+  }
+
+  fieldset.car-kinds label {
+    flex: 1 1 28%;
+  }
 }
