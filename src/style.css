@@ -241,6 +241,64 @@ fieldset.laps-picker {
   cursor: not-allowed;
 }
 
+fieldset.car-kinds {
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+fieldset.car-kinds label {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+fieldset.car-kinds span {
+  font-size: 13px;
+}
+
+fieldset.compact {
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+fieldset.compact span {
+  padding: 6px 0;
+  font-size: 13px;
+}
+
+legend i {
+  font-style: normal;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+details.more {
+  margin: 0 0 14px;
+  padding: 10px 12px 2px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+details.more summary {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+}
+
+details.more [hidden] {
+  display: none;
+}
+
+.setup-who {
+  margin: 4px 0 6px;
+  font-weight: 700;
+}
+
 fieldset input:disabled + span {
   opacity: 0.3;
   cursor: not-allowed;

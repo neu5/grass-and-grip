@@ -3,7 +3,7 @@ import { collideBounds, collideCars, collideCircle, NO_INPUT, stepCarPhysics } f
 import { applyPitService } from './pits';
 import { HEIGHT_SEPARATION, getTrack, heightAt, segmentsIntersect, surfaceAt, terrainHeightAt, type Track } from './track';
 import { copyFastestLaps, insertFastestLap } from './fastestLaps';
-import type { CarState, GameState, PlayerInput, RaceConfig, TickInputs } from './types';
+import { DEFAULT_RULES, normalizeRules, normalizeSetup, toCarKind, type CarState, type GameState, type PlayerInput, type RaceConfig, type RaceRules, type TickInputs } from './types';
 
 export const TICK_RATE = 60;
 export const DT = 1 / TICK_RATE;
@@ -90,7 +90,8 @@ export function createRace(config: RaceConfig): GameState {
       id: i,
       name: c.name,
       color: c.color,
-      kind: c.kind === 'f1' ? 'f1' : 'rally',
+      kind: toCarKind(c.kind),
+      setup: normalizeSetup(c.setup),
       controller: c.controller,
       x: pose.x,
       y: pose.y,
@@ -123,6 +124,7 @@ export function createRace(config: RaceConfig): GameState {
     phase: 'countdown',
     startTick,
     totalLaps: config.totalLaps,
+    rules: normalizeRules(config.rules),
     cars,
     fastestLaps: copyFastestLaps(config.fastestLaps),
   };
@@ -155,7 +157,7 @@ function updateCheckpoints(state: GameState, car: CarState, track: Track, px: nu
       name: car.name,
       ticks: lapTicks,
       trackId: state.trackId,
-      car: car.kind === 'f1' ? 'f1' : 'rally',
+      car: car.kind,
       color: car.color,
     });
     car.lapStartTick = state.tick;
@@ -176,12 +178,13 @@ export function step(prev: GameState, inputs: TickInputs): GameState {
 
   if (state.phase === 'countdown' && state.tick >= state.startTick) state.phase = 'racing';
   const canDrive = state.phase !== 'countdown';
+  const rules = state.rules ?? DEFAULT_RULES;
 
   for (const car of state.cars) {
     const input = car.controller === 'ai' ? aiInput(car, track, canDrive, state.cars) : canDrive ? sanitize(inputs[car.id]) : NO_INPUT;
     const px = car.x;
     const py = car.y;
-    stepCarPhysics(car, input, surfaceAt(track, car.x, car.y), DT);
+    stepCarPhysics(car, input, surfaceAt(track, car.x, car.y), DT, rules);
     if (canDrive) {
       applyPitService(car, track, DT);
       updateCheckpoints(state, car, track, px, py);
@@ -191,15 +194,15 @@ export function step(prev: GameState, inputs: TickInputs): GameState {
   const cars = state.cars;
   const heights = cars.map((c) => heightAt(track, c.x, c.y));
   for (let i = 0; i < cars.length; i++) {
-    for (let j = i + 1; j < cars.length; j++) {
+    for (let j = i + 1; j < cars.length && rules.collisions; j++) {
       if (Math.abs(heights[i] - heights[j]) > HEIGHT_SEPARATION) continue;
-      collideCars(cars[i], cars[j]);
+      collideCars(cars[i], cars[j], rules);
     }
   }
   for (let i = 0; i < cars.length; i++) {
     const car = cars[i];
-    collideObstacles(car, heights[i], track);
-    collideBounds(car, track.def.width, track.def.height);
+    collideObstacles(car, heights[i], track, rules);
+    collideBounds(car, track.def.width, track.def.height, rules);
   }
 
   if (state.phase === 'racing') {
@@ -221,26 +224,27 @@ export function stepOwnCar(prev: GameState, carId: number, input: PlayerInput): 
   state.tick++;
   if (state.phase === 'countdown' && state.tick >= state.startTick) state.phase = 'racing';
   const canDrive = state.phase !== 'countdown';
+  const rules = state.rules ?? DEFAULT_RULES;
   const car = state.cars.find((c) => c.id === carId);
   if (!car) return state;
   const use = canDrive ? sanitize(input) : NO_INPUT;
   const px = car.x;
   const py = car.y;
-  stepCarPhysics(car, use, surfaceAt(track, car.x, car.y), DT);
+  stepCarPhysics(car, use, surfaceAt(track, car.x, car.y), DT, rules);
   if (canDrive) {
     applyPitService(car, track, DT);
     updateCheckpoints(state, car, track, px, py);
   }
-  collideObstacles(car, heightAt(track, car.x, car.y), track);
-  collideBounds(car, track.def.width, track.def.height);
+  collideObstacles(car, heightAt(track, car.x, car.y), track, rules);
+  collideBounds(car, track.def.width, track.def.height, rules);
   return state;
 }
 
 /** Obstacles stand on the ground; a car on a bridge above them passes over. */
-function collideObstacles(car: CarState, height: number, track: Track) {
+function collideObstacles(car: CarState, height: number, track: Track, rules: RaceRules) {
   for (const o of track.def.obstacles) {
     if (Math.abs(height - terrainHeightAt(track, o.x, o.y)) > HEIGHT_SEPARATION) continue;
-    collideCircle(car, o.x, o.y, o.r);
+    collideCircle(car, o.x, o.y, o.r, rules);
   }
 }
 

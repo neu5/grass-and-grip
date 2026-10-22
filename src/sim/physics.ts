@@ -1,6 +1,6 @@
 import { clamp, dcos, dsin, normalizeAngle } from './dmath';
 import type { Surface } from './track';
-import type { CarKind, CarState, PlayerInput } from './types';
+import { DEFAULT_RULES, toCarKind, type CarKind, type CarSetup, type CarState, type PlayerInput, type RaceRules } from './types';
 
 export interface SurfaceParams {
   grip: number;
@@ -37,6 +37,15 @@ export interface CarStats {
   steerRate: number;
   steerFullSpeed: number;
   steerDampSpeed: number;
+  /** Relative mass for car-to-car shoves. Rally is 1. */
+  mass: number;
+  /** Crash damage is divided by this. */
+  toughness: number;
+  /**
+   * Off-road ability. Positive closes part of the gap to asphalt grip and
+   * power on loose surfaces; negative makes them worse.
+   */
+  offroad: number;
 }
 
 /** Rally: stock sliding car. Formula 1: faster, more grip, less slide. */
@@ -60,6 +69,9 @@ export const CARS: Record<CarKind, CarStats> = {
     steerRate: 3.3,
     steerFullSpeed: 110,
     steerDampSpeed: 900,
+    mass: 1,
+    toughness: 1,
+    offroad: 0,
   },
   f1: {
     length: 38,
@@ -80,14 +92,141 @@ export const CARS: Record<CarKind, CarStats> = {
     steerRate: 3.05,
     steerFullSpeed: 160,
     steerDampSpeed: 1200,
+    mass: 1,
+    toughness: 1,
+    offroad: 0,
+  },
+  /** Slow on asphalt, best on grass and sand, shrugs off knocks. */
+  buggy: {
+    length: 30,
+    width: 18,
+    radius: 14,
+    engineAccel: 500,
+    brakeDecel: 850,
+    reverseAccel: 260,
+    maxReverse: 150,
+    airDrag: 0.0016,
+    coastDrag: 0.5,
+    lateralGrip: 1050,
+    slideThreshold: 75,
+    slideGripFactor: 0.74,
+    handbrakeGripFactor: 0.32,
+    handbrakeDecel: 260,
+    slideScrub: 0.0035,
+    steerRate: 3.4,
+    steerFullSpeed: 110,
+    steerDampSpeed: 900,
+    mass: 1,
+    toughness: 1.25,
+    offroad: 0.5,
+  },
+  /** Heavy and slow, hard to hurt, shoves everyone else aside. */
+  truck: {
+    length: 44,
+    width: 22,
+    radius: 17,
+    engineAccel: 380,
+    brakeDecel: 700,
+    reverseAccel: 220,
+    maxReverse: 120,
+    airDrag: 0.0013,
+    coastDrag: 0.5,
+    lateralGrip: 980,
+    slideThreshold: 60,
+    slideGripFactor: 0.76,
+    handbrakeGripFactor: 0.36,
+    handbrakeDecel: 240,
+    slideScrub: 0.004,
+    steerRate: 2.6,
+    steerFullSpeed: 120,
+    steerDampSpeed: 900,
+    mass: 2.4,
+    toughness: 2,
+    offroad: 0.2,
+  },
+  /** Tiny and twitchy: quick off the line and into corners, low top speed, hates grass. */
+  kart: {
+    length: 22,
+    width: 14,
+    radius: 10,
+    engineAccel: 560,
+    brakeDecel: 1000,
+    reverseAccel: 260,
+    maxReverse: 130,
+    airDrag: 0.0019,
+    coastDrag: 0.45,
+    lateralGrip: 1500,
+    slideThreshold: 95,
+    slideGripFactor: 0.82,
+    handbrakeGripFactor: 0.4,
+    handbrakeDecel: 280,
+    slideScrub: 0.0025,
+    steerRate: 3.9,
+    steerFullSpeed: 90,
+    steerDampSpeed: 1000,
+    mass: 0.55,
+    toughness: 0.8,
+    offroad: -0.25,
   },
 };
 
-/** Default / rally stats. Prefer `statsFor(kind)` for per-car physics. */
+/** Default / rally stats. Prefer `carStats(car)` for per-car physics. */
 export const CAR = CARS.rally;
 
+/** Stock stats for a kind (size, looks). Driving uses `carStats`, which adds the setup. */
 export function statsFor(kind: CarKind | undefined): CarStats {
-  return CARS[kind === 'f1' ? 'f1' : 'rally'];
+  return CARS[toCarKind(kind)];
+}
+
+/** What one setup step changes. */
+export const SETUP_EFFECT = {
+  /** Long gearing: less pull, less drag, so a higher top speed. */
+  gearingAccel: 0.05,
+  gearingDrag: 0.15,
+  steerRate: 0.07,
+  /** More grip: more cornering, a little more drag and less pull. */
+  gripLateral: 0.05,
+  gripSlide: 0.05,
+  gripDrag: 0.04,
+  gripAccel: 0.025,
+};
+
+const tunedCache = new Map<string, CarStats>();
+
+/** Stats for one car: its kind plus garage setup. */
+export function carStats(car: { kind?: CarKind; setup?: CarSetup }): CarStats {
+  const kind = toCarKind(car.kind);
+  const g = car.setup?.gearing ?? 0;
+  const st = car.setup?.steering ?? 0;
+  const gr = car.setup?.grip ?? 0;
+  if (g === 0 && st === 0 && gr === 0) return CARS[kind];
+  const key = `${kind}:${g}:${st}:${gr}`;
+  let tuned = tunedCache.get(key);
+  if (!tuned) {
+    const base = CARS[kind];
+    const e = SETUP_EFFECT;
+    tuned = {
+      ...base,
+      engineAccel: base.engineAccel * (1 - e.gearingAccel * g) * (1 - e.gripAccel * gr),
+      airDrag: base.airDrag * (1 - e.gearingDrag * g) * (1 + e.gripDrag * gr),
+      steerRate: base.steerRate * (1 + e.steerRate * st),
+      lateralGrip: base.lateralGrip * (1 + e.gripLateral * gr),
+      slideThreshold: base.slideThreshold * (1 + e.gripSlide * gr),
+    };
+    tunedCache.set(key, tuned);
+  }
+  return tuned;
+}
+
+/** Surface grip / power / rolling for one car, after its off-road ability. */
+function surfaceFor(C: CarStats, surface: Surface): SurfaceParams {
+  const s = SURFACES[surface];
+  if (surface === 'asphalt' || C.offroad === 0) return s;
+  return {
+    grip: s.grip + (1 - s.grip) * C.offroad,
+    engine: s.engine + (1 - s.engine) * C.offroad,
+    rolling: s.rolling * (1 - C.offroad * 0.5),
+  };
 }
 
 export const NO_INPUT: PlayerInput = { throttle: 0, steer: 0, handbrake: false };
@@ -138,15 +277,22 @@ function damageAmount(dmg: number): number {
   return d ** DAMAGE.curve;
 }
 
-export function applyCollisionDamage(car: CarState, closingSpeed: number): void {
+export function applyCollisionDamage(car: CarState, closingSpeed: number, rules: RaceRules = DEFAULT_RULES): void {
   const hit = closingSpeed - DAMAGE.graze;
-  if (hit <= 0) return;
-  car.damage = clamp((car.damage ?? 0) + DAMAGE.scale * hit * hit, 0, 1);
+  if (hit <= 0 || rules.damage === 0) return;
+  const add = (DAMAGE.scale * hit * hit * rules.damage) / statsFor(car.kind).toughness;
+  car.damage = clamp((car.damage ?? 0) + add, 0, 1);
 }
 
-export function stepCarPhysics(car: CarState, input: PlayerInput, surface: Surface, dt: number): void {
-  const C = statsFor(car.kind);
-  const s = SURFACES[surface];
+export function stepCarPhysics(
+  car: CarState,
+  input: PlayerInput,
+  surface: Surface,
+  dt: number,
+  rules: RaceRules = DEFAULT_RULES,
+): void {
+  const C = carStats(car);
+  const s = surfaceFor(C, surface);
   const wear = clamp(car.tyreWear ?? 0, 0, 1);
   const fuel = clamp(car.fuel ?? 1, 0, 1);
   const dmg = clamp(car.damage ?? 0, 0, 1);
@@ -221,45 +367,50 @@ export function stepCarPhysics(car: CarState, input: PlayerInput, surface: Surfa
     if (surface === 'grass') wearRate += TYRE.grass * spd;
     if (surface === 'sand') wearRate += TYRE.sand * spd;
   }
-  car.tyreWear = clamp(wear + wearRate * dt, 0, 1);
+  car.tyreWear = clamp(wear + wearRate * rules.tyreWear * dt, 0, 1);
 
   let burn = 0;
   if (speed0 > 4 || throttle > 0) {
     burn = FUEL.idle;
     if (throttle > 0) burn += FUEL.throttle * throttle;
   }
-  car.fuel = clamp(fuel - burn * dt, 0, 1);
+  car.fuel = clamp(fuel - burn * rules.fuel * dt, 0, 1);
 }
 
 const RESTITUTION = 0.35;
 
-export function collideCars(a: CarState, b: CarState): void {
+export function collideCars(a: CarState, b: CarState, rules: RaceRules = DEFAULT_RULES): void {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const d2 = dx * dx + dy * dy;
-  const min = statsFor(a.kind).radius + statsFor(b.kind).radius;
+  const sa = statsFor(a.kind);
+  const sb = statsFor(b.kind);
+  const min = sa.radius + sb.radius;
   if (d2 >= min * min || d2 === 0) return;
   const d = Math.sqrt(d2);
   const nx = dx / d;
   const ny = dy / d;
-  const push = (min - d) / 2;
-  a.x -= nx * push;
-  a.y -= ny * push;
-  b.x += nx * push;
-  b.y += ny * push;
+  // The lighter car moves more, both out of the overlap and in the bounce.
+  const ia = 1 / sa.mass;
+  const ib = 1 / sb.mass;
+  const share = (min - d) / (ia + ib);
+  a.x -= nx * share * ia;
+  a.y -= ny * share * ia;
+  b.x += nx * share * ib;
+  b.y += ny * share * ib;
   const rel = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
   if (rel < 0) {
-    applyCollisionDamage(a, -rel);
-    applyCollisionDamage(b, -rel);
-    const j = (-(1 + RESTITUTION) * rel) / 2;
-    a.vx -= j * nx;
-    a.vy -= j * ny;
-    b.vx += j * nx;
-    b.vy += j * ny;
+    applyCollisionDamage(a, -rel, rules);
+    applyCollisionDamage(b, -rel, rules);
+    const j = (-(1 + RESTITUTION) * rel) / (ia + ib);
+    a.vx -= j * ia * nx;
+    a.vy -= j * ia * ny;
+    b.vx += j * ib * nx;
+    b.vy += j * ib * ny;
   }
 }
 
-export function collideCircle(car: CarState, ox: number, oy: number, r: number): void {
+export function collideCircle(car: CarState, ox: number, oy: number, r: number, rules: RaceRules = DEFAULT_RULES): void {
   const dx = car.x - ox;
   const dy = car.y - oy;
   const d2 = dx * dx + dy * dy;
@@ -272,34 +423,34 @@ export function collideCircle(car: CarState, ox: number, oy: number, r: number):
   car.y = oy + ny * min;
   const vn = car.vx * nx + car.vy * ny;
   if (vn < 0) {
-    applyCollisionDamage(car, -vn);
+    applyCollisionDamage(car, -vn, rules);
     car.vx -= (1 + RESTITUTION) * vn * nx;
     car.vy -= (1 + RESTITUTION) * vn * ny;
   }
 }
 
-export function collideBounds(car: CarState, width: number, height: number): void {
+export function collideBounds(car: CarState, width: number, height: number, rules: RaceRules = DEFAULT_RULES): void {
   const m = statsFor(car.kind).radius;
   if (car.x < m) {
     const closing = car.vx < 0 ? -car.vx : 0;
     car.x = m;
     if (car.vx < 0) car.vx = -car.vx * RESTITUTION;
-    applyCollisionDamage(car, closing);
+    applyCollisionDamage(car, closing, rules);
   } else if (car.x > width - m) {
     const closing = car.vx > 0 ? car.vx : 0;
     car.x = width - m;
     if (car.vx > 0) car.vx = -car.vx * RESTITUTION;
-    applyCollisionDamage(car, closing);
+    applyCollisionDamage(car, closing, rules);
   }
   if (car.y < m) {
     const closing = car.vy < 0 ? -car.vy : 0;
     car.y = m;
     if (car.vy < 0) car.vy = -car.vy * RESTITUTION;
-    applyCollisionDamage(car, closing);
+    applyCollisionDamage(car, closing, rules);
   } else if (car.y > height - m) {
     const closing = car.vy > 0 ? car.vy : 0;
     car.y = height - m;
     if (car.vy > 0) car.vy = -car.vy * RESTITUTION;
-    applyCollisionDamage(car, closing);
+    applyCollisionDamage(car, closing, rules);
   }
 }

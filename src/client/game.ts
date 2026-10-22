@@ -2,14 +2,17 @@ import {
   createRace,
   DEFAULT_CAR_MODE,
   DT,
+  parseCarMode,
   spawnAiKind,
   spawnKind,
   step,
   type CarConfig,
   type CarKind,
   type CarMode,
+  type CarSetup,
   type GameState,
   type PlayerInput,
+  type RaceRules,
   type TickInputs,
 } from '../sim';
 import { AI_NAMES, CAR_COLORS, MAX_PLAYERS, clampAiCount } from '../net/protocol';
@@ -24,8 +27,11 @@ export interface GameOptions {
   trackId?: string;
   p1Car?: CarKind;
   p2Car?: CarKind;
-  /** Default mixed. F1 forces every spawned car (picks ignored). */
+  p1Setup?: CarSetup;
+  p2Setup?: CarSetup;
+  /** Default mixed. A car kind makes a one-make grid (picks ignored). */
   carMode?: CarMode;
+  rules?: RaceRules;
   countdownSeconds?: number;
   setup?: (state: GameState) => void;
   scriptedInput?: (state: GameState) => PlayerInput;
@@ -36,17 +42,19 @@ export interface GameOptions {
 const HUMAN_NAMES = ['Player 1', 'Player 2'] as const;
 
 export function gridCars(options: GameOptions): CarConfig[] {
-  const mode = options.carMode === 'f1' ? 'f1' : DEFAULT_CAR_MODE;
+  const mode = parseCarMode(options.carMode) ?? DEFAULT_CAR_MODE;
   const humanCount = options.humans === 2 ? 2 : 1;
   const aiCount = clampAiCount(humanCount, options.aiCount);
   const p1 = spawnKind(options.p1Car, mode);
   const p2 = spawnKind(options.p2Car, mode);
   const humanKinds: CarKind[] = humanCount === 2 ? [p1, p2] : [p1];
+  const setups = [options.p1Setup, options.p2Setup];
   const humans: CarConfig[] = HUMAN_NAMES.slice(0, humanCount).map((name, i) => ({
     name,
     color: CAR_COLORS[i],
     controller: 'human',
     kind: humanKinds[i],
+    setup: setups[i],
   }));
   const ai: CarConfig[] = Array.from({ length: aiCount }, (_, i) => ({
     name: AI_NAMES[i] ?? `AI ${i + 1}`,
@@ -91,6 +99,7 @@ export class Game {
       totalLaps: this.options.laps,
       cars,
       countdownSeconds: this.options.countdownSeconds,
+      rules: this.options.rules,
       fastestLaps: this.options.persistFastest === false ? [] : loadFastestLaps(trackId),
     });
     this.options.setup?.(this.curr);

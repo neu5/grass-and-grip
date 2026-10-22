@@ -24,7 +24,7 @@
           <fieldset id="colors">
             <legend>Car color</legend>
           </fieldset>
-          <fieldset id="cars">
+          <fieldset id="cars" class="car-kinds">
             <legend>Car</legend>
           </fieldset>
           <button type="submit">Join room</button>
@@ -36,8 +36,8 @@
           <fieldset id="ai">
             <legend>AI opponents</legend>
           </fieldset>
-          <fieldset id="carmode">
-            <legend>Mode</legend>
+          <fieldset id="carmode" class="car-kinds">
+            <legend>Grid</legend>
           </fieldset>
           <fieldset id="laps" class="laps-picker">
             <legend>Laps</legend>
@@ -48,6 +48,14 @@
           <fieldset id="track">
             <legend>Track</legend>
           </fieldset>
+          <details class="more">
+            <summary>Your car setup</summary>
+            <div id="my-setup"></div>
+          </details>
+          <details class="more">
+            <summary>Race options</summary>
+            <div id="room-rules"></div>
+          </details>
           <div id="fastest-laps" class="fastest-board">
             <legend>Fastest laps</legend>
             <ol></ol>

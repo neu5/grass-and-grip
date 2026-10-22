@@ -15,7 +15,7 @@ export type TickInputs = Record<number, PlayerInput>;
 
 export type Controller = 'human' | 'ai';
 
-export type CarKind = 'rally' | 'f1';
+export type CarKind = 'rally' | 'f1' | 'buggy' | 'truck' | 'kart';
 
 /** One completed lap on the fastest-laps board. */
 export interface FastestLap {
@@ -26,12 +26,92 @@ export interface FastestLap {
   color: string;
 }
 
-export const CAR_KINDS = ['rally', 'f1'] as const;
+export const CAR_KINDS = ['rally', 'f1', 'buggy', 'truck', 'kart'] as const;
 
 export const CAR_KIND_NAMES: Record<CarKind, string> = {
   rally: 'Rally',
   f1: 'Formula 1',
+  buggy: 'Buggy',
+  truck: 'Truck',
+  kart: 'Kart',
 };
+
+/** Short label for tight spots (HUD boards). */
+export const CAR_KIND_SHORT: Record<CarKind, string> = {
+  rally: 'Rally',
+  f1: 'F1',
+  buggy: 'Buggy',
+  truck: 'Truck',
+  kart: 'Kart',
+};
+
+export function parseCarKind(v: unknown): CarKind | null {
+  return typeof v === 'string' && (CAR_KINDS as readonly string[]).includes(v) ? (v as CarKind) : null;
+}
+
+/** Any value to a car kind; unknown falls back to rally. */
+export function toCarKind(v: unknown): CarKind {
+  return parseCarKind(v) ?? 'rally';
+}
+
+/** Garage tweaks, each a step from -2 to 2. 0 is the stock car. */
+export interface CarSetup {
+  /** Short (+accel) .. long (+top speed). */
+  gearing: number;
+  /** Slow .. quick steering. */
+  steering: number;
+  /** Low drag .. high grip (more grip costs a little speed). */
+  grip: number;
+}
+
+export const SETUP_MIN = -2;
+export const SETUP_MAX = 2;
+export const DEFAULT_SETUP: CarSetup = { gearing: 0, steering: 0, grip: 0 };
+
+function setupStep(v: unknown): number {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(SETUP_MIN, Math.min(SETUP_MAX, n));
+}
+
+/** Any value to a valid setup; missing or bad fields become 0. */
+export function normalizeSetup(v: unknown): CarSetup {
+  const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
+  return { gearing: setupStep(o.gearing), steering: setupStep(o.steering), grip: setupStep(o.grip) };
+}
+
+/** 0 = off, 1 = normal, 2 = double. */
+export type RuleRate = 0 | 1 | 2;
+
+export interface RaceRules {
+  damage: RuleRate;
+  tyreWear: RuleRate;
+  fuel: RuleRate;
+  /** Car-to-car contact. Walls, trees and tyres always collide. */
+  collisions: boolean;
+  /** AI driving level, 0 (gentle) .. 100 (flat out). */
+  aiLevel: number;
+}
+
+export const DEFAULT_RULES: RaceRules = { damage: 1, tyreWear: 1, fuel: 1, collisions: true, aiLevel: 70 };
+
+function rate(v: unknown, fallback: RuleRate): RuleRate {
+  const n = Number(v);
+  return n === 0 || n === 1 || n === 2 ? n : fallback;
+}
+
+/** Any value to valid rules; missing or bad fields keep the default. */
+export function normalizeRules(v: unknown): RaceRules {
+  const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
+  const level = Math.round(Number(o.aiLevel));
+  return {
+    damage: rate(o.damage, DEFAULT_RULES.damage),
+    tyreWear: rate(o.tyreWear, DEFAULT_RULES.tyreWear),
+    fuel: rate(o.fuel, DEFAULT_RULES.fuel),
+    collisions: typeof o.collisions === 'boolean' ? o.collisions : DEFAULT_RULES.collisions,
+    aiLevel: Number.isFinite(level) ? Math.max(0, Math.min(100, level)) : DEFAULT_RULES.aiLevel,
+  };
+}
 
 export type Phase = 'countdown' | 'racing' | 'finished';
 
@@ -53,6 +133,8 @@ export interface CarState {
   name: string;
   color: string;
   kind: CarKind;
+  /** Garage setup. Missing means stock. */
+  setup?: CarSetup;
   controller: Controller;
   x: number;
   y: number;
@@ -85,6 +167,8 @@ export interface GameState {
   /** Tick at which the countdown ends and cars may drive. */
   startTick: number;
   totalLaps: number;
+  /** Race options. Missing means `DEFAULT_RULES`. */
+  rules?: RaceRules;
   cars: CarState[];
   /** Fastest-first top 3 laps for this track (includes earlier races when seeded). */
   fastestLaps: FastestLap[];
@@ -96,6 +180,7 @@ export interface CarConfig {
   controller: Controller;
   /** Defaults to rally. */
   kind?: CarKind;
+  setup?: CarSetup;
 }
 
 export interface RaceConfig {
@@ -103,6 +188,7 @@ export interface RaceConfig {
   totalLaps: number;
   cars: CarConfig[];
   countdownSeconds?: number;
+  rules?: RaceRules;
   /** Seed the HUD / room board (e.g. persisted top 3). */
   fastestLaps?: FastestLap[];
 }

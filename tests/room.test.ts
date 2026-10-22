@@ -137,7 +137,7 @@ describe('ready flow', () => {
     expect(room.join('b', 'B', BLUE, 'f1')).toBeNull();
     expect(room.join('c', 'C', YELLOW, 'f1')).toBeNull();
     expect(room.players.map((p) => p.car)).toEqual(['rally', 'f1', 'f1']);
-    expect(room.join('d', 'D', GREEN, 'truck')).toBe('Unknown car');
+    expect(room.join('d', 'D', GREEN, 'tank')).toBe('Unknown car');
   });
 
   it('puts each player in their chosen car and fills AI with the other body', () => {
@@ -169,7 +169,7 @@ describe('ready flow', () => {
     const room = roomWith(RED, BLUE);
     expect(room.setSettings('p1', { carMode: 'f1' })).toBe('Only the host can change settings');
     expect(room.carMode).toBe('mixed');
-    expect(room.setSettings('p0', { carMode: 'truck' })).toBe('Unknown car mode');
+    expect(room.setSettings('p0', { carMode: 'tank' })).toBe('Unknown car mode');
     expect(room.setSettings('p0', { carMode: 'f1' })).toBeNull();
     expect(room.carMode).toBe('f1');
     expect(room.setSettings('p0', { carMode: 'mixed', aiCount: 0 })).toBeNull();

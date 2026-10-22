@@ -3,10 +3,11 @@ import { fillFastestList } from './client/fastestBoard';
 import { persistFastestLaps } from './client/fastestStore';
 import { BINDINGS_SOLO, Keyboard, mergeInputs, NO_PLAYER_INPUT } from './client/input';
 import { mountLapsPicker } from './client/lapsPicker';
+import { mountRulesFields, mountSetupFields } from './client/raceOptionsUi';
 import { drawNetDebug } from './client/netDebug';
 import { Renderer3D } from './client/renderer3d';
 import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
-import { SNAPSHOT_HZ, CAR_COLORS, CAR_KINDS, CAR_KIND_NAMES, CAR_MODES, CAR_MODE_NAMES, COLOR_NAMES, MAX_PLAYERS, TRACK_IDS, TRACK_NAMES, type CarKind, type ClientMessage, type CompactSnapshot, type LobbyState, type ServerMessage, type TrackId } from './net/protocol';
+import { SNAPSHOT_HZ, CAR_COLORS, CAR_KINDS, CAR_KIND_NAMES, CAR_MODES, CAR_MODE_NAMES, COLOR_NAMES, MAX_PLAYERS, TRACK_IDS, TRACK_NAMES, parseCarKind, parseCarMode, type CarKind, type ClientMessage, type CompactSnapshot, type LobbyState, type ServerMessage, type TrackId } from './net/protocol';
 import { SnapshotBuffer, mergeOwn } from './net/interpolate';
 import { InputQueue, lerpCar, reconcile, replaceCar } from './net/prediction';
 import { decodeSnapshot } from './net/snapshot';
@@ -74,6 +75,8 @@ const lapsPicker = mountLapsPicker($('#laps'), (laps) => {
   if (laps !== lobby?.laps) send({ t: 'settings', laps });
 });
 joinForm.querySelector<HTMLInputElement>('input[name=car][value=rally]')!.checked = true;
+const mySetup = mountSetupFields($('#my-setup'), 'setup', (setup) => send({ t: 'setup', setup }));
+const roomRules = mountRulesFields($('#room-rules'), 'rule', (rules) => send({ t: 'settings', rules }));
 
 function send(msg: ClientMessage) {
   if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
@@ -129,7 +132,7 @@ function renderLobby() {
   if (!lobby) return;
 
   const taken = lobby.players.map((p) => p.color);
-  const f1Grid = lobby.carMode === 'f1';
+  const oneMake = lobby.carMode === 'mixed' ? null : lobby.carMode;
   for (const input of joinForm.querySelectorAll<HTMLInputElement>('input[name=color]')) {
     input.disabled = taken.includes(input.value);
     if (input.disabled && input.checked) input.checked = false;
@@ -139,13 +142,13 @@ function renderLobby() {
     if (free) free.checked = true;
   }
   for (const input of joinForm.querySelectorAll<HTMLInputElement>('input[name=car]')) {
-    input.disabled = f1Grid;
-    if (f1Grid && input.value === 'f1') input.checked = true;
+    input.disabled = oneMake !== null;
+    if (oneMake && input.value === oneMake) input.checked = true;
   }
   joinForm.querySelector<HTMLButtonElement>('button')!.disabled = lobby.players.length >= MAX_PLAYERS;
   if (!me) return;
 
-  const shownKind = (car: CarKind) => CAR_KIND_NAMES[f1Grid ? 'f1' : car] ?? 'Rally';
+  const shownKind = (car: CarKind) => CAR_KIND_NAMES[oneMake ?? car] ?? 'Rally';
   $('#players').innerHTML = lobby.players
     .map(
       (p) => `<li><span class="swatch" style="background:${p.color}"></span><span class="grow">${escapeHtml(p.name)}${
@@ -162,6 +165,9 @@ function renderLobby() {
     input.checked = input.value === lobby.carMode;
     input.disabled = !isHost;
   }
+  roomRules.set(lobby.rules);
+  roomRules.setDisabled(!isHost);
+  mySetup.set(me.setup);
   lapsPicker.setValue(lobby.laps);
   lapsPicker.setDisabled(!isHost);
   for (const input of lobbyEl.querySelectorAll<HTMLInputElement>('input[name=track]')) {
@@ -171,7 +177,7 @@ function renderLobby() {
   const waiting = lobby.players.filter((p) => !p.ready).length;
   $('#status').textContent = `${lobby.players.length} human${lobby.players.length > 1 ? 's' : ''} + ${lobby.aiCount} AI. ${
     waiting ? `Waiting for ${waiting} driver${waiting > 1 ? 's' : ''} to get ready.` : ''
-  }${isHost ? '' : ' The host picks AI, laps, track and mode.'}`;
+  }${isHost ? '' : ' The host picks AI, laps, track, grid and options.'}`;
   readyBtn.textContent = me.ready ? 'Ready! (click to cancel)' : 'Ready';
   readyBtn.classList.toggle('on', me.ready);
   fillFastestList($('#fastest-laps ol'), lobby.fastestLaps ?? []);
@@ -184,10 +190,8 @@ function escapeHtml(s: string) {
 joinForm.addEventListener('submit', (e) => {
   e.preventDefault();
   const color = joinForm.querySelector<HTMLInputElement>('input[name=color]:checked')?.value ?? '';
-  const car =
-    lobby?.carMode === 'f1' || joinForm.querySelector<HTMLInputElement>('input[name=car]:checked')?.value === 'f1'
-      ? 'f1'
-      : 'rally';
+  const oneMake = lobby && lobby.carMode !== 'mixed' ? lobby.carMode : null;
+  const car = oneMake ?? parseCarKind(joinForm.querySelector<HTMLInputElement>('input[name=car]:checked')?.value) ?? 'rally';
   localStorage.setItem('gg-name', nameInput.value.trim());
   send({ t: 'join', name: nameInput.value, color, car });
 });
@@ -199,7 +203,7 @@ lobbyEl.addEventListener('change', (e) => {
   const input = e.target as HTMLInputElement;
   if (input.name === 'ai') send({ t: 'settings', aiCount: Number(input.value) });
   if (input.name === 'track') send({ t: 'settings', trackId: input.value });
-  if (input.name === 'carmode') send({ t: 'settings', carMode: input.value === 'f1' ? 'f1' : 'mixed' });
+  if (input.name === 'carmode') send({ t: 'settings', carMode: parseCarMode(input.value) ?? 'mixed' });
 });
 
 function myCarId(): number | undefined {

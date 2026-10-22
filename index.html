@@ -14,7 +14,7 @@
     <div id="menu">
       <form id="menu-form" class="card">
         <h1>Grass <span>&amp;</span> Grip</h1>
-        <p class="tag">Isometric arcade racing. Meadow Ring is grass vs asphalt; Harbor Bridge adds hills, a lake, sand and a bridge over water.</p>
+        <p class="tag">Isometric arcade racing. Meadow Ring is grass vs asphalt; Harbor Bridge adds hills, a river, sand and two bridges.</p>
 
         <fieldset>
           <legend>Drivers</legend>
@@ -22,23 +22,44 @@
           <label><input type="radio" name="humans" value="2" /><span>2 players</span></label>
         </fieldset>
 
-        <fieldset>
-          <legend>Mode</legend>
+        <fieldset class="car-kinds">
+          <legend>Grid</legend>
           <label><input type="radio" name="carmode" value="mixed" checked /><span>Mixed</span></label>
+          <label><input type="radio" name="carmode" value="rally" /><span>Rally</span></label>
           <label><input type="radio" name="carmode" value="f1" /><span>F1</span></label>
+          <label><input type="radio" name="carmode" value="buggy" /><span>Buggy</span></label>
+          <label><input type="radio" name="carmode" value="truck" /><span>Truck</span></label>
+          <label><input type="radio" name="carmode" value="kart" /><span>Kart</span></label>
         </fieldset>
 
-        <fieldset id="p1-car">
+        <fieldset id="p1-car" class="car-kinds">
           <legend>Player 1 car</legend>
           <label><input type="radio" name="p1car" value="rally" checked /><span>Rally</span></label>
-          <label><input type="radio" name="p1car" value="f1" /><span>Formula 1</span></label>
+          <label><input type="radio" name="p1car" value="f1" /><span>F1</span></label>
+          <label><input type="radio" name="p1car" value="buggy" /><span>Buggy</span></label>
+          <label><input type="radio" name="p1car" value="truck" /><span>Truck</span></label>
+          <label><input type="radio" name="p1car" value="kart" /><span>Kart</span></label>
         </fieldset>
 
-        <fieldset id="p2-car" hidden>
+        <fieldset id="p2-car" class="car-kinds" hidden>
           <legend>Player 2 car</legend>
           <label><input type="radio" name="p2car" value="rally" checked /><span>Rally</span></label>
-          <label><input type="radio" name="p2car" value="f1" /><span>Formula 1</span></label>
+          <label><input type="radio" name="p2car" value="f1" /><span>F1</span></label>
+          <label><input type="radio" name="p2car" value="buggy" /><span>Buggy</span></label>
+          <label><input type="radio" name="p2car" value="truck" /><span>Truck</span></label>
+          <label><input type="radio" name="p2car" value="kart" /><span>Kart</span></label>
         </fieldset>
+
+        <details class="more">
+          <summary>Car setup</summary>
+          <div id="p1-setup"><p class="setup-who">Player 1</p></div>
+          <div id="p2-setup" hidden><p class="setup-who">Player 2</p></div>
+        </details>
+
+        <details class="more">
+          <summary>Race options</summary>
+          <div id="rules"></div>
+        </details>
 
         <fieldset id="ai">
           <legend>AI opponents</legend>

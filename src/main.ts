@@ -10,8 +10,9 @@ import { mapDemoOptions } from './client/mapDemo';
 import { pitDemoOptions } from './client/pitDemo';
 import { Renderer3D } from './client/renderer3d';
 import { mountLapsPicker } from './client/lapsPicker';
+import { mountRulesFields, mountSetupFields } from './client/raceOptionsUi';
 import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
-import { MAX_PLAYERS, clampAiCount, clampLaps } from './net/protocol';
+import { MAX_PLAYERS, clampAiCount, clampLaps, parseCarKind, parseCarMode } from './net/protocol';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const hud = document.querySelector<HTMLCanvasElement>('#hud')!;
@@ -38,11 +39,16 @@ function selected(name: string): string {
   return (form.querySelector<HTMLInputElement>(`input[name="${name}"]:checked`)?.value ?? '') as string;
 }
 
-function lockCarPicks(f1: boolean) {
+const p1Setup = mountSetupFields(document.querySelector<HTMLElement>('#p1-setup')!, 'p1setup');
+const p2Setup = mountSetupFields(document.querySelector<HTMLElement>('#p2-setup')!, 'p2setup');
+const rules = mountRulesFields(document.querySelector<HTMLElement>('#rules')!, 'rule');
+
+/** A one-make grid locks both pickers to that car. */
+function lockCarPicks(oneMake: string | null) {
   for (const name of ['p1car', 'p2car'] as const) {
     for (const input of form.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`)) {
-      input.disabled = f1;
-      if (f1 && input.value === 'f1') input.checked = true;
+      input.disabled = oneMake !== null;
+      if (oneMake && input.value === oneMake) input.checked = true;
     }
   }
 }
@@ -50,11 +56,12 @@ function lockCarPicks(f1: boolean) {
 function updateControlsHint() {
   const two = selected('humans') === '2';
   const humans = two ? 2 : 1;
-  const f1 = selected('carmode') === 'f1';
+  const mode = parseCarMode(selected('carmode')) ?? 'mixed';
   document.querySelector('#hint-solo')!.toggleAttribute('hidden', mobile || two);
   document.querySelector('#hint-duo')!.toggleAttribute('hidden', mobile || !two);
   document.querySelector('#p2-car')!.toggleAttribute('hidden', !two);
-  lockCarPicks(f1);
+  document.querySelector('#p2-setup')!.toggleAttribute('hidden', !two);
+  lockCarPicks(mode === 'mixed' ? null : mode);
   const maxAi = MAX_PLAYERS - humans;
   for (const input of form.querySelectorAll<HTMLInputElement>('input[name="ai"]')) {
     const n = Number(input.value);
@@ -112,9 +119,12 @@ form.addEventListener('submit', (e) => {
     aiCount: clampAiCount(selected('humans') === '2' ? 2 : 1, Number(selected('ai'))),
     laps: clampLaps(form.querySelector<HTMLInputElement>('input[name="laps"]')?.value),
     trackId: selected('track') || 'meadow',
-    p1Car: selected('p1car') === 'f1' ? 'f1' : 'rally',
-    p2Car: selected('p2car') === 'f1' ? 'f1' : 'rally',
-    carMode: selected('carmode') === 'f1' ? 'f1' : 'mixed',
+    p1Car: parseCarKind(selected('p1car')) ?? 'rally',
+    p2Car: parseCarKind(selected('p2car')) ?? 'rally',
+    p1Setup: p1Setup.get(),
+    p2Setup: p2Setup.get(),
+    carMode: parseCarMode(selected('carmode')) ?? 'mixed',
+    rules: rules.get(),
   };
   game?.stop();
   game = new Game(renderer, keyboard, options, touch ?? undefined);

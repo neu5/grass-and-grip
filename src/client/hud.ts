@@ -1,4 +1,4 @@
-import { standings, ticksToTime, TICK_RATE, type GameState } from '../sim';
+import { CAR_KIND_SHORT, DEFAULT_RULES, standings, ticksToTime, TICK_RATE, toCarKind, type GameState } from '../sim';
 import { cameraHudHint } from './touchMap';
 
 export interface Label {
@@ -34,8 +34,14 @@ export function drawHud(
   }
   ctx.textAlign = 'left';
 
+  const rules = state.rules ?? DEFAULT_RULES;
+  // Bars only for systems this race uses.
+  const bars: ('Tyres' | 'Fuel' | 'Damage')[] = [];
+  if (rules.tyreWear) bars.push('Tyres');
+  if (rules.fuel) bars.push('Fuel');
+  if (rules.damage) bars.push('Damage');
   const panelW = 230;
-  const panelH = 171;
+  const panelH = 120 + bars.length * 17;
   humanIds.forEach((id, k) => {
     const car = state.cars[id];
     const pos = order.findIndex((c) => c.id === id) + 1;
@@ -71,9 +77,8 @@ export function drawHud(
     const tyreLeft = 1 - Math.min(1, Math.max(0, car.tyreWear ?? 0));
     const fuelLeft = Math.min(1, Math.max(0, car.fuel ?? 1));
     const bodyLeft = 1 - Math.min(1, Math.max(0, car.damage ?? 0));
-    drawRemainBar(ctx, 'Tyres', tyreLeft, x, y + 48 + 4 * 17, panelW);
-    drawRemainBar(ctx, 'Fuel', fuelLeft, x, y + 48 + 5 * 17, panelW);
-    drawRemainBar(ctx, 'Damage', bodyLeft, x, y + 48 + 6 * 17, panelW);
+    const left = { Tyres: tyreLeft, Fuel: fuelLeft, Damage: bodyLeft };
+    bars.forEach((label, i) => drawRemainBar(ctx, label, left[label], x, y + 48 + (4 + i) * 17, panelW));
   });
 
   const boardX = humanIds.length > 1 ? cw / 2 - 124 : cw - 260;
@@ -152,7 +157,7 @@ function drawFastestBoard(ctx: CanvasRenderingContext2D, state: GameState, x: nu
     ctx.fillText(`${i + 1}. ${e.name}`, x + 30, rowY);
     ctx.textAlign = 'right';
     ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.fillText(e.car === 'f1' ? 'F1' : 'Rally', x + 168, rowY);
+    ctx.fillText(CAR_KIND_SHORT[toCarKind(e.car)], x + 168, rowY);
     ctx.fillStyle = i === 0 ? '#ffd54a' : '#fff';
     ctx.fillText(ticksToTime(e.ticks), x + 236, rowY);
     ctx.textAlign = 'left';

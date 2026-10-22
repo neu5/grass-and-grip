@@ -1,31 +1,31 @@
-import type { CarKind } from './types';
+import { CAR_KINDS, CAR_KIND_NAMES, parseCarKind, type CarKind } from './types';
 
-/** Host-set grid: mixed lets each driver pick; F1 forces every car. */
-export type CarMode = 'mixed' | 'f1';
+/** Host-set grid: mixed lets each driver pick; a car kind makes it one-make. */
+export type CarMode = 'mixed' | CarKind;
 
-export const CAR_MODES = ['mixed', 'f1'] as const;
+export const CAR_MODES = ['mixed', ...CAR_KINDS] as const;
 export const DEFAULT_CAR_MODE: CarMode = 'mixed';
 export const CAR_MODE_NAMES: Record<CarMode, string> = {
   mixed: 'Mixed',
-  f1: 'F1',
+  ...CAR_KIND_NAMES,
 };
 
 export function parseCarMode(v: unknown): CarMode | null {
-  return v === 'mixed' || v === 'f1' ? v : null;
+  return v === 'mixed' ? 'mixed' : parseCarKind(v);
 }
 
-/** Rally pick is ignored when the host locks the grid to F1. */
+/** The pick is ignored when the host locks the grid to one kind. */
 export function spawnKind(picked: CarKind | undefined, mode: CarMode = DEFAULT_CAR_MODE): CarKind {
-  if (mode === 'f1') return 'f1';
-  return picked === 'f1' ? 'f1' : 'rally';
+  if (mode !== 'mixed') return mode;
+  return parseCarKind(picked) ?? 'rally';
 }
 
-/** First AI fills in the missing body so both styles show; the rest alternate. F1 mode: all F1. */
+/**
+ * Mixed: AI starts with the kinds no human drives, then cycles through all of
+ * them, so the grid shows every body. One-make: every AI gets that kind.
+ */
 export function spawnAiKind(index: number, humans: CarKind[], mode: CarMode = DEFAULT_CAR_MODE): CarKind {
-  if (mode === 'f1') return 'f1';
-  if (index === 0) {
-    if (!humans.includes('f1')) return 'f1';
-    if (!humans.includes('rally')) return 'rally';
-  }
-  return index % 2 === 0 ? 'f1' : 'rally';
+  if (mode !== 'mixed') return mode;
+  const order = [...CAR_KINDS.filter((k) => !humans.includes(k)), ...CAR_KINDS.filter((k) => humans.includes(k))];
+  return order[index % order.length];
 }
