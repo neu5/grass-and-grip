@@ -29,6 +29,12 @@ export interface GameOptions {
   p2Car?: CarKind;
   p1Setup?: CarSetup;
   p2Setup?: CarSetup;
+  /** Driver names; blank means "Player 1" / "Player 2". */
+  p1Name?: string;
+  p2Name?: string;
+  /** One of CAR_COLORS each; clashes and unknown colors are sorted out in gridCars. */
+  p1Color?: string;
+  p2Color?: string;
   /** Default mixed. A car kind makes a one-make grid (picks ignored). */
   carMode?: CarMode;
   rules?: RaceRules;
@@ -42,6 +48,32 @@ export interface GameOptions {
 }
 
 const HUMAN_NAMES = ['Player 1', 'Player 2'] as const;
+export const MAX_NAME_LENGTH = 16;
+
+function cleanName(raw: string | undefined, fallback: string): string {
+  return String(raw ?? '').trim().slice(0, MAX_NAME_LENGTH) || fallback;
+}
+
+/** Human names and colors for the grid: never two drivers with the same name or color. */
+function humanDrivers(options: GameOptions, count: number): { name: string; color: string }[] {
+  const out: { name: string; color: string }[] = [];
+  const wanted = [
+    { name: options.p1Name, color: options.p1Color },
+    { name: options.p2Name, color: options.p2Color },
+  ];
+  for (let i = 0; i < count; i++) {
+    let name = cleanName(wanted[i].name, HUMAN_NAMES[i]);
+    if (out.some((d) => d.name.toLowerCase() === name.toLowerCase())) name = `${name.slice(0, MAX_NAME_LENGTH - 2)} ${i + 1}`;
+    const taken = out.map((d) => d.color);
+    const pick = wanted[i].color;
+    const color =
+      pick && (CAR_COLORS as readonly string[]).includes(pick) && !taken.includes(pick)
+        ? pick
+        : CAR_COLORS.find((c) => !taken.includes(c))!;
+    out.push({ name, color });
+  }
+  return out;
+}
 
 export function gridCars(options: GameOptions): CarConfig[] {
   const mode = parseCarMode(options.carMode) ?? DEFAULT_CAR_MODE;
@@ -51,16 +83,21 @@ export function gridCars(options: GameOptions): CarConfig[] {
   const p2 = spawnKind(options.p2Car, mode);
   const humanKinds: CarKind[] = humanCount === 2 ? [p1, p2] : [p1];
   const setups = [options.p1Setup, options.p2Setup];
-  const humans: CarConfig[] = HUMAN_NAMES.slice(0, humanCount).map((name, i) => ({
-    name,
-    color: CAR_COLORS[i],
+  const drivers = humanDrivers(options, humanCount);
+  const humans: CarConfig[] = drivers.map((d, i) => ({
+    name: d.name,
+    color: d.color,
     controller: 'human',
     kind: humanKinds[i],
     setup: setups[i],
   }));
+  // AI take the colors and names nobody else is using.
+  const freeColors = CAR_COLORS.filter((c) => !drivers.some((d) => d.color === c));
+  const humanNames = drivers.map((d) => d.name.toLowerCase());
+  const freeNames = AI_NAMES.filter((n) => !humanNames.includes(n.toLowerCase()));
   const ai: CarConfig[] = Array.from({ length: aiCount }, (_, i) => ({
-    name: AI_NAMES[i] ?? `AI ${i + 1}`,
-    color: CAR_COLORS[humanCount + i] ?? CAR_COLORS[CAR_COLORS.length - 1],
+    name: freeNames[i] ?? `AI ${i + 1}`,
+    color: freeColors[i] ?? CAR_COLORS[CAR_COLORS.length - 1],
     controller: 'ai' as const,
     kind: spawnAiKind(i, humanKinds, mode),
   }));

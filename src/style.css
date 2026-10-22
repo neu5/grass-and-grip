@@ -242,6 +242,7 @@ fieldset.laps-picker {
 }
 
 #colors label,
+.colors label,
 #ai label {
   flex: 1 1 18%;
   min-width: 3.1rem;
@@ -350,11 +351,13 @@ fieldset input:disabled + span {
   cursor: not-allowed;
 }
 
-#colors span {
+#colors span,
+.colors span {
   border-width: 2px;
 }
 
-#colors input:checked + span {
+#colors input:checked + span,
+.colors input:checked + span {
   outline: 2px solid #fff;
   outline-offset: 2px;
 }
@@ -806,4 +809,8 @@ button.secondary {
   fieldset.car-kinds label {
     flex: 1 1 28%;
   }
+}
+
+.who[hidden] {
+  display: none;
 }

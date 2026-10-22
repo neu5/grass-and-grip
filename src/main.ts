@@ -26,7 +26,7 @@ import { Renderer3D } from './client/renderer3d';
 import { mountLapsPicker } from './client/lapsPicker';
 import { mountRulesFields, mountSetupFields } from './client/raceOptionsUi';
 import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
-import { CAR_KIND_SHORT, MAX_PLAYERS, clampAiCount, clampLaps, parseCarKind, parseCarMode } from './net/protocol';
+import { CAR_COLORS, CAR_KIND_SHORT, COLOR_NAMES, MAX_PLAYERS, clampAiCount, clampLaps, parseCarKind, parseCarMode } from './net/protocol';
 import { trackName as simTrackName } from './sim';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
@@ -75,6 +75,55 @@ function selected(name: string): string {
   return (form.querySelector<HTMLInputElement>(`input[name="${name}"]:checked`)?.value ?? '') as string;
 }
 
+// Driver names and colors, remembered between visits.
+const DRIVERS_KEY = 'gg-local-drivers';
+type SavedDriver = { name?: string; color?: string };
+function loadDrivers(): SavedDriver[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(DRIVERS_KEY) ?? '[]');
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+function saveDrivers(drivers: SavedDriver[]) {
+  try {
+    localStorage.setItem(DRIVERS_KEY, JSON.stringify(drivers));
+  } catch {
+    // Private mode: names just won't be remembered.
+  }
+}
+const nameInputs = [1, 2].map((n) => document.querySelector<HTMLInputElement>(`#p${n}-name`)!);
+for (const n of [1, 2]) {
+  const box = document.querySelector<HTMLElement>(`#p${n}-colors`)!;
+  for (const c of CAR_COLORS) {
+    const l = document.createElement('label');
+    l.innerHTML = `<input type="radio" name="p${n}color" value="${c}" /><span style="background:${c}33;border-color:${c}">${COLOR_NAMES[c]}</span>`;
+    box.append(l);
+  }
+}
+{
+  const saved = loadDrivers();
+  [0, 1].forEach((i) => {
+    nameInputs[i].value = saved[i]?.name ?? '';
+    const color = saved[i]?.color && (CAR_COLORS as readonly string[]).includes(saved[i].color!) ? saved[i].color! : CAR_COLORS[i];
+    form.querySelector<HTMLInputElement>(`input[name="p${i + 1}color"][value="${color}"]`)!.checked = true;
+  });
+}
+
+/** The two players can't share a color: grey out the other player's pick. */
+function lockColors() {
+  const two = selected('humans') === '2';
+  const c1 = selected('p1color');
+  const c2 = selected('p2color');
+  for (const input of form.querySelectorAll<HTMLInputElement>('input[name="p1color"]')) input.disabled = two && input.value === c2;
+  for (const input of form.querySelectorAll<HTMLInputElement>('input[name="p2color"]')) input.disabled = input.value === c1;
+  if (two && c1 === c2) {
+    const free = form.querySelector<HTMLInputElement>('input[name="p2color"]:not(:disabled)');
+    if (free) free.checked = true;
+  }
+}
+
 const p1Setup = mountSetupFields(document.querySelector<HTMLElement>('#p1-setup')!, 'p1setup');
 const p2Setup = mountSetupFields(document.querySelector<HTMLElement>('#p2-setup')!, 'p2setup');
 const rules = mountRulesFields(
@@ -102,6 +151,8 @@ function updateControlsHint() {
   document.querySelector('#hint-duo')!.toggleAttribute('hidden', mobile || !two);
   document.querySelector('#p2-car')!.toggleAttribute('hidden', !two);
   document.querySelector('#p2-setup')!.toggleAttribute('hidden', !two);
+  document.querySelector('#p2-who')!.toggleAttribute('hidden', !two);
+  lockColors();
   const championship = selected('series') === 'season';
   document.querySelector('#season-tracks')!.toggleAttribute('hidden', !championship);
   document.querySelector('#single-track')!.toggleAttribute('hidden', championship);
@@ -288,9 +339,14 @@ form.addEventListener('submit', (e) => {
     p2Car: parseCarKind(selected('p2car')) ?? 'rally',
     p1Setup: p1Setup.get(),
     p2Setup: p2Setup.get(),
+    p1Name: nameInputs[0].value,
+    p2Name: nameInputs[1].value,
+    p1Color: selected('p1color'),
+    p2Color: selected('p2color'),
     carMode: parseCarMode(selected('carmode')) ?? 'mixed',
     rules: rules.get(),
   };
+  saveDrivers([0, 1].map((i) => ({ name: nameInputs[i].value.trim(), color: selected(`p${i + 1}color`) })));
   if (selected('series') === 'season') {
     const tracks = [...form.querySelectorAll<HTMLInputElement>('input[name="season-track"]:checked')].map((i) => i.value);
     if (tracks.length === 0) return;
