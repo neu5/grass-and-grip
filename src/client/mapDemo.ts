@@ -45,7 +45,7 @@ export function mapDemoOptions(renderer: Renderer3D): GameOptions {
   const approachIdx = Math.max(0, bridgeIdx - Math.floor(track.samples.length * 0.2));
   // The river just upstream of the east bridge, then the runoff past the NE corner.
   const water = { x: 1340, y: 482 };
-  const runoff = track.def.sand![0];
+  const runoff = track.patches.find((p) => p.surface === 'sand')!.box;
   const sand = { x: runoff.x + runoff.w / 2, y: runoff.y + runoff.h / 2 };
   type Phase = 'show' | 'toBridge' | 'onBridge' | 'toWater' | 'inWater' | 'toSand';
   let phase: Phase = 'show';

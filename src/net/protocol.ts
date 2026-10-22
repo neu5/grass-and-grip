@@ -165,6 +165,8 @@ export interface CompactSnapshot {
   /** Rules as [damage, tyreWear, fuel, collisions 0/1, aiLevel]; missing means defaults. */
   ru?: [number, number, number, number, number];
   c: CompactCar[];
+  /** Cones as flat [x, y (tenths), angle (hundredths), down 0/1] per cone. */
+  pr?: number[];
   /** Fastest-first top 3 for this track. */
   fl?: CompactFastestLap[];
   /** Last input seq the server applied for the receiving client. */

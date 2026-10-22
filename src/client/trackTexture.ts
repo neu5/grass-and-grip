@@ -1,4 +1,4 @@
-import { statsFor, type CarState, type GameState, type Track } from '../sim';
+import { statsFor, type CarState, type GameState, type Surface, type Track } from '../sim';
 
 function tracePath(ctx: CanvasRenderingContext2D, track: Track) {
   ctx.beginPath();
@@ -15,12 +15,13 @@ export function paintTrackSurface(track: Track, res: number): HTMLCanvasElement 
   const ctx = c.getContext('2d')!;
   ctx.scale(res, res);
 
-  ctx.fillStyle = '#4a9a3f';
+  const ground = GROUND_LOOK[track.def.ground ?? 'grass'] ?? GRASS_LOOK;
+  ctx.fillStyle = ground.base;
   ctx.fillRect(0, 0, width, height);
-  ctx.fillStyle = '#52a546';
+  ctx.fillStyle = ground.stripe;
   for (let x = 0; x < width; x += 80) ctx.fillRect(x, 0, 40, height);
 
-  paintSand(ctx, track);
+  paintPatches(ctx, track, false);
   paintWater(ctx, track);
   paintPitLane(ctx, track);
 
@@ -65,16 +66,64 @@ export function paintTrackSurface(track: Track, res: number): HTMLCanvasElement 
       ctx.fill();
     }
   }
+  paintPatches(ctx, track, true);
   paintPitBoxes(ctx, track);
   return c;
 }
 
-function paintSand(ctx: CanvasRenderingContext2D, track: Track) {
-  for (const r of track.def.sand ?? []) {
-    ctx.fillStyle = '#c4a35a';
-    ctx.fillRect(r.x, r.y, r.w, r.h);
-    ctx.fillStyle = '#d4b36a';
-    for (let x = r.x; x < r.x + r.w; x += 36) ctx.fillRect(x, r.y, 18, r.h);
+/** Base fill and mowing stripe for the open ground. */
+const GRASS_LOOK = { base: '#4a9a3f', stripe: '#52a546' };
+const GROUND_LOOK: Partial<Record<Surface, { base: string; stripe: string }>> = {
+  grass: GRASS_LOOK,
+  snow: { base: '#e6edf2', stripe: '#eef3f6' },
+  sand: { base: '#c4a35a', stripe: '#cdae66' },
+  gravel: { base: '#9a9387', stripe: '#a39c90' },
+};
+
+const PATCH_LOOK: Record<Surface, { fill: string; detail: string; alpha?: number }> = {
+  grass: { fill: '#4a9a3f', detail: '#52a546' },
+  sand: { fill: '#c4a35a', detail: '#d4b36a' },
+  gravel: { fill: '#948d81', detail: '#aaa397' },
+  snow: { fill: '#eef3f7', detail: '#dce7ee' },
+  ice: { fill: '#bfe2f2', detail: '#e8f6fc' },
+  water: { fill: '#2a6fa8', detail: '#3480b8' },
+  asphalt: { fill: '#5d5f64', detail: '#66686d' },
+};
+
+/** Patches under the road first, then the ones painted over it (half see-through so lines show). */
+function paintPatches(ctx: CanvasRenderingContext2D, track: Track, overRoad: boolean) {
+  for (const p of track.patches) {
+    if (!!p.overRoad !== overRoad || p.points.length < 3) continue;
+    const look = PATCH_LOOK[p.surface];
+    ctx.save();
+    ctx.beginPath();
+    p.points.forEach((q, i) => (i === 0 ? ctx.moveTo(q.x, q.y) : ctx.lineTo(q.x, q.y)));
+    ctx.closePath();
+    ctx.globalAlpha = overRoad ? 0.78 : 1;
+    ctx.fillStyle = look.fill;
+    ctx.fill();
+    ctx.clip();
+    ctx.fillStyle = look.detail;
+    const b = p.box;
+    if (p.surface === 'gravel' || p.surface === 'snow') {
+      // Speckles, placed by a fixed pattern so the texture is the same every load.
+      for (let y = b.y; y < b.y + b.h; y += 9) {
+        for (let x = b.x + ((y * 7) % 11); x < b.x + b.w; x += 13) ctx.fillRect(x, y, 3, 3);
+      }
+    } else if (p.surface === 'ice') {
+      for (let k = -b.h; k < b.w; k += 26) {
+        ctx.fillRect(b.x + k, b.y, 6, 2);
+        ctx.beginPath();
+        ctx.moveTo(b.x + k, b.y + b.h);
+        ctx.lineTo(b.x + k + b.h * 0.6, b.y);
+        ctx.lineTo(b.x + k + b.h * 0.6 + 5, b.y);
+        ctx.lineTo(b.x + k + 5, b.y + b.h);
+        ctx.fill();
+      }
+    } else {
+      for (let x = b.x; x < b.x + b.w; x += 36) ctx.fillRect(x, b.y, 18, b.h);
+    }
+    ctx.restore();
   }
 }
 

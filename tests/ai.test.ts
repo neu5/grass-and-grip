@@ -9,6 +9,7 @@ import {
   racingLine,
   step,
   surfaceAt,
+  TRACK_IDS,
   type CarKind,
   type GameState,
 } from '../src/sim';
@@ -43,11 +44,12 @@ const MIXED: CarKind[] = ['truck', 'buggy', 'rally', 'kart', 'rally', 'kart', 'f
 
 describe('racing line', () => {
   it('stays on the road everywhere', () => {
-    for (const id of ['meadow', 'harbor']) {
+    for (const id of TRACK_IDS) {
       const track = getTrack(id);
+      const painted = (track.def.patches ?? []).filter((p) => p.overRoad).map((p) => p.surface);
       for (const p of racingLine(track).points) {
         expect(distanceToCenterline(track, p.x, p.y)).toBeLessThanOrEqual(track.def.halfWidth);
-        expect(surfaceAt(track, p.x, p.y)).toBe('asphalt');
+        expect(['asphalt', ...painted]).toContain(surfaceAt(track, p.x, p.y));
       }
     }
   });
@@ -93,15 +95,16 @@ describe('AI racing', () => {
   });
 
   it('finishes an 8-car race of every kind on every track, staying on the road', () => {
-    for (const id of ['meadow', 'harbor']) {
+    for (const id of TRACK_IDS) {
       const track = getTrack(id);
+      const onRoad = (x: number, y: number) => distanceToCenterline(track, x, y) <= track.def.halfWidth || surfaceAt(track, x, y) === 'asphalt';
       for (const kind of [...CAR_KINDS, 'mixed'] as const) {
         const kinds = kind === 'mixed' ? MIXED : Array<CarKind>(8).fill(kind);
         let off = 0;
         let ticks = 0;
         const s = run(aiRace(id, kinds, 70, 2), 60 * 90, (st) => {
           ticks++;
-          for (const c of st.cars) if (surfaceAt(track, c.x, c.y) !== 'asphalt') off++;
+          for (const c of st.cars) if (!onRoad(c.x, c.y)) off++;
         });
         expect(s.phase, `${id} ${kind}`).toBe('finished');
         expect(off / (ticks * 8), `${id} ${kind} off-road share`).toBeLessThan(0.03);
@@ -119,7 +122,7 @@ describe('AI racing', () => {
 
 describe('missed checkpoint', () => {
   it('goes back through a gate it drove past, then completes the lap', () => {
-    for (const id of ['meadow', 'harbor']) {
+    for (const id of TRACK_IDS) {
       for (const kind of ['rally', 'truck'] as const) {
         const track = getTrack(id);
         const line = racingLine(track);

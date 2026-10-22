@@ -1,5 +1,6 @@
 import { aiInput, aiSkill, createAiMemory } from './ai';
-import { collideBounds, collideCars, collideCircle, NO_INPUT, stepCarPhysics } from './physics';
+import { collideBounds, collideCars, collideCircle, collideSegment, NO_INPUT, stepCarPhysics } from './physics';
+import { coneOffCircle, conesFromTrack, hitCone, stepCone } from './props';
 import { applyPitService } from './pits';
 import { HEIGHT_SEPARATION, getTrack, heightAt, segmentsIntersect, surfaceAt, terrainHeightAt, type Track } from './track';
 import { copyFastestLaps, insertFastestLap } from './fastestLaps';
@@ -125,6 +126,7 @@ export function createRace(config: RaceConfig): GameState {
     startTick,
     totalLaps: config.totalLaps,
     rules: normalizeRules(config.rules),
+    props: conesFromTrack(track),
     cars,
     fastestLaps: copyFastestLaps(config.fastestLaps),
   };
@@ -204,6 +206,7 @@ export function step(prev: GameState, inputs: TickInputs): GameState {
     collideObstacles(car, heights[i], track, rules);
     collideBounds(car, track.def.width, track.def.height, rules);
   }
+  stepProps(state, track, heights);
 
   if (state.phase === 'racing') {
     const humans = cars.filter((c) => c.controller === 'human');
@@ -240,11 +243,44 @@ export function stepOwnCar(prev: GameState, carId: number, input: PlayerInput): 
   return state;
 }
 
+/** Barrier blocks are this thick each side of their line. */
+export const BARRIER_HALF = 5;
+
 /** Obstacles stand on the ground; a car on a bridge above them passes over. */
 function collideObstacles(car: CarState, height: number, track: Track, rules: RaceRules) {
   for (const o of track.def.obstacles) {
+    if (o.kind === 'cone') continue;
     if (Math.abs(height - terrainHeightAt(track, o.x, o.y)) > HEIGHT_SEPARATION) continue;
     collideCircle(car, o.x, o.y, o.r, rules);
+  }
+  for (const b of track.def.barriers ?? []) {
+    const mx = (b.a.x + b.b.x) / 2;
+    const my = (b.a.y + b.b.y) / 2;
+    if (Math.abs(height - terrainHeightAt(track, mx, my)) > HEIGHT_SEPARATION) continue;
+    collideSegment(car, b.a, b.b, BARRIER_HALF, rules);
+  }
+}
+
+/** Cones: knocked by cars on the same level, slide to a stop, bounce off trees, tyres and walls. */
+function stepProps(state: GameState, track: Track, heights: number[]) {
+  const props = state.props;
+  if (!props?.length) return;
+  for (const cone of props) {
+    const ground = terrainHeightAt(track, cone.x, cone.y);
+    for (let i = 0; i < state.cars.length; i++) {
+      if (Math.abs(heights[i] - ground) > HEIGHT_SEPARATION) continue;
+      hitCone(state.cars[i], cone);
+    }
+    stepCone(cone, track.def.width, track.def.height, DT);
+    for (const o of track.def.obstacles) if (o.kind !== 'cone') coneOffCircle(cone, o.x, o.y, o.r);
+    for (const b of track.def.barriers ?? []) {
+      const abx = b.b.x - b.a.x;
+      const aby = b.b.y - b.a.y;
+      const len2 = abx * abx + aby * aby;
+      let t = len2 > 0 ? ((cone.x - b.a.x) * abx + (cone.y - b.a.y) * aby) / len2 : 0;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      coneOffCircle(cone, b.a.x + abx * t, b.a.y + aby * t, BARRIER_HALF);
+    }
   }
 }
 

@@ -9,6 +9,7 @@ import {
   slopeAttitude,
   terrainHeightAt,
   toCarKind,
+  BARRIER_HALF,
   missedGate,
   nearestSampleIndex,
   bridgeSpan,
@@ -363,7 +364,10 @@ interface TreeSpot {
 const TREE_GREENS = ['#2f6e2a', '#3a7d31', '#2a6326'].map((c) => new THREE.Color(c));
 
 /** All trees as a handful of instanced meshes: one draw call per tree part. */
-function buildForest(spots: TreeSpot[]): THREE.Group {
+const SNOW_TOP = new THREE.Color('#eef3f6');
+
+/** Pines; on a snowy map the top tier is white. */
+function buildForest(spots: TreeSpot[], winter = false): THREE.Group {
   const g = new THREE.Group();
   const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.18, 0.24, 0.9, 7).translate(0, 0.45, 0), std('#6b4a2b'), spots.length);
   const tiers = [0, 1, 2].map(
@@ -383,10 +387,56 @@ function buildForest(spots: TreeSpot[]): THREE.Group {
     trunk.setMatrixAt(i, m);
     tiers.forEach((tier, k) => {
       tier.setMatrixAt(i, m);
-      tier.setColorAt(i, TREE_GREENS[(i + k) % 3]);
+      tier.setColorAt(i, winter && k === 2 ? SNOW_TOP : TREE_GREENS[(i + k) % 3]);
     });
   });
   g.add(trunk, ...tiers);
+  return shadowed(g);
+}
+
+/** Red and white concrete blocks along each barrier line, riding the ground. */
+function buildBarriers(track: Track): THREE.Group {
+  const g = new THREE.Group();
+  const red = std('#c9372c', { roughness: 0.8 });
+  const white = std('#e9e6df', { roughness: 0.85 });
+  const block = 22;
+  for (const b of track.def.barriers ?? []) {
+    const dx = b.b.x - b.a.x;
+    const dy = b.b.y - b.a.y;
+    const len = Math.hypot(dx, dy);
+    const n = Math.max(1, Math.round(len / block));
+    const angle = Math.atan2(dy, dx);
+    for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n;
+      const x = b.a.x + dx * t;
+      const z = b.a.y + dy * t;
+      const m = new THREE.Mesh(new THREE.BoxGeometry((len / n) * 0.96, 9, BARRIER_HALF * 2), i % 2 ? white : red);
+      m.position.set(x, terrainHeightAt(track, x, z) + 4, z);
+      m.rotation.y = -angle;
+      g.add(m);
+    }
+  }
+  return shadowed(g);
+}
+
+const coneMat = std('#ff6a1a', { roughness: 0.6 });
+const coneBandMat = std('#f4f4f4', { roughness: 0.5 });
+const coneBaseMat = std('#262626', { roughness: 0.8 });
+
+/** Traffic cone, base on the ground at the origin. */
+function buildConeMesh(): THREE.Group {
+  const g = new THREE.Group();
+  g.rotation.order = 'YXZ';
+  const body = new THREE.Group();
+  body.name = 'body';
+  const base = new THREE.Mesh(new THREE.BoxGeometry(10, 1.2, 10), coneBaseMat);
+  base.position.y = 0.6;
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(4, 13, 10), coneMat);
+  cone.position.y = 7.4;
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(2.55, 3.05, 2.2, 10), coneBandMat);
+  band.position.y = 7.6;
+  body.add(base, cone, band);
+  g.add(body);
   return shadowed(g);
 }
 
@@ -897,6 +947,7 @@ export class Renderer3D {
   private carRoll: number[] = [];
   /** Shown car height and fall speed, so drops off the deck are not a snap. */
   private carY: number[] = [];
+  private coneMeshes: THREE.Group[] = [];
   private carVy: number[] = [];
   private crew: CrewActor[] = [];
   private hud: CanvasRenderingContext2D;
@@ -974,7 +1025,7 @@ export class Renderer3D {
       new THREE.Vector2(width / 2 - far, height / 2 + far),
     ]);
     frame.holes.push(new THREE.Path([new THREE.Vector2(0, 0), new THREE.Vector2(0, height), new THREE.Vector2(width, height), new THREE.Vector2(width, 0)]));
-    const outer = new THREE.Mesh(new THREE.ShapeGeometry(frame).rotateX(Math.PI / 2), std('#4b9c40', { roughness: 1, side: THREE.DoubleSide }));
+    const outer = new THREE.Mesh(new THREE.ShapeGeometry(frame).rotateX(Math.PI / 2), std(this.track.def.ground === 'snow' ? '#e3eaef' : '#4b9c40', { roughness: 1, side: THREE.DoubleSide }));
     outer.position.y = outsideLevel(this.track) - 0.5;
     outer.receiveShadow = true;
     this.world.add(outer);
@@ -1011,7 +1062,7 @@ export class Renderer3D {
     for (const c of this.crew) this.world.add(c.mesh);
     this.checkpointDebug = buildCheckpointDebug(this.track);
     this.checkpointDebug.visible = debugOn;
-    this.world.add(buildPitDecor(this.track), buildGantry(this.track), buildWalls(this.track), buildForest(trees), this.checkpointDebug);
+    this.world.add(buildPitDecor(this.track), buildGantry(this.track), buildWalls(this.track), buildBarriers(this.track), buildForest(trees, this.track.def.ground === 'snow'), this.checkpointDebug);
   }
 
   resetRace() {
@@ -1090,6 +1141,27 @@ export class Renderer3D {
       this.skids.dirty = false;
       this.skidUploadTick = state.tick;
     }
+  }
+
+  /** Cones follow the sim; knocked-over ones lie on their side. */
+  private updateCones(prev: GameState, curr: GameState, alpha: number) {
+    const props = curr.props ?? [];
+    while (this.coneMeshes.length < props.length) {
+      const m = buildConeMesh();
+      this.scene.add(m);
+      this.coneMeshes.push(m);
+    }
+    while (this.coneMeshes.length > props.length) this.scene.remove(this.coneMeshes.pop()!);
+    props.forEach((b, i) => {
+      const a = prev.props?.[i] ?? b;
+      const x = a.x + (b.x - a.x) * alpha;
+      const z = a.y + (b.y - a.y) * alpha;
+      const m = this.coneMeshes[i];
+      const ground = terrainHeightAt(this.track, x, z);
+      m.position.set(x, ground + (b.down ? 4 : 0), z);
+      m.rotation.y = -(a.angle + (b.angle - a.angle) * alpha);
+      m.rotation.z = b.down ? Math.PI / 2 : 0;
+    });
   }
 
   private syncCars(state: GameState) {
@@ -1258,6 +1330,7 @@ export class Renderer3D {
   /** `frameDt` overrides wall-clock camera smoothing, e.g. for offline capture. */
   render(prev: GameState, curr: GameState, alpha: number, humanIds: number[], frameDt?: number) {
     this.syncCars(curr);
+    this.updateCones(prev, curr, alpha);
     const { w, h } = this.resize();
     const positions: THREE.Vector3[] = [];
     const dt = frameDt ?? Math.min(0.1, (performance.now() - this.lastFrame) / 1000);

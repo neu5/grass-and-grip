@@ -15,6 +15,12 @@ export const SURFACES: Record<Surface, SurfaceParams> = {
   sand: { grip: 0.22, engine: 0.58, rolling: 2.5 },
   /** Strong drag vs land, but still driveable — not a crawl. */
   water: { grip: 0.16, engine: 0.38, rolling: 4.2 },
+  /** Loose stones: between grass and asphalt, with a lot of rolling drag. */
+  gravel: { grip: 0.55, engine: 0.8, rolling: 1.5 },
+  /** Packed snow: slippery but not hopeless. */
+  snow: { grip: 0.36, engine: 0.66, rolling: 1.0 },
+  /** Ice: almost no grip and almost no drag, so cars slide a long way. */
+  ice: { grip: 0.13, engine: 0.5, rolling: 0.2 },
 };
 
 export interface CarStats {
@@ -221,7 +227,8 @@ export function carStats(car: { kind?: CarKind; setup?: CarSetup }): CarStats {
 /** Surface grip / power / rolling for one car, after its off-road ability. */
 function surfaceFor(C: CarStats, surface: Surface): SurfaceParams {
   const s = SURFACES[surface];
-  if (surface === 'asphalt' || C.offroad === 0) return s;
+  // Off-road tyres help on loose ground, not on tarmac or bare ice.
+  if (surface === 'asphalt' || surface === 'ice' || C.offroad === 0) return s;
   return {
     grip: s.grip + (1 - s.grip) * C.offroad,
     engine: s.engine + (1 - s.engine) * C.offroad,
@@ -238,6 +245,7 @@ export const TYRE = {
   slip: 0.00022,
   grass: 0.045,
   sand: 0.07,
+  gravel: 0.09,
   rolling: 0.0035,
   corner: 0.028,
   wornGrip: 0.38,
@@ -366,6 +374,7 @@ export function stepCarPhysics(
     wearRate += TYRE.slip * car.slip;
     if (surface === 'grass') wearRate += TYRE.grass * spd;
     if (surface === 'sand') wearRate += TYRE.sand * spd;
+    if (surface === 'gravel') wearRate += TYRE.gravel * spd;
   }
   car.tyreWear = clamp(wear + wearRate * rules.tyreWear * dt, 0, 1);
 
@@ -427,6 +436,22 @@ export function collideCircle(car: CarState, ox: number, oy: number, r: number, 
     car.vx -= (1 + RESTITUTION) * vn * nx;
     car.vy -= (1 + RESTITUTION) * vn * ny;
   }
+}
+
+/** Push a car off a barrier segment `a`-`b` that is `half` units thick each side. */
+export function collideSegment(
+  car: CarState,
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  half: number,
+  rules: RaceRules = DEFAULT_RULES,
+): void {
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const len2 = abx * abx + aby * aby;
+  let t = len2 > 0 ? ((car.x - a.x) * abx + (car.y - a.y) * aby) / len2 : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  collideCircle(car, a.x + abx * t, a.y + aby * t, half, rules);
 }
 
 export function collideBounds(car: CarState, width: number, height: number, rules: RaceRules = DEFAULT_RULES): void {

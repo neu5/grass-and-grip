@@ -174,6 +174,18 @@ export interface CarState {
   ai: AiMemory | null;
 }
 
+/** A loose object on the track (traffic cone). */
+export interface Prop {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  angle: number;
+  spin: number;
+  /** Knocked over. */
+  down: boolean;
+}
+
 export interface GameState {
   tick: number;
   trackId: string;
@@ -183,6 +195,8 @@ export interface GameState {
   totalLaps: number;
   /** Race options. Missing means `DEFAULT_RULES`. */
   rules?: RaceRules;
+  /** Cones and other loose objects. Missing means none. */
+  props?: Prop[];
   cars: CarState[];
   /** Fastest-first top 3 laps for this track (includes earlier races when seeded). */
   fastestLaps: FastestLap[];

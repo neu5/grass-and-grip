@@ -1,4 +1,4 @@
-import { copyFastestLaps, DEFAULT_RULES, normalizeRules, normalizeSetup, toCarKind, type CarState, type FastestLap, type GameState } from '../sim';
+import { copyFastestLaps, DEFAULT_RULES, type Prop, normalizeRules, normalizeSetup, toCarKind, type CarState, type FastestLap, type GameState } from '../sim';
 import type { CompactCar, CompactFastestLap, CompactSnapshot } from './protocol';
 
 /** Position / velocity stored in tenths. Angle in milliradians. Wear/fuel/damage 0–1 as 0–1000. */
@@ -84,6 +84,23 @@ function decodeFastest(entry: CompactFastestLap): FastestLap {
   };
 }
 
+const PROP_ANG_Q = 100;
+
+function encodeProps(props: Prop[]): number[] {
+  const out: number[] = [];
+  for (const p of props) out.push(q(p.x, POS_Q), q(p.y, POS_Q), q(p.angle, PROP_ANG_Q), p.down ? 1 : 0);
+  return out;
+}
+
+/** Cones arrive without velocity; only the server moves them. */
+function decodeProps(flat: number[]): Prop[] {
+  const out: Prop[] = [];
+  for (let i = 0; i + 3 < flat.length; i += 4) {
+    out.push({ x: u(flat[i], POS_Q), y: u(flat[i + 1], POS_Q), vx: 0, vy: 0, angle: u(flat[i + 2], PROP_ANG_Q), spin: 0, down: flat[i + 3] === 1 });
+  }
+  return out;
+}
+
 function encodeRules(state: GameState): [number, number, number, number, number] {
   const r = state.rules ?? DEFAULT_RULES;
   return [r.damage, r.tyreWear, r.fuel, r.collisions ? 1 : 0, r.aiLevel];
@@ -98,6 +115,7 @@ export function encodeSnapshot(state: GameState, ack = 0): CompactSnapshot {
     tid: state.trackId,
     ru: encodeRules(state),
     c: state.cars.map(encodeCar),
+    ...(state.props?.length ? { pr: encodeProps(state.props) } : {}),
     fl: (state.fastestLaps ?? []).map(encodeFastest),
     ack,
   };
@@ -113,6 +131,7 @@ export function decodeSnapshot(snap: CompactSnapshot, prev?: GameState): GameSta
     rules: snap.ru
       ? normalizeRules({ damage: snap.ru[0], tyreWear: snap.ru[1], fuel: snap.ru[2], collisions: snap.ru[3] === 1, aiLevel: snap.ru[4] })
       : (prev?.rules ?? { ...DEFAULT_RULES }),
+    props: snap.pr ? decodeProps(snap.pr) : (prev?.props ?? []),
     cars: snap.c.map((c) => decodeCar(c, prev?.cars.find((x) => x.id === c.i))),
     fastestLaps: copyFastestLaps(snap.fl?.map(decodeFastest) ?? prev?.fastestLaps),
   };

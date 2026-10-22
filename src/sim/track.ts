@@ -2,9 +2,12 @@ import { datan2, normalizeAngle } from './dmath';
 
 export type Vec2 = { x: number; y: number };
 
-export type Surface = 'asphalt' | 'grass' | 'sand' | 'water';
+export type Surface = 'asphalt' | 'grass' | 'sand' | 'water' | 'gravel' | 'snow' | 'ice';
 
-export const TRACK_IDS = ['meadow', 'harbor'] as const;
+/** Surfaces a patch can paint. */
+export const PATCH_SURFACES = ['grass', 'sand', 'gravel', 'snow', 'ice'] as const;
+
+export const TRACK_IDS = ['meadow', 'harbor', 'alpine'] as const;
 export type TrackId = (typeof TRACK_IDS)[number];
 
 /** Marked stalls on tracks that have a pit lane. */
@@ -40,6 +43,7 @@ function pitComplex(firstBoxX: number): { pitLane: Rect; pitBoxes: Rect[] } {
 export const TRACK_NAMES: Record<TrackId, string> = {
   meadow: 'Meadow Ring',
   harbor: 'Harbor Bridge',
+  alpine: 'Alpine Pass',
 };
 
 export function isTrackId(id: string | undefined): id is TrackId {
@@ -71,7 +75,26 @@ export interface Obstacle {
   x: number;
   y: number;
   r: number;
-  kind: 'tyres' | 'tree';
+  /** Trees and tyre stacks are fixed; cones get knocked about (see `GameState.props`). */
+  kind: 'tyres' | 'tree' | 'cone';
+}
+
+/** Painted ground: a polygon of one surface. */
+export interface SurfacePatch {
+  surface: Surface;
+  points: Vec2[];
+  /** Paints over the road too (an ice sheet across the tarmac). */
+  overRoad?: boolean;
+}
+
+/** A straight run of concrete barrier blocks. */
+export interface Barrier {
+  a: Vec2;
+  b: Vec2;
+}
+
+export interface PatchShape extends SurfacePatch {
+  box: Rect;
 }
 
 export interface TrackDef {
@@ -88,8 +111,12 @@ export interface TrackDef {
   pitLane: Rect;
   /** Marked stalls. Service only while a car is stopped inside one. */
   pitBoxes: Rect[];
-  /** Off-track sand (beaches, runoff). Track/bridge still win. */
-  sand?: Rect[];
+  /** Painted ground (run-offs, snow, ice). Later patches win. */
+  patches?: SurfacePatch[];
+  /** Ground off the road where nothing is painted. Default grass. */
+  ground?: Surface;
+  /** Barrier walls along the edge of the run-off. */
+  barriers?: Barrier[];
   /** Rivers. Bridge and racing line stay asphalt. */
   rivers?: River[];
   /** Elevated decks over water. */
@@ -156,6 +183,7 @@ export interface Track {
   heightGrid: HeightGrid | null;
   /** Dense river center lines. */
   rivers: RiverLine[];
+  patches: PatchShape[];
   /** gates[0] is the start/finish line. */
   gates: Gate[];
 }
@@ -249,7 +277,58 @@ export function buildTrack(def: TrackDef): Track {
     });
   }
   const heightGrid = def.terrain ? buildHeightGrid(def, samples, sampleHeights, rivers) : null;
-  return { def, samples, tangentAngles, normals, segmentLengths, curvature, sampleHeights, heightGrid, rivers, gates };
+  const patches = (def.patches ?? []).map(patchShape);
+  return { def, samples, tangentAngles, normals, segmentLengths, curvature, sampleHeights, heightGrid, rivers, patches, gates };
+}
+
+function patchShape(p: SurfacePatch): PatchShape {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const q of p.points) {
+    minX = Math.min(minX, q.x);
+    minY = Math.min(minY, q.y);
+    maxX = Math.max(maxX, q.x);
+    maxY = Math.max(maxY, q.y);
+  }
+  return { ...p, box: { x: minX, y: minY, w: maxX - minX, h: maxY - minY } };
+}
+
+export function pointInPolygon(x: number, y: number, pts: Vec2[]): boolean {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const a = pts[i];
+    const b = pts[j];
+    if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+/** Rectangle as a patch polygon. */
+export function rectPatch(surface: Surface, r: Rect): SurfacePatch {
+  return {
+    surface,
+    points: [
+      { x: r.x, y: r.y },
+      { x: r.x + r.w, y: r.y },
+      { x: r.x + r.w, y: r.y + r.h },
+      { x: r.x, y: r.y + r.h },
+    ],
+  };
+}
+
+/** Topmost patch surface at a point, among patches that go over (or under) the road. */
+function patchAt(track: Track, x: number, y: number, overRoad: boolean): Surface | null {
+  const list = track.patches;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const p = list[i];
+    if (!!p.overRoad !== overRoad) continue;
+    const b = p.box;
+    if (x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) continue;
+    if (pointInPolygon(x, y, p.points)) return p.surface;
+  }
+  return null;
 }
 
 function buildRiverLine(r: River): RiverLine {
@@ -632,10 +711,6 @@ export function inWater(track: Track, x: number, y: number): boolean {
   return track.rivers.length > 0 && riverEdge(track.rivers, x, y, 0) <= 0;
 }
 
-export function inSand(track: Track, x: number, y: number): boolean {
-  return inAnyRect(x, y, track.def.sand);
-}
-
 /** Deck width past each road edge: curb stripe plus a footway under the rail. */
 export const BRIDGE_DECK_MARGIN = 15;
 
@@ -669,10 +744,11 @@ export function onRacingSurface(track: Track, x: number, y: number): boolean {
 }
 
 export function surfaceAt(track: Track, x: number, y: number): Surface {
+  const over = patchAt(track, x, y, true);
+  if (over) return over;
   if (onRacingSurface(track, x, y)) return 'asphalt';
   if (inWater(track, x, y)) return 'water';
-  if (inSand(track, x, y)) return 'sand';
-  return 'grass';
+  return patchAt(track, x, y, false) ?? track.def.ground ?? 'grass';
 }
 
 /** Lake surface (world Y). Cars in water sit below this so hull/wheels are in it. */
@@ -889,10 +965,10 @@ export const TRACKS: Record<string, TrackDef> = {
       { x: 1385, y: 438, w: 180, h: 160, height: 40 },
       { x: 64, y: 528, w: 176, h: 160, height: 28 },
     ],
-    sand: [
-      { x: 1440, y: 190, w: 150, h: 150 },
-      { x: 795, y: 610, w: 120, h: 90 },
-      { x: 50, y: 760, w: 110, h: 190 },
+    patches: [
+      rectPatch('sand', { x: 1440, y: 190, w: 150, h: 150 }),
+      rectPatch('sand', { x: 795, y: 610, w: 120, h: 90 }),
+      rectPatch('sand', { x: 50, y: 760, w: 110, h: 190 }),
     ],
     obstacles: [
       { x: 1545, y: 300, r: 16, kind: 'tyres' },
@@ -909,6 +985,176 @@ export const TRACKS: Record<string, TrackDef> = {
       { x: 80, y: 90, r: 15, kind: 'tree' },
       { x: 1225, y: 345, r: 14, kind: 'tree' },
       { x: 430, y: 360, r: 15, kind: 'tree' },
+    ],
+    ...pitComplex(480),
+  },
+  alpine: {
+    id: 'alpine',
+    name: 'Alpine Pass',
+    width: 1600,
+    height: 1050,
+    halfWidth: 54,
+    checkpointCount: 8,
+    // A long right-hand sweep, an icy kink, then a left into a tight right.
+    controlPoints: [
+      { x: 380, y: 210 },
+      { x: 620, y: 200 },
+      { x: 860, y: 205 },
+      { x: 1080, y: 225 },
+      { x: 1280, y: 280 },
+      { x: 1420, y: 380 },
+      { x: 1460, y: 520 },
+      { x: 1400, y: 640 },
+      { x: 1260, y: 690 },
+      { x: 1110, y: 660 },
+      { x: 980, y: 610 },
+      { x: 850, y: 620 },
+      { x: 760, y: 700 },
+      { x: 730, y: 820 },
+      { x: 620, y: 890 },
+      { x: 440, y: 920 },
+      { x: 270, y: 880 },
+      { x: 165, y: 760 },
+      { x: 150, y: 590 },
+      { x: 190, y: 420 },
+      { x: 270, y: 280 },
+    ],
+    ground: 'snow',
+    terrain: {
+      base: 10,
+      hills: [
+        { x: 1200, y: 430, r: 170, h: 70 },
+        { x: 1150, y: 860, r: 190, h: 100 },
+        { x: 380, y: 620, r: 190, h: 90 },
+        { x: 1600, y: 0, r: 200, h: 60 },
+        { x: 0, y: 1050, r: 220, h: 80 },
+        { x: 1600, y: 1050, r: 230, h: 90 },
+        { x: 0, y: 0, r: 180, h: 50 },
+      ],
+    },
+    patches: [
+      // Frozen pond in the infield.
+      {
+        surface: 'ice',
+        points: [
+          { x: 620, y: 330 },
+          { x: 800, y: 300 },
+          { x: 960, y: 350 },
+          { x: 990, y: 440 },
+          { x: 900, y: 510 },
+          { x: 720, y: 520 },
+          { x: 610, y: 460 },
+        ],
+      },
+      // Black ice across the road at the kink.
+      {
+        surface: 'ice',
+        overRoad: true,
+        points: [
+          { x: 1103, y: 727 },
+          { x: 1050, y: 708 },
+          { x: 1006, y: 688 },
+          { x: 975, y: 676 },
+          { x: 943, y: 673 },
+          { x: 950, y: 541 },
+          { x: 1006, y: 548 },
+          { x: 1060, y: 567 },
+          { x: 1102, y: 587 },
+          { x: 1141, y: 600 },
+        ],
+      },
+      // Gravel traps on the outside of the big corners.
+      {
+        surface: 'gravel',
+        points: [
+          { x: 1435, y: 305 },
+          { x: 1479, y: 357 },
+          { x: 1508, y: 417 },
+          { x: 1521, y: 479 },
+          { x: 1520, y: 540 },
+          { x: 1503, y: 599 },
+          { x: 1472, y: 653 },
+          { x: 1427, y: 697 },
+          { x: 1463, y: 748 },
+          { x: 1522, y: 690 },
+          { x: 1560, y: 623 },
+          { x: 1581, y: 549 },
+          { x: 1583, y: 473 },
+          { x: 1567, y: 398 },
+          { x: 1532, y: 324 },
+          { x: 1477, y: 260 },
+        ],
+      },
+      {
+        surface: 'gravel',
+        points: [
+          { x: 810, y: 747 },
+          { x: 807, y: 779 },
+          { x: 798, y: 823 },
+          { x: 771, y: 868 },
+          { x: 740, y: 897 },
+          { x: 705, y: 920 },
+          { x: 667, y: 939 },
+          { x: 687, y: 987 },
+          { x: 730, y: 966 },
+          { x: 772, y: 938 },
+          { x: 810, y: 902 },
+          { x: 847, y: 839 },
+          { x: 858, y: 785 },
+          { x: 862, y: 754 },
+        ],
+      },
+      {
+        surface: 'gravel',
+        points: [
+          { x: 287, y: 956 },
+          { x: 232, y: 929 },
+          { x: 185, y: 893 },
+          { x: 145, y: 849 },
+          { x: 115, y: 799 },
+          { x: 95, y: 741 },
+          { x: 87, y: 682 },
+          { x: 5, y: 687 },
+          { x: 15, y: 759 },
+          { x: 41, y: 835 },
+          { x: 80, y: 898 },
+          { x: 129, y: 953 },
+          { x: 188, y: 999 },
+          { x: 259, y: 1033 },
+        ],
+      },
+    ],
+    barriers: [
+      { a: { x: 1481, y: 255 }, b: { x: 1557, y: 358 } },
+      { a: { x: 1557, y: 358 }, b: { x: 1589, y: 472 } },
+      { a: { x: 1589, y: 472 }, b: { x: 1579, y: 589 } },
+      { a: { x: 1579, y: 589 }, b: { x: 1527, y: 694 } },
+      { a: { x: 1527, y: 694 }, b: { x: 1432, y: 774 } },
+      { a: { x: 868, y: 754 }, b: { x: 859, y: 820 } },
+      { a: { x: 859, y: 820 }, b: { x: 802, y: 919 } },
+      { a: { x: 802, y: 919 }, b: { x: 733, y: 971 } },
+      { a: { x: 733, y: 971 }, b: { x: 659, y: 1003 } },
+    ],
+    obstacles: [
+      // Apex cones: clip them and they go flying.
+      { x: 852, y: 678, r: 6, kind: 'cone' },
+      { x: 817, y: 709, r: 6, kind: 'cone' },
+      { x: 801, y: 738, r: 6, kind: 'cone' },
+      { x: 691, y: 781, r: 6, kind: 'cone' },
+      { x: 686, y: 792, r: 6, kind: 'cone' },
+      { x: 670, y: 808, r: 6, kind: 'cone' },
+      { x: 1200, y: 420, r: 16, kind: 'tree' },
+      { x: 1260, y: 470, r: 14, kind: 'tree' },
+      { x: 450, y: 600, r: 17, kind: 'tree' },
+      { x: 400, y: 680, r: 15, kind: 'tree' },
+      { x: 520, y: 560, r: 14, kind: 'tree' },
+      { x: 1150, y: 930, r: 18, kind: 'tree' },
+      { x: 1250, y: 860, r: 15, kind: 'tree' },
+      { x: 1040, y: 960, r: 16, kind: 'tree' },
+      { x: 1540, y: 90, r: 16, kind: 'tree' },
+      { x: 80, y: 90, r: 15, kind: 'tree' },
+      { x: 1520, y: 960, r: 17, kind: 'tree' },
+      { x: 1090, y: 330, r: 15, kind: 'tree' },
     ],
     ...pitComplex(480),
   },
