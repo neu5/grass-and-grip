@@ -9,7 +9,7 @@ import { drawNetDebug } from './client/netDebug';
 import { SoundEngine } from './client/audio';
 import { Renderer3D } from './client/renderer3d';
 import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
-import { SNAPSHOT_HZ, CAR_COLORS, CAR_KINDS, CAR_KIND_NAMES, CAR_MODES, CAR_MODE_NAMES, COLOR_NAMES, MAX_PLAYERS, TRACK_IDS, TRACK_NAMES, parseCarKind, parseCarMode, type CarKind, type ClientMessage, type CompactSnapshot, type LobbyState, type ServerMessage, type TrackId } from './net/protocol';
+import { SNAPSHOT_HZ, CAR_COLORS, CAR_KINDS, CAR_KIND_NAMES, CAR_KIND_SHORT, CAR_MODES, CAR_MODE_NAMES, COLOR_NAMES, MAX_PLAYERS, TRACK_IDS, TRACK_NAMES, parseCarKind, parseCarMode, type CarKind, type ClientMessage, type CompactSnapshot, type LobbyState, type ServerMessage, type TrackId } from './net/protocol';
 import { SnapshotBuffer, mergeOwn } from './net/interpolate';
 import { InputQueue, lerpCar, reconcile, replaceCar } from './net/prediction';
 import { decodeSnapshot } from './net/snapshot';
@@ -72,9 +72,9 @@ function radios(container: HTMLElement, name: string, values: readonly (string |
   }
 }
 radios($('#colors'), 'color', CAR_COLORS, (c) => COLOR_NAMES[c], (c) => `background:${c}33;border-color:${c}`);
-radios($('#cars'), 'car', CAR_KINDS, (k) => CAR_KIND_NAMES[k as keyof typeof CAR_KIND_NAMES]);
+radios($('#cars'), 'car', CAR_KINDS, (k) => CAR_KIND_SHORT[k as keyof typeof CAR_KIND_SHORT]);
 radios($('#ai'), 'ai', Array.from({ length: MAX_PLAYERS }, (_, i) => i), (v) => v);
-radios($('#carmode'), 'carmode', CAR_MODES, (v) => CAR_MODE_NAMES[v as keyof typeof CAR_MODE_NAMES] ?? v);
+radios($('#carmode'), 'carmode', CAR_MODES, (v) => (v === 'mixed' ? CAR_MODE_NAMES.mixed : CAR_KIND_SHORT[v as keyof typeof CAR_KIND_SHORT]) ?? v);
 radios($('#track'), 'track', TRACK_IDS, (v) => TRACK_NAMES[v as TrackId] ?? v);
 // The host's own editor tracks; picking one sends the whole track to the room.
 const myTracks = new Map<string, TrackDef>(loadCustomTracks().map((d) => [d.id, d]));

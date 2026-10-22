@@ -12,10 +12,12 @@
       <canvas id="hud"></canvas>
     </div>
     <div id="menu">
-      <form id="menu-form" class="card">
+      <form id="menu-form" class="card wide">
         <h1>Grass <span>&amp;</span> Grip</h1>
         <p class="tag">Isometric arcade racing. Meadow Ring is grass vs asphalt; Harbor Bridge adds hills, a river, sand and two bridges.</p>
 
+        <div class="cols">
+        <div class="col">
         <fieldset>
           <legend>Drivers</legend>
           <label><input type="radio" name="humans" value="1" checked /><span>1 player</span></label>
@@ -67,6 +69,8 @@
           <div id="rules"></div>
         </details>
 
+        </div>
+        <div class="col">
         <fieldset id="ai">
           <legend>AI opponents</legend>
           <label><input type="radio" name="ai" value="0" /><span>0</span></label>
@@ -105,6 +109,9 @@
         <div id="fastest-laps" class="fastest-board">
           <legend>Fastest laps</legend>
           <ol></ol>
+        </div>
+
+        </div>
         </div>
 
         <div class="controls">

@@ -12,7 +12,7 @@
       <canvas id="hud"></canvas>
     </div>
     <div id="menu">
-      <div class="card">
+      <div class="card wide">
         <h1>Grass <span>&amp;</span> Grip</h1>
         <p class="tag">Online room <b id="room-id"></b> · up to 8 cars. <span id="conn" class="muted">Connecting…</span></p>
 
@@ -30,9 +30,22 @@
           <button type="submit">Join room</button>
         </form>
 
-        <div id="lobby" hidden>
+        <div id="lobby" class="cols" hidden>
+          <div class="col">
           <legend>Drivers</legend>
           <ul id="players"></ul>
+          <details class="more">
+            <summary>Your car setup</summary>
+            <div id="my-setup"></div>
+          </details>
+          <div id="fastest-laps" class="fastest-board">
+            <legend>Fastest laps</legend>
+            <ol></ol>
+          </div>
+          <p id="status" class="muted"></p>
+          <button id="ready" type="button">Ready</button>
+          </div>
+          <div class="col">
           <fieldset id="ai">
             <legend>AI opponents</legend>
           </fieldset>
@@ -50,19 +63,10 @@
             <legend>Track</legend>
           </fieldset>
           <details class="more">
-            <summary>Your car setup</summary>
-            <div id="my-setup"></div>
-          </details>
-          <details class="more">
             <summary>Race options</summary>
             <div id="room-rules"></div>
           </details>
-          <div id="fastest-laps" class="fastest-board">
-            <legend>Fastest laps</legend>
-            <ol></ol>
           </div>
-          <p id="status" class="muted"></p>
-          <button id="ready" type="button">Ready</button>
         </div>
 
         <p id="error" class="error" hidden></p>

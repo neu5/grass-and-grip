@@ -67,6 +67,43 @@ body {
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
+/* Menu and lobby: wide two-column card on big screens, one column on phones. */
+@media (min-width: 900px) {
+  .card.wide,
+  html.gg-touch .card.wide {
+    width: min(1040px, 100%);
+    padding: 32px 36px;
+  }
+
+  .cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0 36px;
+    align-items: start;
+  }
+
+  .cols[hidden] {
+    display: none;
+  }
+}
+
+/* Phones: one column, with the lobby's status and Ready button at the very end. */
+@media (max-width: 899px) {
+  #lobby:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+  }
+
+  #lobby .col {
+    display: contents;
+  }
+
+  #lobby #status,
+  #lobby #ready {
+    order: 1;
+  }
+}
+
 h1 {
   margin: 0;
   font-size: 34px;
@@ -758,4 +795,15 @@ button.secondary {
 .podium span {
   display: block;
   font-size: 26px;
+}
+
+/* Six car buttons don't fit a phone row: three per line. */
+@media (max-width: 520px) {
+  fieldset.car-kinds {
+    flex-wrap: wrap;
+  }
+
+  fieldset.car-kinds label {
+    flex: 1 1 28%;
+  }
 }
