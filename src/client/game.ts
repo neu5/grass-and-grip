@@ -2,6 +2,7 @@ import {
   createRace,
   DEFAULT_CAR_MODE,
   DT,
+  orderGrid,
   parseCarMode,
   spawnAiKind,
   spawnKind,
@@ -11,6 +12,7 @@ import {
   type CarMode,
   type CarSetup,
   type GameState,
+  type GridOrder,
   type PlayerInput,
   type RaceRules,
   type TickInputs,
@@ -50,7 +52,7 @@ export interface GameOptions {
    * driver names puts them on the grid in that order (pole first). Default:
    * players first, then AI.
    */
-  grid?: 'random' | string[];
+  grid?: GridOrder;
 }
 
 const HUMAN_NAMES = ['Player 1', 'Player 2'] as const;
@@ -108,28 +110,6 @@ export function gridCars(options: GameOptions): CarConfig[] {
     kind: spawnAiKind(i, humanKinds, mode),
   }));
   return [...humans, ...ai].slice(0, MAX_PLAYERS);
-}
-
-/** Put the cars on the grid in the requested order; slot 0 is pole. */
-export function orderGrid(cars: CarConfig[], grid: GameOptions['grid'], random = Math.random): CarConfig[] {
-  if (!grid) return cars;
-  if (grid === 'random') {
-    const out = cars.slice();
-    for (let i = out.length - 1; i > 0; i--) {
-      const j = Math.floor(random() * (i + 1));
-      [out[i], out[j]] = [out[j], out[i]];
-    }
-    return out;
-  }
-  // Named drivers in that order; anyone not named keeps their order at the back.
-  const rank = (c: CarConfig) => {
-    const i = grid.indexOf(c.name);
-    return i < 0 ? grid.length : i;
-  };
-  return cars
-    .map((c, i) => ({ c, i }))
-    .sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i)
-    .map(({ c }) => c);
 }
 
 const MAX_STEPS_PER_FRAME = 8;

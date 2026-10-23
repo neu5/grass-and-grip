@@ -147,9 +147,10 @@ describe('ready flow', () => {
     room.setReady('p0', true);
     expect(room.carMode).toBe('mixed');
     expect(room.view().carMode).toBe('mixed');
-    expect(room.race!.cars[0].kind).toBe('f1');
-    expect(room.race!.cars[1].kind).toBe('rally');
-    expect(room.race!.cars[1].controller).toBe('ai');
+    const me = room.carOf.get('p0')!;
+    expect(room.race!.cars[me].kind).toBe('f1');
+    const ai = room.race!.cars.find((c) => c.controller === 'ai')!;
+    expect(ai.kind).toBe('rally');
   });
 
   it('F1 mode spawns every car as F1 and ignores rally picks', () => {
@@ -161,7 +162,7 @@ describe('ready flow', () => {
     room.setReady('p0', true);
     room.setReady('p1', true);
     expect(room.race!.cars.map((c) => c.kind)).toEqual(['f1', 'f1', 'f1', 'f1']);
-    expect(room.race!.cars.map((c) => c.controller)).toEqual(['human', 'human', 'ai', 'ai']);
+    expect(room.race!.cars.map((c) => c.controller).sort()).toEqual(['ai', 'ai', 'human', 'human']);
     expect(new Set(room.race!.cars.map((c) => c.color)).size).toBe(4);
   });
 
@@ -177,7 +178,9 @@ describe('ready flow', () => {
     room.players[1].car = 'f1';
     room.setReady('p0', true);
     room.setReady('p1', true);
-    expect(room.race!.cars.map((c) => c.kind)).toEqual(['rally', 'f1']);
+    const seats = room.view().cars;
+    expect(room.race!.cars[seats.p0].kind).toBe('rally');
+    expect(room.race!.cars[seats.p1].kind).toBe('f1');
   });
 
   it('builds the grid from humans plus AI in free colors', () => {
@@ -186,9 +189,11 @@ describe('ready flow', () => {
     room.setReady('p0', true);
     room.setReady('p1', true);
     const cars = room.race!.cars;
-    expect(cars.map((c) => c.controller)).toEqual(['human', 'human', 'ai', 'ai']);
+    expect(cars.map((c) => c.controller).sort()).toEqual(['ai', 'ai', 'human', 'human']);
     expect(new Set(cars.map((c) => c.color)).size).toBe(4);
-    expect(room.view().cars).toEqual({ p0: 0, p1: 1 });
+    const seats = room.view().cars;
+    expect(cars[seats.p0].color).toBe(BLUE);
+    expect(cars[seats.p1].color).toBe(GREEN);
   });
 
   it('applies each player input to their own car only after the countdown', () => {
@@ -198,10 +203,13 @@ describe('ready flow', () => {
     room.setReady('p1', true);
     room.setInput('p1', { throttle: 5, steer: 0, handbrake: false });
     for (let i = 0; i < COUNTDOWN_SECONDS * TICK_RATE; i++) room.tick();
+    const a = room.carOf.get('p0')!;
+    const b = room.carOf.get('p1')!;
     const startX = room.race!.cars.map((c) => [c.x, c.y]);
     for (let i = 0; i < 30; i++) room.tick();
-    const [p0, p1] = room.race!.cars;
-    expect([p0.x, p0.y]).toEqual(startX[0]);
+    const p0 = room.race!.cars[a];
+    const p1 = room.race!.cars[b];
+    expect([p0.x, p0.y]).toEqual(startX[a]);
     expect(Math.hypot(p1.vx, p1.vy)).toBeGreaterThan(0);
   });
 
@@ -210,7 +218,8 @@ describe('ready flow', () => {
     room.setReady('p0', true);
     expect(room.join('late', 'Late', BLUE)).toBeNull();
     expect(room.setReady('late', true)).toBe('Race in progress');
-    expect(room.view().cars).toEqual({ p0: 0 });
+    expect(Object.keys(room.view().cars)).toEqual(['p0']);
+    expect(room.race!.cars[room.view().cars.p0].controller).toBe('human');
   });
 
   it('returns to the lobby with ready flags cleared after the results screen', () => {

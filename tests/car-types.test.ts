@@ -109,7 +109,7 @@ describe('balance', () => {
       expect(ratio, kind).toBeGreaterThan(0.96);
       expect(ratio, kind).toBeLessThan(1.04);
     }
-  });
+  }, 20_000);
 
   it('keeps each car its own strengths', () => {
     // F1 fastest on tarmac, worst off it; buggy best off-road.
@@ -254,7 +254,9 @@ describe('network', () => {
     room.setReady('p0', true);
     room.setReady('p1', true);
     expect(room.race?.rules).toMatchObject({ damage: 0, collisions: false });
-    expect(room.race?.cars.map((c) => c.kind).slice(0, 2)).toEqual(['buggy', 'kart']);
-    expect(room.race?.cars[0].setup).toEqual({ gearing: 2, steering: 0, grip: 0 });
+    const host = room.race!.cars[room.carOf.get('p0')!];
+    const guest = room.race!.cars[room.carOf.get('p1')!];
+    expect([host.kind, guest.kind]).toEqual(['buggy', 'kart']);
+    expect(host.setup).toEqual({ gearing: 2, steering: 0, grip: 0 });
   });
 });

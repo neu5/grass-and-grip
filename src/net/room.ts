@@ -1,5 +1,6 @@
 import {
   createRace,
+  orderGrid,
   DEFAULT_CAR_MODE,
   DEFAULT_RULES,
   isTrackId,
@@ -73,7 +74,11 @@ export class Room {
   private lastSeq = new Map<string, number>();
   private resultsLeft = 0;
 
-  constructor(readonly id: string) {}
+  /** `random` picks the starting grid; tests pass a seeded one. */
+  constructor(
+    readonly id: string,
+    private readonly random: () => number = Math.random,
+  ) {}
 
   get hostId(): string | null {
     return this.players[0]?.id ?? null;
@@ -230,7 +235,7 @@ export class Room {
     const taken = this.takenColors();
     const freeColors = CAR_COLORS.filter((c) => !taken.includes(c));
     const humanKinds = this.players.map((p) => spawnKind(p.car, this.carMode));
-    const cars: CarConfig[] = [
+    const entries: CarConfig[] = [
       ...this.players.map(
         (p): CarConfig => ({
           name: p.name,
@@ -244,9 +249,11 @@ export class Room {
         (color, i): CarConfig => ({ name: AI_NAMES[i] ?? `AI ${i + 1}`, color, controller: 'ai', kind: spawnAiKind(i, humanKinds, this.carMode) }),
       ),
     ];
+    // Every race starts from a fresh random grid. Players are the first entries.
+    const cars = orderGrid(entries, 'random', this.random);
     this.carOf.clear();
     this.lastSeq.clear();
-    this.players.forEach((p, i) => this.carOf.set(p.id, i));
+    this.players.forEach((p, i) => this.carOf.set(p.id, cars.indexOf(entries[i])));
     this.inputs = {};
     this.race = createRace({
       trackId: this.trackId,

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { newSeason, scoreRound, seasonGrid } from '../src/client/championship';
-import { Game, gridCars, orderGrid, type GameOptions } from '../src/client/game';
+import { Game, gridCars, type GameOptions } from '../src/client/game';
 import { BINDINGS_P2, BINDINGS_SOLO, type KeyBindings, type Keyboard } from '../src/client/input';
 import type { Renderer3D } from '../src/client/renderer3d';
-import type { PlayerInput, TickInputs } from '../src/sim';
+import { CAR_COLORS } from '../src/net/protocol';
+import { RESULTS_TICKS, Room } from '../src/net/room';
+import { orderGrid, type PlayerInput, type TickInputs } from '../src/sim';
 
 const base: GameOptions = { humans: 1, aiCount: 7, laps: 1 };
 
@@ -74,5 +76,34 @@ describe('players on a shuffled grid', () => {
     const solo = game({ ...base, grid: ['Rosa', 'Kenji'] });
     expect(solo.humanIds[0]).toBe(2);
     expect(solo.sampleInputs()[2]?.steer).toBe(0.5);
+  });
+});
+
+describe('online room grid', () => {
+  it('shuffles every race and seats each player in their own car', () => {
+    const room = new Room('grid', seeded(3));
+    room.join('p0', 'Ada', CAR_COLORS[0], 'f1');
+    room.join('p1', 'Ada', CAR_COLORS[1], 'truck');
+    room.setSettings('p0', { aiCount: 6, laps: 1 });
+    const grids = new Set<string>();
+    let p0Pole = 0;
+    for (let race = 0; race < 12; race++) {
+      room.setReady('p0', true);
+      room.setReady('p1', true);
+      const cars = room.race!.cars;
+      const seats = room.view().cars;
+      // Same name on purpose: seats follow the player, not the name.
+      expect(cars[seats.p0]).toMatchObject({ controller: 'human', color: CAR_COLORS[0], kind: 'f1' });
+      expect(cars[seats.p1]).toMatchObject({ controller: 'human', color: CAR_COLORS[1], kind: 'truck' });
+      grids.add(cars.map((c) => c.color).join());
+      if (seats.p0 === 0) p0Pole++;
+      room.race!.phase = 'racing';
+      for (const car of cars) car.finishTick = 1;
+      room.tick();
+      for (let i = 0; i < RESULTS_TICKS; i++) room.tick();
+      expect(room.phase).toBe('lobby');
+    }
+    expect(grids.size).toBeGreaterThan(8);
+    expect(p0Pole).toBeLessThan(12);
   });
 });
