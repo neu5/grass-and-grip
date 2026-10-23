@@ -97,7 +97,7 @@ export interface TouchControls {
  * thumb down anywhere and slide it left or right. Right side: GAS, BRAKE/REV
  * and HANDBRAKE pedals; a thumb can slide between them. CAM switches camera.
  */
-export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElement }): TouchControls {
+export function mountTouchControls(opts: { onCamera: () => void; onMenu?: () => void; root?: HTMLElement }): TouchControls {
   const host = opts.root ?? document.body;
   const overlay = document.createElement('div');
   overlay.id = 'mobile-controls';
@@ -107,6 +107,7 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
     <div id="mc-stick" class="mc-stick" hidden><div id="mc-knob" class="mc-knob"></div></div>
     <button type="button" id="mc-full" class="mc-full" aria-label="Fullscreen">FULL</button>
     <button type="button" id="mc-cam" class="mc-btn mc-cam" aria-label="Camera">CAM</button>
+    <button type="button" id="mc-menu" class="mc-btn mc-menu" aria-label="Menu"${opts.onMenu ? '' : ' hidden'}>MENU</button>
     <div class="mc-pedals">
       <button type="button" id="mc-hb" class="mc-btn mc-hb" aria-label="Handbrake">HANDBRAKE</button>
       <div class="mc-pedal-row">
@@ -190,6 +191,10 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
     if (!chromeAsked) {
       chromeAsked = true;
       requestChrome();
+    }
+    if (t.closest('#mc-menu')) {
+      opts.onMenu?.();
+      return;
     }
     if (t.closest('#mc-cam')) {
       opts.onCamera();

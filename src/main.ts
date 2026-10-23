@@ -27,7 +27,7 @@ import { mountLapsPicker } from './client/lapsPicker';
 import { mountRulesFields, mountSetupFields } from './client/raceOptionsUi';
 import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
 import { CAR_COLORS, CAR_KIND_SHORT, COLOR_NAMES, MAX_PLAYERS, clampAiCount, clampLaps, parseCarKind, parseCarMode } from './net/protocol';
-import { trackName as simTrackName } from './sim';
+import { standings, ticksToTime, trackName as simTrackName, type GameState } from './sim';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const hud = document.querySelector<HTMLCanvasElement>('#hud')!;
@@ -67,6 +67,7 @@ const touch = mobile
       onCamera: () => {
         if (game && menu.hidden) renderer.toggleCamera();
       },
+      onMenu: () => backToMenu(),
     })
   : null;
 let game: Game | null = null;
@@ -227,10 +228,46 @@ function startGame(options: GameOptions, finishHint = raceOverHint) {
   (window as unknown as { race: Game }).race = game;
   menu.hidden = true;
   seasonEl.hidden = true;
+  raceOverEl.hidden = true;
   touch?.setVisible(true);
   canvas.focus();
   game.start();
 }
+
+const raceOverEl = document.querySelector<HTMLDivElement>('#race-over')!;
+
+/** Single race finished: results with Race again / Back to menu (works with touch too). */
+function showRaceOver(state: GameState) {
+  const order = standings(state);
+  const humans = order.filter((c) => c.controller === 'human');
+  document.querySelector('#race-over-title')!.textContent = `${order[0].name} wins!`;
+  document.querySelector('#race-over-sub')!.textContent = humans
+    .map((c) => `${c.name}: P${order.indexOf(c) + 1} of ${order.length}`)
+    .join(' · ');
+  document.querySelector('#race-over-order')!.innerHTML = order
+    .map(
+      (c, i) =>
+        `<tr${c.controller === 'human' ? ' class="you"' : ''}><td>${i + 1}.</td><td><span class="swatch" style="background:${c.color}"></span>${escapeHtml(c.name)}</td><td class="muted">${CAR_KIND_SHORT[c.kind]}</td><td class="num">${c.bestLapTicks !== null ? ticksToTime(c.bestLapTicks) : '–'}</td></tr>`,
+    )
+    .join('');
+  raceOverEl.hidden = false;
+  touch?.setVisible(false);
+}
+
+function escapeHtml(text: string) {
+  return text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+}
+
+function raceAgain() {
+  if (!game) return;
+  raceOverEl.hidden = true;
+  touch?.setVisible(true);
+  game.reset();
+  canvas.focus();
+}
+
+document.querySelector('#race-again')!.addEventListener('click', raceAgain);
+document.querySelector('#race-menu')!.addEventListener('click', () => backToMenu());
 
 function startRound() {
   if (!season || seasonOver(season)) return;
@@ -299,6 +336,7 @@ function backToMenu() {
   game = null;
   touch?.setVisible(false);
   seasonEl.hidden = true;
+  raceOverEl.hidden = true;
   menu.hidden = false;
   refreshFastestBoard();
   refreshResume();
@@ -359,12 +397,16 @@ form.addEventListener('submit', (e) => {
     return;
   }
   season = null;
-  startGame(options);
+  startGame({
+    ...options,
+    // Let the finish sink in, then offer the way back.
+    onFinish: (state) => setTimeout(() => game?.state.phase === 'finished' && showRaceOver(state), 1500),
+  });
 });
 
 window.addEventListener('keydown', (e) => {
   if (!game || !menu.hidden) return;
-  if (e.code === 'KeyR' && !season) game.reset();
+  if (e.code === 'KeyR' && !season) raceAgain();
   if (e.code === 'KeyC') renderer.toggleCamera();
   if (e.code === 'KeyU') renderer.toggleCheckpointDebug();
   if (e.code === 'KeyM') sound.toggleMute();

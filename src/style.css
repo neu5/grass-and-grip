@@ -610,6 +610,20 @@ fieldset input:disabled + span {
   font-size: 12px;
 }
 
+.mc-menu {
+  position: absolute;
+  top: max(var(--mc-inset-top, 8px), env(safe-area-inset-top, 0px));
+  left: calc(50% - 160px);
+  width: 64px;
+  height: 36px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.mc-menu[hidden] {
+  display: none;
+}
+
 .mc-cam.on {
   background: rgba(239, 81, 70, 0.45);
 }
@@ -719,7 +733,8 @@ button.secondary {
   border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-#season {
+#season,
+#race-over {
   position: fixed;
   inset: 0;
   display: flex;
@@ -730,17 +745,20 @@ button.secondary {
   z-index: 20;
 }
 
-#season[hidden] {
+#season[hidden],
+#race-over[hidden] {
   display: none;
 }
 
-#season .card {
+#season .card,
+#race-over .card {
   width: min(640px, 100%);
   max-height: 100%;
   overflow: auto;
 }
 
-#season h2 {
+#season h2,
+#race-over h2 {
   margin: 0 0 4px;
 }
 
@@ -840,4 +858,41 @@ button.secondary {
 
 .who[hidden] {
   display: none;
+}
+
+#race-over .card {
+  width: min(420px, 100%);
+}
+
+#race-over-order {
+  margin: 14px 0 0;
+}
+
+.race-over-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.race-over-buttons button {
+  flex: 1;
+  margin: 0;
+}
+
+/* Short phone screens: tighter so the buttons and most rows fit. */
+@media (max-height: 500px) {
+  #race-over .card {
+    padding: 16px 20px;
+  }
+
+  #race-over h2 {
+    font-size: 20px;
+  }
+
+  #race-over-sub {
+    margin: 2px 0 10px;
+  }
+
+  #race-over .season-table td {
+    padding: 3px 6px;
+  }
 }
