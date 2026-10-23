@@ -1,4 +1,9 @@
 import { datan2, normalizeAngle } from './dmath';
+import { COAST_GP } from './maps/coastGp';
+import { DUNE_RUN } from './maps/duneRun';
+import { FOREST_STAGE } from './maps/forestStage';
+import { KART_YARD } from './maps/kartYard';
+import { LAKESIDE } from './maps/lakeside';
 
 export type Vec2 = { x: number; y: number };
 
@@ -7,7 +12,7 @@ export type Surface = 'asphalt' | 'grass' | 'sand' | 'water' | 'gravel' | 'snow'
 /** Surfaces a patch can paint. */
 export const PATCH_SURFACES = ['grass', 'sand', 'gravel', 'snow', 'ice'] as const;
 
-export const TRACK_IDS = ['meadow', 'harbor', 'alpine'] as const;
+export const TRACK_IDS = ['kartyard', 'dunes', 'lakeside', 'meadow', 'harbor', 'forest', 'alpine', 'coast'] as const;
 export type TrackId = (typeof TRACK_IDS)[number];
 
 /** Marked stalls on tracks that have a pit lane. */
@@ -44,6 +49,11 @@ export const TRACK_NAMES: Record<TrackId, string> = {
   meadow: 'Meadow Ring',
   harbor: 'Harbor Bridge',
   alpine: 'Alpine Pass',
+  kartyard: 'Kart Yard',
+  dunes: 'Dune Run',
+  lakeside: 'Lakeside',
+  forest: 'Forest Stage',
+  coast: 'Coast GP',
 };
 
 export function isTrackId(id: string | undefined): id is TrackId {
@@ -956,6 +966,43 @@ export const TRACKS: Record<string, TrackDef> = {
       { x: 640, y: 720, r: 15, kind: 'tree' },
       { x: 1300, y: 120, r: 14, kind: 'tree' },
       { x: 970, y: 390, r: 16, kind: 'tree' },
+      // Apex cones on the hairpin.
+      { x: 826, y: 619, r: 6, kind: 'cone' },
+      { x: 834, y: 739, r: 6, kind: 'cone' },
+    ],
+    terrain: {
+      base: 8,
+      hills: [
+        { x: 560, y: 560, r: 160, h: 40 },
+        { x: 1150, y: 400, r: 120, h: 30 },
+        { x: 1580, y: 1030, r: 200, h: 45 },
+        { x: 20, y: 1030, r: 200, h: 40 },
+        { x: 1580, y: 40, r: 180, h: 35 },
+        { x: 20, y: 30, r: 160, h: 30 },
+      ],
+    },
+    patches: [
+      // Sand traps on the outside of the two tight right-handers.
+      {
+        surface: 'sand',
+        points: [
+          { x: 1495, y: 430 },
+          { x: 1565, y: 440 },
+          { x: 1590, y: 560 },
+          { x: 1550, y: 620 },
+          { x: 1500, y: 560 },
+        ],
+      },
+      {
+        surface: 'sand',
+        points: [
+          { x: 1440, y: 720 },
+          { x: 1530, y: 740 },
+          { x: 1560, y: 830 },
+          { x: 1500, y: 880 },
+          { x: 1450, y: 820 },
+        ],
+      },
     ],
     // After the S/F line (x≈420), outside the racing line (smaller y).
     ...pitComplex(500),
@@ -1059,6 +1106,22 @@ export const TRACKS: Record<string, TrackDef> = {
       { x: 80, y: 90, r: 15, kind: 'tree' },
       { x: 1225, y: 345, r: 14, kind: 'tree' },
       { x: 430, y: 360, r: 15, kind: 'tree' },
+      { x: 1564, y: 703, r: 17, kind: 'tree' },
+      { x: 38, y: 313, r: 14, kind: 'tree' },
+      { x: 1052, y: 319, r: 15, kind: 'tree' },
+      { x: 1251, y: 1015, r: 15, kind: 'tree' },
+      { x: 1109, y: 543, r: 17, kind: 'tree' },
+      { x: 217, y: 152, r: 17, kind: 'tree' },
+      { x: 367, y: 496, r: 18, kind: 'tree' },
+      { x: 1215, y: 60, r: 13, kind: 'tree' },
+      // Cones round the inside of the hairpin.
+      { x: 898, y: 597, r: 6, kind: 'cone' },
+      { x: 837, y: 583, r: 6, kind: 'cone' },
+      { x: 781, y: 620, r: 6, kind: 'cone' },
+    ],
+    barriers: [
+      { a: { x: 1555, y: 640 }, b: { x: 1516, y: 757 } },
+      { a: { x: 1516, y: 757 }, b: { x: 1457, y: 831 } },
     ],
     ...pitComplex(480),
   },
@@ -1234,9 +1297,24 @@ export const TRACKS: Record<string, TrackDef> = {
       { x: 1250, y: 1300, r: 16, kind: 'tree' },
       { x: 2050, y: 900, r: 16, kind: 'tree' },
       { x: 900, y: 450, r: 16, kind: 'tree' },
+      { x: 1801, y: 1058, r: 15, kind: 'tree' },
+      { x: 530, y: 320, r: 17, kind: 'tree' },
+      { x: 1895, y: 1203, r: 13, kind: 'tree' },
+      { x: 628, y: 542, r: 18, kind: 'tree' },
+      { x: 2112, y: 680, r: 17, kind: 'tree' },
+      { x: 42, y: 428, r: 14, kind: 'tree' },
+      { x: 1342, y: 1002, r: 13, kind: 'tree' },
+      { x: 1216, y: 654, r: 16, kind: 'tree' },
+      { x: 2072, y: 310, r: 16, kind: 'tree' },
+      { x: 1726, y: 1414, r: 15, kind: 'tree' },
     ],
     ...pitComplex(480),
   },
+  kartyard: { ...KART_YARD, ...pitComplex(480) },
+  dunes: { ...DUNE_RUN, ...pitComplex(480) },
+  lakeside: { ...LAKESIDE, ...pitComplex(480) },
+  forest: { ...FOREST_STAGE, ...pitComplex(480) },
+  coast: { ...COAST_GP, ...pitComplex(480) },
 };
 
 const cache = new Map<string, Track>();

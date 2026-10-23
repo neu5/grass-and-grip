@@ -27,7 +27,8 @@ import { mountLapsPicker } from './client/lapsPicker';
 import { mountRulesFields, mountSetupFields } from './client/raceOptionsUi';
 import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
 import { CAR_COLORS, CAR_KIND_SHORT, COLOR_NAMES, MAX_PLAYERS, clampAiCount, clampLaps, parseCarKind, parseCarMode } from './net/protocol';
-import { standings, ticksToTime, trackName as simTrackName, type GameState } from './sim';
+import { isTrackId, standings, ticksToTime, TRACK_IDS, TRACKS, trackName as simTrackName, type GameState } from './sim';
+import { trackLabelHtml } from './client/trackLabel';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const hud = document.querySelector<HTMLCanvasElement>('#hud')!;
@@ -39,14 +40,15 @@ for (const ev of ['pointerdown', 'keydown'] as const) window.addEventListener(ev
 const menu = document.querySelector<HTMLDivElement>('#menu')!;
 const form = document.querySelector<HTMLFormElement>('#menu-form')!;
 
-// Tracks made in the editor join the pickers.
-for (const def of loadCustomTracks()) {
-  const name = def.name.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+// Built-in tracks smallest map first, then tracks made in the editor.
+for (const def of [...TRACK_IDS.map((id) => TRACKS[id]), ...loadCustomTracks()]) {
+  const builtIn = isTrackId(def.id);
+  const label = trackLabelHtml(def);
   const single = document.createElement('label');
-  single.innerHTML = `<input type="radio" name="track" value="${def.id}" /><span>${name}</span>`;
+  single.innerHTML = `<input type="radio" name="track" value="${def.id}"${def.id === 'meadow' ? ' checked' : ''} /><span>${label}</span>`;
   document.querySelector('#single-track')!.append(single);
   const season = document.createElement('label');
-  season.innerHTML = `<input type="checkbox" name="season-track" value="${def.id}" /><span>${name}</span>`;
+  season.innerHTML = `<input type="checkbox" name="season-track" value="${def.id}"${builtIn ? ' checked' : ''} /><span>${label}</span>`;
   document.querySelector('#season-tracks')!.append(season);
 }
 {

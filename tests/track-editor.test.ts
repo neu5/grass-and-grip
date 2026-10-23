@@ -17,6 +17,7 @@ import {
   starterTrack,
   step,
   trackName,
+  TRACK_IDS,
   TRACKS,
   validateTrack,
   type TrackDef,
@@ -77,7 +78,7 @@ describe('auto bridges', () => {
 
 describe('validation', () => {
   it('passes every built-in track and the starter', () => {
-    for (const id of ['meadow', 'harbor', 'alpine']) expect(messages(TRACKS[id])).toEqual([]);
+    for (const id of TRACK_IDS) expect(messages(TRACKS[id]), id).toEqual([]);
     expect(messages(starterTrack('custom-x', 'X'))).toEqual([]);
   });
 

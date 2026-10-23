@@ -1,0 +1,101 @@
+import type { MapDesign } from './design';
+
+/** Small and green: a creek runs in from the south into a lake in the infield. */
+export const LAKESIDE: MapDesign = {
+  id: 'lakeside',
+  name: 'Lakeside',
+  width: 1200,
+  height: 800,
+  halfWidth: 54,
+  checkpointCount: 8,
+  controlPoints: [
+    { x: 400, y: 210 },
+    { x: 650, y: 200 },
+    { x: 900, y: 210 },
+    { x: 1060, y: 280 },
+    { x: 1110, y: 420 },
+    { x: 1050, y: 570 },
+    { x: 930, y: 650 },
+    { x: 780, y: 690 },
+    { x: 640, y: 650 },
+    { x: 540, y: 570 },
+    { x: 420, y: 580 },
+    { x: 300, y: 660 },
+    { x: 180, y: 600 },
+    { x: 150, y: 430 },
+    { x: 230, y: 270 },
+  ],
+  rivers: [
+    {
+      halfWidth: 24,
+      points: [
+        { x: 760, y: 900 },
+        { x: 740, y: 760 },
+        { x: 680, y: 620 },
+        { x: 560, y: 450 },
+      ],
+    },
+    {
+      halfWidth: 62,
+      points: [
+        { x: 420, y: 420 },
+        { x: 520, y: 405 },
+        { x: 620, y: 420 },
+      ],
+    },
+  ],
+  bridges: [
+    { x: 571, y: 578, w: 283, h: 186, height: 22 },
+  ],
+  terrain: {
+    base: 10,
+    hills: [
+      { x: 950, y: 420, r: 150, h: 45 },
+      { x: 330, y: 420, r: 110, h: 35 },
+      { x: 1150, y: 780, r: 180, h: 50 },
+      { x: 1150, y: 50, r: 150, h: 40 },
+      { x: 50, y: 780, r: 170, h: 45 },
+    ],
+  },
+  patches: [
+      // Beach round the lake.
+      {
+        surface: 'sand',
+        points: [
+        { x: 360, y: 350 },
+        { x: 520, y: 320 },
+        { x: 680, y: 350 },
+        { x: 700, y: 430 },
+        { x: 640, y: 500 },
+        { x: 520, y: 505 },
+        { x: 400, y: 490 },
+        { x: 350, y: 430 },
+        ],
+      },
+  ],
+  obstacles: [
+    { x: 528, y: 608, r: 6, kind: 'cone' },
+    { x: 493, y: 603, r: 6, kind: 'cone' },
+    { x: 295, y: 620, r: 6, kind: 'cone' },
+    { x: 1135, y: 222, r: 15, kind: 'tyres' },
+    { x: 1180, y: 420, r: 15, kind: 'tyres' },
+    { x: 312, y: 754, r: 15, kind: 'tyres' },
+    { x: 760, y: 380, r: 16, kind: 'tree' },
+    { x: 820, y: 450, r: 15, kind: 'tree' },
+    { x: 300, y: 500, r: 16, kind: 'tree' },
+    { x: 60, y: 90, r: 15, kind: 'tree' },
+    { x: 1140, y: 90, r: 15, kind: 'tree' },
+    { x: 1150, y: 700, r: 16, kind: 'tree' },
+    { x: 120, y: 740, r: 16, kind: 'tree' },
+    { x: 392, y: 309, r: 16, kind: 'tree' },
+    { x: 287, y: 353, r: 18, kind: 'tree' },
+    { x: 36, y: 242, r: 14, kind: 'tree' },
+    { x: 729, y: 548, r: 13, kind: 'tree' },
+    { x: 934, y: 767, r: 15, kind: 'tree' },
+    { x: 947, y: 333, r: 15, kind: 'tree' },
+    { x: 423, y: 36, r: 16, kind: 'tree' },
+    { x: 169, y: 121, r: 17, kind: 'tree' },
+    { x: 840, y: 550, r: 15, kind: 'tree' },
+    { x: 436, y: 758, r: 14, kind: 'tree' },
+  ],
+};

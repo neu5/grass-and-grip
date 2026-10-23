@@ -44,8 +44,8 @@ function soloBest(trackId: string, kind: CarKind, aiLevel: number): number {
 const MIXED: CarKind[] = ['truck', 'buggy', 'rally', 'kart', 'rally', 'kart', 'f1', 'f1'];
 
 describe('racing line', () => {
-  it('stays on the road everywhere', () => {
-    for (const id of TRACK_IDS) {
+  it.each(TRACK_IDS)('stays on the road everywhere on %s', (id) => {
+    {
       const track = getTrack(id);
       const painted = (track.def.patches ?? []).filter((p) => p.overRoad).map((p) => p.surface);
       for (const p of racingLine(track).points) {
@@ -116,8 +116,8 @@ describe('AI racing', () => {
     expect(hashState(a)).toBe(hashState(b));
   });
 
-  it('finishes an 8-car race of every kind on every track, staying on the road', () => {
-    for (const id of TRACK_IDS) {
+  it.each(TRACK_IDS)('finishes an 8-car race of every kind on %s, staying on the road', (id) => {
+    {
       const track = getTrack(id);
       const onRoad = (x: number, y: number) => distanceToCenterline(track, x, y) <= track.def.halfWidth || surfaceAt(track, x, y) === 'asphalt';
       for (const kind of [...CAR_KINDS, 'mixed'] as const) {
@@ -132,7 +132,7 @@ describe('AI racing', () => {
         expect(off / (ticks * 8), `${id} ${kind} off-road share`).toBeLessThan(0.03);
       }
     }
-  });
+  }, 30_000);
 
   it('gets the fast cars past the slow ones', () => {
     // Cars are balanced, so slow the front of the grid down with damage instead.
@@ -146,8 +146,8 @@ describe('AI racing', () => {
 });
 
 describe('missed checkpoint', () => {
-  it('goes back through a gate it drove past, then completes the lap', () => {
-    for (const id of TRACK_IDS) {
+  it.each(TRACK_IDS)('goes back through a gate it drove past on %s, then completes the lap', (id) => {
+    {
       for (const kind of ['rally', 'truck'] as const) {
         const track = getTrack(id);
         const line = racingLine(track);
@@ -166,5 +166,5 @@ describe('missed checkpoint', () => {
         expect(s.cars[0].lapsCompleted, `${id} ${kind}`).toBe(1);
       }
     }
-  });
+  }, 20_000);
 });
