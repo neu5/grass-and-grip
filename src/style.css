@@ -868,6 +868,29 @@ button.secondary {
   margin: 14px 0 0;
 }
 
+#race-over-laps {
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+
+#race-over-laps:empty {
+  display: none;
+}
+
+#race-over .fl,
+#race-over-order td.fl {
+  color: #ffd54a;
+}
+
+#race-over .record {
+  color: #c9a0ff;
+}
+
+#race-over .new-record {
+  color: #ffd54a;
+  font-weight: 700;
+}
+
 .race-over-buttons {
   display: flex;
   gap: 10px;

@@ -8,6 +8,7 @@ import {
   FASTEST_LAP_LIMIT,
   getTrack,
   insertFastestLap,
+  newTrackRecord,
   step,
   ticksToTime,
   type FastestLap,
@@ -147,7 +148,7 @@ describe('room keeps the top 3', () => {
     expect(room.race).not.toBeNull();
     for (let i = 0; i < COUNTDOWN_SECONDS * 60; i++) room.tick();
     room.race = completeLap(room.race!);
-    room.fastestByTrack[room.race.trackId] = room.race.fastestLaps;
+    room.tick();
     expect(room.view().fastestLaps).toHaveLength(1);
     expect(room.view().fastestLaps[0].name).toBe('Ada');
 
@@ -163,6 +164,51 @@ describe('room keeps the top 3', () => {
     expect(room.setSettings('p0', { trackId: 'harbor' })).toBeNull();
     expect(room.view().fastestLaps).toEqual([]);
     expect(room.setSettings('p0', { trackId: 'meadow' })).toBeNull();
+    expect(room.view().fastestLaps[0].name).toBe('Ada');
+  });
+});
+
+describe('race board vs track record', () => {
+  it('starts each race with an empty board and keeps the record apart', () => {
+    let s = createRace({
+      trackId: 'meadow',
+      totalLaps: 2,
+      cars: [{ name: 'Human', color: '#e8443a', controller: 'human', kind: 'f1' }],
+      countdownSeconds: 0,
+      trackRecord: meadow({ name: 'Old', ticks: 1 }),
+    });
+    expect(s.fastestLaps).toEqual([]);
+    expect(s.trackRecord?.name).toBe('Old');
+    s = step(s, {});
+    s = completeLap(s);
+    expect(s.fastestLaps[0].name).toBe('Human');
+    expect(s.trackRecord?.name).toBe('Old');
+    expect(newTrackRecord(s)).toBeNull();
+    const again = JSON.parse(JSON.stringify(step(s, {}))) as GameState;
+    expect(again.trackRecord?.name).toBe('Old');
+  });
+
+  it('flags a new record when the race beats it, or when there was none', () => {
+    const lap = meadow({ name: 'Fast', ticks: 2000 });
+    expect(newTrackRecord({ fastestLaps: [lap], trackRecord: meadow({ ticks: 2100 }) })).toBe(lap);
+    expect(newTrackRecord({ fastestLaps: [lap], trackRecord: meadow({ ticks: 2000 }) })).toBeNull();
+    expect(newTrackRecord({ fastestLaps: [lap], trackRecord: null })).toBe(lap);
+    expect(newTrackRecord({ fastestLaps: [], trackRecord: null })).toBeNull();
+  });
+
+  it('keeps the room record across races while each race board is fresh', () => {
+    const room = new Room('records');
+    room.join('p0', 'Ada', CAR_COLORS[0], 'f1');
+    room.setSettings('p0', { aiCount: 0, laps: 1 });
+    room.setReady('p0', true);
+    for (let i = 0; i < COUNTDOWN_SECONDS * 60; i++) room.tick();
+    room.race = completeLap(room.race!);
+    room.tick();
+    for (const car of room.race.cars) car.finishTick = 1;
+    for (let i = 0; i < RESULTS_TICKS + 2; i++) room.tick();
+    expect(room.phase).toBe('lobby');
+    room.setReady('p0', true);
+    expect(room.race!.fastestLaps).toEqual([]);
     expect(room.view().fastestLaps[0].name).toBe('Ada');
   });
 });

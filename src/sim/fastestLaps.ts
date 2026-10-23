@@ -1,4 +1,4 @@
-import { toCarKind, type CarKind, type FastestLap } from './types';
+import { toCarKind, type CarKind, type FastestLap, type GameState } from './types';
 
 export type { FastestLap };
 
@@ -35,6 +35,18 @@ export function insertFastestLap(list: readonly FastestLap[], raw: FastestLap): 
   if (i < 0) i = next.length;
   next.splice(i, 0, entry);
   return next.slice(0, FASTEST_LAP_LIMIT);
+}
+
+/** This race's best lap when it beats the track record from before the race (or there was none). */
+export function newTrackRecord(state: Pick<GameState, 'fastestLaps' | 'trackRecord'>): FastestLap | null {
+  const best = state.fastestLaps?.[0];
+  if (!best) return null;
+  return !state.trackRecord || best.ticks < state.trackRecord.ticks ? best : null;
+}
+
+/** Laps finished by every car so far: changes exactly when the race board can change. */
+export function lapsDone(state: GameState): number {
+  return state.cars.reduce((n, c) => n + c.lapsCompleted, 0);
 }
 
 /** Rebuild a sanitized, capped top 3 (first-seen wins ties). */
