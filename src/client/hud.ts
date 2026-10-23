@@ -1,4 +1,4 @@
-import { CAR_KIND_SHORT, DEFAULT_RULES, standings, ticksToTime, TICK_RATE, toCarKind, type GameState } from '../sim';
+import { CAR_KIND_SHORT, DEFAULT_RULES, standings, ticksToTime, TICK_RATE, toCarKind, type CarState, type GameState } from '../sim';
 import { cameraHudHint } from './touchMap';
 
 export interface Label {
@@ -43,9 +43,14 @@ export function drawHud(
   if (rules.tyreWear) bars.push('Tyres');
   if (rules.fuel) bars.push('Fuel');
   if (rules.damage) bars.push('Damage');
+  // Short (phone) screens get small panels so the track stays visible.
+  const compact = ch < 520;
+  if (compact) {
+    drawCompact(ctx, state, humanIds, order, bars, cw, tickNow);
+  }
   const panelW = 230;
   const panelH = 120 + bars.length * 17;
-  humanIds.forEach((id, k) => {
+  if (!compact) humanIds.forEach((id, k) => {
     const car = state.cars[id];
     const pos = order.findIndex((c) => c.id === id) + 1;
     const x = k === 0 ? 12 : cw - panelW - 12;
@@ -84,35 +89,7 @@ export function drawHud(
     bars.forEach((label, i) => drawRemainBar(ctx, label, left[label], x, y + 48 + (4 + i) * 17, panelW));
   });
 
-  const boardX = humanIds.length > 1 ? cw / 2 - 124 : cw - 260;
-  ctx.fillStyle = 'rgba(10,14,20,0.6)';
-  ctx.beginPath();
-  ctx.roundRect(boardX, 12, 248, 30 + order.length * 18, 10);
-  ctx.fill();
-  ctx.font = '600 12px system-ui, sans-serif';
-  ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  ctx.fillText('STANDINGS', boardX + 12, 32);
-  order.forEach((c, i) => {
-    ctx.fillStyle = c.color;
-    ctx.fillRect(boardX + 12, 42 + i * 18, 10, 10);
-    ctx.fillStyle = '#fff';
-    ctx.fillText(`${i + 1}. ${c.name}`, boardX + 30, 51 + i * 18);
-    ctx.textAlign = 'right';
-    const wearPct = Math.round((1 - Math.min(1, Math.max(0, c.tyreWear ?? 0))) * 100);
-    const fuelPct = Math.round(Math.min(1, Math.max(0, c.fuel ?? 1)) * 100);
-    const bodyPct = Math.round((1 - Math.min(1, Math.max(0, c.damage ?? 0))) * 100);
-    ctx.fillStyle = wearPct > 60 ? '#6ee07a' : wearPct > 30 ? '#ffd54a' : '#ff6b4a';
-    ctx.fillText(`${wearPct}%`, boardX + 118, 51 + i * 18);
-    ctx.fillStyle = fuelPct > 60 ? '#6ee07a' : fuelPct > 30 ? '#ffd54a' : '#ff6b4a';
-    ctx.fillText(`${fuelPct}%`, boardX + 152, 51 + i * 18);
-    ctx.fillStyle = bodyPct > 60 ? '#6ee07a' : bodyPct > 30 ? '#ffd54a' : '#ff6b4a';
-    ctx.fillText(`${bodyPct}%`, boardX + 186, 51 + i * 18);
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.fillText(c.finishTick !== null ? 'FIN' : `L${Math.min(c.lapsCompleted + 1, state.totalLaps)}`, boardX + 236, 51 + i * 18);
-    ctx.textAlign = 'left';
-  });
-
-  drawFastestBoard(ctx, state, boardX, 12 + 30 + order.length * 18 + 8);
+  if (!compact) drawBoards(ctx, state, humanIds, order, cw);
 
   ctx.font = '500 12px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.75)';
@@ -121,13 +98,14 @@ export function drawHud(
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  const big = compact ? 48 : 72;
   if (state.phase === 'countdown') {
-    bigText(ctx, String(Math.ceil((state.startTick - state.tick) / TICK_RATE)), cw / 2, ch / 2);
+    bigText(ctx, String(Math.ceil((state.startTick - state.tick) / TICK_RATE)), cw / 2, ch / 2, big);
   } else if (state.tick - state.startTick < TICK_RATE * 0.8) {
-    bigText(ctx, 'GO!', cw / 2, ch / 2);
+    bigText(ctx, 'GO!', cw / 2, ch / 2, big);
   } else if (state.phase === 'finished') {
-    bigText(ctx, `${order[0].name} wins!`, cw / 2, ch / 2 - 20);
-    ctx.font = '600 18px system-ui, sans-serif';
+    bigText(ctx, `${order[0].name} wins!`, cw / 2, ch / 2 - 20, big);
+    ctx.font = `600 ${compact ? 14 : 18}px system-ui, sans-serif`;
     ctx.fillStyle = '#fff';
     ctx.fillText(finishHint, cw / 2, ch / 2 + 36);
   }
@@ -196,6 +174,134 @@ function drawMissedGate(ctx: CanvasRenderingContext2D, l: Label) {
   ctx.fillText('Missed checkpoint — go back', l.x, l.y + 64);
 }
 
+/** Desktop standings (with tyre, fuel and body per car) and the fastest-laps board. */
+function drawBoards(ctx: CanvasRenderingContext2D, state: GameState, humanIds: number[], order: CarState[], cw: number) {
+  const boardX = humanIds.length > 1 ? cw / 2 - 124 : cw - 260;
+  ctx.fillStyle = 'rgba(10,14,20,0.6)';
+  ctx.beginPath();
+  ctx.roundRect(boardX, 12, 248, 30 + order.length * 18, 10);
+  ctx.fill();
+  ctx.font = '600 12px system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fillText('STANDINGS', boardX + 12, 32);
+  order.forEach((c, i) => {
+    ctx.fillStyle = c.color;
+    ctx.fillRect(boardX + 12, 42 + i * 18, 10, 10);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(`${i + 1}. ${c.name}`, boardX + 30, 51 + i * 18);
+    ctx.textAlign = 'right';
+    const wearPct = Math.round((1 - Math.min(1, Math.max(0, c.tyreWear ?? 0))) * 100);
+    const fuelPct = Math.round(Math.min(1, Math.max(0, c.fuel ?? 1)) * 100);
+    const bodyPct = Math.round((1 - Math.min(1, Math.max(0, c.damage ?? 0))) * 100);
+    ctx.fillStyle = wearPct > 60 ? '#6ee07a' : wearPct > 30 ? '#ffd54a' : '#ff6b4a';
+    ctx.fillText(`${wearPct}%`, boardX + 118, 51 + i * 18);
+    ctx.fillStyle = fuelPct > 60 ? '#6ee07a' : fuelPct > 30 ? '#ffd54a' : '#ff6b4a';
+    ctx.fillText(`${fuelPct}%`, boardX + 152, 51 + i * 18);
+    ctx.fillStyle = bodyPct > 60 ? '#6ee07a' : bodyPct > 30 ? '#ffd54a' : '#ff6b4a';
+    ctx.fillText(`${bodyPct}%`, boardX + 186, 51 + i * 18);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillText(c.finishTick !== null ? 'FIN' : `L${Math.min(c.lapsCompleted + 1, state.totalLaps)}`, boardX + 236, 51 + i * 18);
+    ctx.textAlign = 'left';
+  });
+
+  drawFastestBoard(ctx, state, boardX, 12 + 30 + order.length * 18 + 8);
+}
+
+/** Fit text into `max` px, ending in an ellipsis if it doesn't. */
+function fit(ctx: CanvasRenderingContext2D, text: string, max: number): string {
+  if (ctx.measureText(text).width <= max) return text;
+  let t = text;
+  while (t.length > 1 && ctx.measureText(`${t}…`).width > max) t = t.slice(0, -1);
+  return `${t}…`;
+}
+
+/**
+ * Phone HUD: a small driver card (name, position, lap and time, best, thin
+ * tyre/fuel/body bars) and a slim standings list with names and laps only.
+ */
+function drawCompact(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  humanIds: number[],
+  order: CarState[],
+  bars: ('Tyres' | 'Fuel' | 'Damage')[],
+  cw: number,
+  tickNow: number,
+) {
+  const w = 172;
+  const h = 58 + (bars.length ? 14 : 0);
+  humanIds.forEach((id, k) => {
+    const car = state.cars[id];
+    const pos = order.findIndex((c) => c.id === id) + 1;
+    const x = k === 0 ? 8 : cw - w - 8;
+    const y = 8;
+    ctx.fillStyle = 'rgba(10,14,20,0.66)';
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 8);
+    ctx.fill();
+    ctx.fillStyle = car.color;
+    ctx.fillRect(x, y + 8, 3, h - 16);
+    ctx.font = '700 12px system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#fff';
+    const posText = `P${pos}/${state.cars.length}`;
+    ctx.fillText(posText, x + w - 8, y + 17);
+    const posW = ctx.measureText(posText).width;
+    ctx.textAlign = 'left';
+    ctx.fillText(fit(ctx, car.name, w - 26 - posW), x + 10, y + 17);
+    ctx.font = '500 11px ui-monospace, SFMono-Regular, Menlo, monospace';
+    const lap = Math.min(car.lapsCompleted + 1, state.totalLaps);
+    const running = car.finishTick !== null ? 0 : Math.max(0, tickNow - car.lapStartTick);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(car.finishTick !== null ? 'FINISHED' : `Lap ${lap}/${state.totalLaps}`, x + 10, y + 34);
+    ctx.textAlign = 'right';
+    ctx.fillText(state.phase === 'countdown' ? '0:00.000' : ticksToTime(running), x + w - 8, y + 34);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.fillText('Best', x + 10, y + 50);
+    ctx.fillStyle = '#ffd54a';
+    ctx.textAlign = 'right';
+    ctx.fillText(car.bestLapTicks !== null ? ticksToTime(car.bestLapTicks) : '–', x + w - 8, y + 50);
+    ctx.textAlign = 'left';
+    const left = {
+      Tyres: 1 - Math.min(1, Math.max(0, car.tyreWear ?? 0)),
+      Fuel: Math.min(1, Math.max(0, car.fuel ?? 1)),
+      Damage: 1 - Math.min(1, Math.max(0, car.damage ?? 0)),
+    };
+    const slot = (w - 20) / Math.max(1, bars.length);
+    bars.forEach((label, i) => {
+      const bx = x + 10 + i * slot;
+      ctx.font = '600 9px system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.fillText(label[0], bx, y + 66);
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.fillRect(bx + 9, y + 60, slot - 14, 5);
+      ctx.fillStyle = remainColor(left[label]);
+      ctx.fillRect(bx + 9, y + 60, (slot - 14) * left[label], 5);
+    });
+  });
+
+  const bw = 148;
+  const row = 14;
+  const bx = humanIds.length > 1 ? cw / 2 - bw / 2 : cw - bw - 8;
+  ctx.fillStyle = 'rgba(10,14,20,0.55)';
+  ctx.beginPath();
+  ctx.roundRect(bx, 8, bw, 8 + order.length * row, 8);
+  ctx.fill();
+  ctx.font = '600 11px system-ui, sans-serif';
+  order.forEach((c, i) => {
+    const ry = 8 + 4 + i * row;
+    ctx.fillStyle = c.color;
+    ctx.fillRect(bx + 8, ry + 3, 8, 8);
+    ctx.fillStyle = humanIds.includes(c.id) ? '#ffd54a' : '#fff';
+    ctx.fillText(fit(ctx, `${i + 1}. ${c.name}`, bw - 56), bx + 21, ry + 11);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillText(c.finishTick !== null ? 'FIN' : `L${Math.min(c.lapsCompleted + 1, state.totalLaps)}`, bx + bw - 8, ry + 11);
+    ctx.textAlign = 'left';
+  });
+}
+
 function remainColor(left: number): string {
   return left > 0.6 ? '#6ee07a' : left > 0.3 ? '#ffd54a' : '#ff6b4a';
 }
@@ -225,8 +331,8 @@ function drawRemainBar(
   ctx.textAlign = 'left';
 }
 
-function bigText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number) {
-  ctx.font = '800 72px system-ui, sans-serif';
+function bigText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size = 72) {
+  ctx.font = `800 ${size}px system-ui, sans-serif`;
   ctx.lineWidth = 8;
   ctx.strokeStyle = 'rgba(0,0,0,0.6)';
   ctx.strokeText(text, x, y);

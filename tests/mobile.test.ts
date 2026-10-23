@@ -1,28 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import { mergeInputs } from '../src/client/input';
 import {
-  STEER_DEADZONE,
-  STEER_GAIN,
+  STEER_DEAD_PX,
+  STEER_FULL_PX,
   cameraHudHint,
   isLandscapeView,
   isMobileLike,
   isPortraitView,
-  mapPointersToControls,
-  mapSteerAxis,
+  mapPedals,
   overlayInsets,
   pointInRect,
   readBrowserMobileFlags,
   shouldBlockPortrait,
   shouldShowRotateHint,
-  type TouchLayout,
+  steerFromDrag,
+  type PedalLayout,
 } from '../src/client/touchMap';
 
-const layout: TouchLayout = {
-  steer: { left: 620, top: 250, right: 820, bottom: 336 },
-  forward: { left: 80, top: 180, right: 176, bottom: 244 },
-  reverse: { left: 80, top: 252, right: 176, bottom: 316 },
-  brake: { left: 80, top: 324, right: 176, bottom: 380 },
-  camera: { left: 80, top: 122, right: 126, bottom: 168 },
+// A landscape phone: pedals bottom right.
+const pedals: PedalLayout = {
+  gas: { left: 700, top: 240, right: 812, bottom: 372 },
+  brake: { left: 592, top: 268, right: 688, bottom: 372 },
+  handbrake: { left: 592, top: 178, right: 812, bottom: 230 },
 };
 
 describe('isMobileLike', () => {
@@ -81,125 +80,56 @@ describe('readBrowserMobileFlags', () => {
   });
 });
 
-describe('mapSteerAxis', () => {
-  const pad = { left: 0, top: 0, right: 200, bottom: 86 };
-
-  it('is idle at the center and inside the deadzone', () => {
-    expect(mapSteerAxis(100, pad)).toBe(0);
-    expect(mapSteerAxis(100 + STEER_DEADZONE * 100 - 1, pad)).toBe(0);
+describe('steering stick', () => {
+  it('drives straight while the thumb rests where it landed', () => {
+    expect(steerFromDrag(0)).toBe(0);
+    expect(steerFromDrag(STEER_DEAD_PX)).toBe(0);
+    expect(steerFromDrag(-STEER_DEAD_PX)).toBe(0);
   });
 
-  it('maps far left/right to capped steer and ignores vertical pad size', () => {
-    expect(mapSteerAxis(200, pad)).toBeCloseTo(STEER_GAIN);
-    expect(mapSteerAxis(0, pad)).toBeCloseTo(-STEER_GAIN);
+  it('reaches full lock with a short slide, both ways', () => {
+    expect(steerFromDrag(STEER_FULL_PX)).toBe(1);
+    expect(steerFromDrag(-STEER_FULL_PX)).toBe(-1);
+    expect(steerFromDrag(400)).toBe(1);
+  });
+
+  it('is linear in between, so half a slide is about half lock', () => {
+    const half = steerFromDrag((STEER_FULL_PX + STEER_DEAD_PX) / 2);
+    expect(half).toBeCloseTo(0.5, 2);
+    expect(steerFromDrag(30)).toBeGreaterThan(steerFromDrag(20));
   });
 });
 
-describe('mapPointersToControls', () => {
-  it('maps a right-thumb stick to steer only, with no auto-gas', () => {
-    const idle = mapPointersToControls([], layout);
-    expect(idle.throttle).toBe(0);
-    expect(idle.steer).toBe(0);
-
-    const right = mapPointersToControls([{ x: 820, y: 293 }], layout);
-    expect(right.steer).toBeCloseTo(STEER_GAIN);
-    expect(right.throttle).toBe(0);
-    expect(right.handbrake).toBe(false);
-
-    const topOfStick = mapPointersToControls([{ x: 720, y: 250 }], layout);
-    expect(topOfStick.throttle).toBe(0);
-    expect(topOfStick.steer).toBeCloseTo(0);
-
-    const bottomOfStick = mapPointersToControls([{ x: 720, y: 336 }], layout);
-    expect(bottomOfStick.throttle).toBe(0);
+describe('pedals', () => {
+  it('idles with no thumbs (no auto-gas)', () => {
+    expect(mapPedals([], pedals)).toEqual({ throttle: 0, handbrake: false });
   });
 
-  it('holds FWD for throttle and REV for reverse; both cancel', () => {
-    const fwd = mapPointersToControls([{ x: 120, y: 215 }], layout);
-    expect(fwd.throttle).toBe(1);
-    expect(fwd.steer).toBe(0);
-    expect(fwd.handbrake).toBe(false);
-
-    const rev = mapPointersToControls([{ x: 120, y: 284 }], layout);
-    expect(rev.throttle).toBe(-1);
-    expect(rev.steer).toBe(0);
-    expect(rev.handbrake).toBe(false);
-
-    const both = mapPointersToControls(
-      [
-        { x: 120, y: 215 },
-        { x: 120, y: 284 },
-      ],
-      layout,
-    );
-    expect(both.throttle).toBe(0);
+  it('GAS drives, BRAKE brakes then reverses, HANDBRAKE is separate', () => {
+    expect(mapPedals([{ x: 750, y: 300 }], pedals)).toEqual({ throttle: 1, handbrake: false });
+    expect(mapPedals([{ x: 640, y: 320 }], pedals)).toEqual({ throttle: -1, handbrake: false });
+    expect(mapPedals([{ x: 700, y: 200 }], pedals)).toEqual({ throttle: 0, handbrake: true });
   });
 
-  it('maps BRAKE to handbrake (same as Shift) without adding gas', () => {
-    const r = mapPointersToControls([{ x: 120, y: 350 }], layout);
-    expect(r.handbrake).toBe(true);
-    expect(r.throttle).toBe(0);
-    expect(r.steer).toBe(0);
-    expect(r.camera).toBe(false);
+  it('lets brake win over gas, and handbrake ride along with gas', () => {
+    expect(mapPedals([{ x: 750, y: 300 }, { x: 640, y: 320 }], pedals).throttle).toBe(-1);
+    expect(mapPedals([{ x: 750, y: 300 }, { x: 700, y: 200 }], pedals)).toEqual({ throttle: 1, handbrake: true });
   });
 
-  it('maps CAM to camera (same as C) without adding gas', () => {
-    const r = mapPointersToControls([{ x: 100, y: 145 }], layout);
-    expect(r.camera).toBe(true);
-    expect(r.handbrake).toBe(false);
-    expect(r.throttle).toBe(0);
+  it('follows a thumb sliding from GAS onto BRAKE', () => {
+    expect(mapPedals([{ x: 705, y: 320 }], pedals).throttle).toBe(1);
+    expect(mapPedals([{ x: 680, y: 320 }], pedals).throttle).toBe(-1);
   });
 
-  it('can reverse and hold brake at once from two pointers', () => {
-    const r = mapPointersToControls(
-      [
-        { x: 120, y: 284 },
-        { x: 120, y: 350 },
-      ],
-      layout,
-    );
-    expect(r.throttle).toBe(-1);
-    expect(r.handbrake).toBe(true);
-    expect(r.camera).toBe(false);
-  });
-
-  it('can steer and hold reverse at once from two pointers', () => {
-    const r = mapPointersToControls(
-      [
-        { x: 820, y: 293 },
-        { x: 120, y: 284 },
-      ],
-      layout,
-    );
-    expect(r.throttle).toBe(-1);
-    expect(r.steer).toBeCloseTo(STEER_GAIN);
-    expect(r.handbrake).toBe(false);
-    expect(r.camera).toBe(false);
-  });
-
-  it('keeps a captured stick from becoming a button when dragged left', () => {
-    const dragged = { x: 100, y: 145 };
-    const r = mapPointersToControls([], layout, { capturedSteer: dragged });
-    expect(r.camera).toBe(false);
-    expect(r.handbrake).toBe(false);
-    expect(r.throttle).toBe(0);
-    expect(r.steer).toBeLessThan(0);
-  });
-
-  it('idles when a pointer misses every control (no auto-gas)', () => {
-    expect(mapPointersToControls([{ x: 400, y: 40 }], layout)).toEqual({
-      throttle: 0,
-      steer: 0,
-      handbrake: false,
-      camera: false,
-    });
+  it('ignores a thumb off every pedal', () => {
+    expect(mapPedals([{ x: 400, y: 40 }], pedals)).toEqual({ throttle: 0, handbrake: false });
   });
 });
 
 describe('layout helpers', () => {
   it('pointInRect matches inclusive edges', () => {
-    expect(pointInRect({ x: 80, y: 122 }, layout.camera)).toBe(true);
-    expect(pointInRect({ x: 79, y: 122 }, layout.camera)).toBe(false);
+    expect(pointInRect({ x: 700, y: 240 }, pedals.gas)).toBe(true);
+    expect(pointInRect({ x: 699, y: 240 }, pedals.gas)).toBe(false);
   });
 
   it('detects portrait vs landscape, trusting orientation.type when present', () => {
@@ -223,11 +153,12 @@ describe('layout helpers', () => {
     expect(shouldShowRotateHint(true, false, false)).toBe(false);
   });
 
-  it('pushes overlay inward from visual viewport + fat side chrome', () => {
+  it('keeps the controls near the corners, inside the visible viewport', () => {
     const wide = overlayInsets({ offsetLeft: 0, offsetTop: 0, width: 844, height: 390 }, { width: 844, height: 390 });
-    expect(wide.left).toBeGreaterThanOrEqual(120);
-    expect(wide.right).toBeGreaterThanOrEqual(100);
-    expect(wide.right).toBeLessThan(140);
+    expect(wide.left).toBeGreaterThanOrEqual(24);
+    expect(wide.left).toBeLessThan(60);
+    expect(wide.right).toBeGreaterThanOrEqual(24);
+    expect(wide.right).toBeLessThan(60);
 
     const insta = overlayInsets(
       { offsetLeft: 40, offsetTop: 0, width: 760, height: 390 },

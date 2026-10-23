@@ -465,59 +465,85 @@ fieldset input:disabled + span {
   display: none;
 }
 
-.mc-left,
-.mc-right {
+.mc-steer-zone {
   position: absolute;
-  bottom: max(var(--mc-inset-bottom, 20px), env(safe-area-inset-bottom, 0px));
-  display: flex;
-  pointer-events: none;
-}
-
-.mc-left {
-  left: max(var(--mc-inset-left, 120px), env(safe-area-inset-left, 0px));
-  flex-direction: column;
-  gap: 8px;
-}
-
-.mc-right {
-  right: max(var(--mc-inset-right, 104px), env(safe-area-inset-right, 0px));
-}
-
-.mc-btn {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 50%;
   pointer-events: auto;
-  width: 80px;
-  height: 80px;
-  padding: 0;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.38);
-  background: rgba(10, 14, 20, 0.28);
-  color: rgba(255, 255, 255, 0.92);
-  font: 700 13px system-ui, sans-serif;
-  letter-spacing: 0.06em;
-  backdrop-filter: blur(2px);
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
 
-.mc-cam {
-  width: 46px;
-  height: 46px;
-  font-size: 11px;
+.mc-hint {
+  position: absolute;
+  left: max(calc(var(--mc-inset-left, 24px) + 12px), env(safe-area-inset-left, 0px));
+  bottom: max(calc(var(--mc-inset-bottom, 16px) + 28px), env(safe-area-inset-bottom, 0px));
+  font: 700 13px system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.6);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  transition: opacity 0.2s;
 }
 
-.mc-drive {
-  width: 96px;
+.mc-steer-zone.active .mc-hint {
+  opacity: 0;
+}
+
+/* Appears where the thumb lands; the knob shows how far it has slid. */
+.mc-stick {
+  position: absolute;
+  width: 150px;
   height: 64px;
-  border-radius: 18px;
-  font-size: 15px;
+  border-radius: 32px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  background: rgba(10, 14, 20, 0.3);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 
-.mc-brake {
-  width: 96px;
-  height: 56px;
-  border-radius: 18px;
-  font-size: 13px;
+.mc-stick[hidden] {
+  display: none;
+}
+
+.mc-knob {
+  position: absolute;
+  width: 52px;
+  height: 52px;
+  left: 50%;
+  top: 50%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.mc-btn {
+  pointer-events: auto;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  background: rgba(10, 14, 20, 0.32);
+  color: rgba(255, 255, 255, 0.95);
+  font: 700 14px system-ui, sans-serif;
+  letter-spacing: 0.06em;
+  backdrop-filter: blur(2px);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.mc-btn small {
+  font-size: 10px;
+  opacity: 0.7;
 }
 
 .mc-btn:hover {
@@ -525,27 +551,88 @@ fieldset input:disabled + span {
 }
 
 .mc-btn.on {
-  border-color: rgba(255, 255, 255, 0.7);
+  border-color: rgba(255, 255, 255, 0.85);
+}
+
+.mc-pedals {
+  position: absolute;
+  right: max(var(--mc-inset-right, 24px), env(safe-area-inset-right, 0px));
+  bottom: max(var(--mc-inset-bottom, 16px), env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.mc-pedal-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.mc-gas {
+  width: 104px;
+  height: 116px;
+  border-radius: 22px;
+  font-size: 18px;
+}
+
+.mc-brake {
+  width: 88px;
+  height: 92px;
+  border-radius: 20px;
+}
+
+.mc-hb {
+  width: 204px;
+  height: 46px;
+  border-radius: 14px;
+  font-size: 12px;
+}
+
+.mc-gas.on {
+  background: rgba(76, 196, 106, 0.55);
+}
+
+.mc-brake.on,
+.mc-hb.on {
+  background: rgba(239, 81, 70, 0.5);
+}
+
+.mc-cam {
+  position: absolute;
+  top: max(var(--mc-inset-top, 8px), env(safe-area-inset-top, 0px));
+  left: calc(50% + 56px);
+  width: 56px;
+  height: 36px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.mc-menu {
+  position: absolute;
+  top: max(var(--mc-inset-top, 8px), env(safe-area-inset-top, 0px));
+  left: calc(50% - 160px);
+  width: 64px;
+  height: 36px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.mc-menu[hidden] {
+  display: none;
 }
 
 .mc-cam.on {
   background: rgba(239, 81, 70, 0.45);
 }
 
-.mc-drive.on {
-  background: rgba(76, 196, 106, 0.48);
-}
-
-#mc-rev.on,
-.mc-brake.on {
-  background: rgba(239, 81, 70, 0.45);
-}
-
 .mc-full {
   pointer-events: auto;
   position: absolute;
-  top: max(var(--mc-inset-top, 10px), env(safe-area-inset-top, 0px));
-  left: 50%;
+  top: max(var(--mc-inset-top, 8px), env(safe-area-inset-top, 0px));
+  left: calc(50% - 44px);
   transform: translateX(-50%);
   width: auto;
   height: 36px;
@@ -557,33 +644,6 @@ fieldset input:disabled + span {
   font: 700 12px system-ui, sans-serif;
   letter-spacing: 0.08em;
   touch-action: manipulation;
-}
-
-.mc-steer {
-  pointer-events: auto;
-  width: 200px;
-  height: 86px;
-  border-radius: 43px;
-  background: rgba(10, 14, 20, 0.3);
-  border: 2px solid rgba(255, 255, 255, 0.42);
-  position: relative;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.mc-knob {
-  position: absolute;
-  width: 56px;
-  height: 56px;
-  left: 50%;
-  top: 50%;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.48);
-  border: 2px solid rgba(255, 255, 255, 0.7);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
-  transform: translate(-50%, -50%);
-  pointer-events: none;
 }
 
 #rotate-gate {
@@ -649,28 +709,9 @@ html.gg-touch .laps-step {
   padding: 0;
 }
 
-html.gg-touch button:not(.mc-btn):not(.laps-step) {
+html.gg-touch button:not(.mc-btn):not(.mc-full):not(.laps-step) {
   min-height: 52px;
   padding: 16px;
-}
-
-html.gg-touch .mc-btn {
-  padding: 0;
-  min-height: 0;
-}
-
-html.gg-touch .mc-cam {
-  width: 46px;
-}
-
-html.gg-touch .mc-drive {
-  width: 96px;
-  min-height: 64px;
-}
-
-html.gg-touch .mc-brake {
-  width: 96px;
-  min-height: 56px;
 }
 
 html.gg-touch #players li {
@@ -692,7 +733,8 @@ button.secondary {
   border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-#season {
+#season,
+#race-over {
   position: fixed;
   inset: 0;
   display: flex;
@@ -703,17 +745,20 @@ button.secondary {
   z-index: 20;
 }
 
-#season[hidden] {
+#season[hidden],
+#race-over[hidden] {
   display: none;
 }
 
-#season .card {
+#season .card,
+#race-over .card {
   width: min(640px, 100%);
   max-height: 100%;
   overflow: auto;
 }
 
-#season h2 {
+#season h2,
+#race-over h2 {
   margin: 0 0 4px;
 }
 
@@ -813,4 +858,41 @@ button.secondary {
 
 .who[hidden] {
   display: none;
+}
+
+#race-over .card {
+  width: min(420px, 100%);
+}
+
+#race-over-order {
+  margin: 14px 0 0;
+}
+
+.race-over-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.race-over-buttons button {
+  flex: 1;
+  margin: 0;
+}
+
+/* Short phone screens: tighter so the buttons and most rows fit. */
+@media (max-height: 500px) {
+  #race-over .card {
+    padding: 16px 20px;
+  }
+
+  #race-over h2 {
+    font-size: 20px;
+  }
+
+  #race-over-sub {
+    margin: 2px 0 10px;
+  }
+
+  #race-over .season-table td {
+    padding: 3px 6px;
+  }
 }

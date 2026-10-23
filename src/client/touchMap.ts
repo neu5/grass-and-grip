@@ -1,8 +1,9 @@
 const MOBILE_UA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|Silk/i;
 
-export const STEER_DEADZONE = 0.3;
-export const STEER_GAIN = 0.6;
-export const STEER_EXPO = 2;
+/** Thumb travel (CSS px) from where it landed to full steering lock. */
+export const STEER_FULL_PX = 60;
+/** Wobble ignored around the landing point, so resting the thumb drives straight. */
+export const STEER_DEAD_PX = 6;
 
 export interface MobileFlags {
   pointerCoarse?: boolean;
@@ -24,26 +25,16 @@ export interface Rect {
   bottom: number;
 }
 
-export interface SteerPad {
-  left: number;
-  top: number;
-  right: number;
-  bottom: number;
-}
-
-export interface TouchLayout {
-  steer: SteerPad;
-  forward: Rect;
-  reverse: Rect;
+/** The pedal buttons, as screen rects. */
+export interface PedalLayout {
+  gas: Rect;
   brake: Rect;
-  camera: Rect;
+  handbrake: Rect;
 }
 
-export interface MappedControls {
+export interface PedalState {
   throttle: number;
-  steer: number;
   handbrake: boolean;
-  camera: boolean;
 }
 
 export function clamp(n: number, lo: number, hi: number): number {
@@ -77,77 +68,32 @@ export function pointInRect(p: Point, r: Rect): boolean {
   return p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom;
 }
 
-export function steerCenter(pad: SteerPad): { cx: number; halfW: number } {
-  return { cx: (pad.left + pad.right) / 2, halfW: Math.max(1, (pad.right - pad.left) / 2) };
+/**
+ * Floating stick: steer from how far the thumb has slid sideways since it
+ * touched down. Linear after a small deadzone, full lock at STEER_FULL_PX.
+ * Screen right is steer +1.
+ */
+export function steerFromDrag(dx: number, full = STEER_FULL_PX, dead = STEER_DEAD_PX): number {
+  const a = Math.abs(dx);
+  if (a <= dead) return 0;
+  return Math.sign(dx) * Math.min(1, (a - dead) / (full - dead));
 }
 
 /**
- * Horizontal-only steer. Big deadzone + expo. Screen right is steer +1.
- * Vertical motion is ignored (gas lives on FWD/REV buttons).
+ * Pedals under the given thumbs. GAS drives, BRAKE brakes and then reverses
+ * (like the down key); BRAKE wins if both are held. HANDBRAKE is separate.
+ * A thumb can slide from one pedal to another.
  */
-export function mapSteerAxis(
-  x: number,
-  pad: SteerPad,
-  deadzone = STEER_DEADZONE,
-  gain = STEER_GAIN,
-  expo = STEER_EXPO,
-): number {
-  const { cx, halfW } = steerCenter(pad);
-  const n = clamp((x - cx) / halfW, -1, 1);
-  const a = Math.abs(n);
-  if (a < deadzone) return 0;
-  const t = (a - deadzone) / (1 - deadzone);
-  return Math.sign(n) * gain * t ** expo;
-}
-
-export interface MapPointersOpts {
-  deadzone?: number;
-  /** Steer pointer after capture — mapped even outside the pad, never treated as a button. */
-  capturedSteer?: Point | null;
-}
-
-/**
- * Right stick = steer only. Left FWD/REV hold throttle. BRAKE is handbrake. No auto-gas.
- */
-export function mapPointersToControls(pointers: Point[], layout: TouchLayout, opts: MapPointersOpts = {}): MappedControls {
-  let steer = 0;
-  let forward = false;
-  let reverse = false;
+export function mapPedals(points: Point[], layout: PedalLayout): PedalState {
+  let gas = false;
+  let brake = false;
   let handbrake = false;
-  let camera = false;
-  let stickUsed = false;
-
-  if (opts.capturedSteer) {
-    steer = mapSteerAxis(opts.capturedSteer.x, layout.steer, opts.deadzone);
-    stickUsed = true;
+  for (const p of points) {
+    if (pointInRect(p, layout.gas)) gas = true;
+    else if (pointInRect(p, layout.brake)) brake = true;
+    else if (pointInRect(p, layout.handbrake)) handbrake = true;
   }
-
-  for (const p of pointers) {
-    if (opts.capturedSteer && p.x === opts.capturedSteer.x && p.y === opts.capturedSteer.y) continue;
-    if (pointInRect(p, layout.camera)) {
-      camera = true;
-      continue;
-    }
-    if (pointInRect(p, layout.forward)) {
-      forward = true;
-      continue;
-    }
-    if (pointInRect(p, layout.reverse)) {
-      reverse = true;
-      continue;
-    }
-    if (pointInRect(p, layout.brake)) {
-      handbrake = true;
-      continue;
-    }
-    if (!stickUsed && pointInRect(p, layout.steer)) {
-      steer = mapSteerAxis(p.x, layout.steer, opts.deadzone);
-      stickUsed = true;
-    }
-  }
-
-  const throttle = reverse && !forward ? -1 : forward && !reverse ? 1 : 0;
-  return { throttle, steer, handbrake, camera };
+  return { throttle: brake ? -1 : gas ? 1 : 0, handbrake };
 }
 
 export function isPortraitView(width: number, height: number, orientationType?: string): boolean {
@@ -177,20 +123,20 @@ export interface OverlayInsets {
 }
 
 /**
- * Keep CAM / FWD / REV / BRAKE / steer inside the visible game area, clear of notches
- * and in-app browser chrome (Instagram side bars, address bars).
- * Right inset is a bit smaller than left so the steer pad sits slightly righter.
+ * Keep the pedals and buttons inside the visible game area, clear of notches
+ * and in-app browser chrome (side bars, address bars).
  */
 export function overlayInsets(
   view: { offsetLeft: number; offsetTop: number; width: number; height: number },
   inner: { width: number; height: number },
   safe: { left?: number; right?: number; top?: number; bottom?: number } = {},
 ): OverlayInsets {
+  // A little room for in-app browser chrome; thumbs sit near the corners.
   const landscape = view.width >= view.height;
-  const chromeLeft = landscape ? 120 : 48;
-  const chromeRight = landscape ? 104 : 48;
-  const chromeBottom = landscape ? 28 : 24;
-  const chromeTop = 10;
+  const chromeLeft = landscape ? 24 : 16;
+  const chromeRight = landscape ? 24 : 16;
+  const chromeBottom = landscape ? 16 : 16;
+  const chromeTop = 8;
   const viewRightGap = Math.max(0, inner.width - view.offsetLeft - view.width);
   const viewBottomGap = Math.max(0, inner.height - view.offsetTop - view.height);
   return {
