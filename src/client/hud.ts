@@ -112,7 +112,8 @@ export function drawHud(
     ctx.textAlign = 'left';
   });
 
-  drawFastestBoard(ctx, state, boardX, 12 + 30 + order.length * 18 + 8);
+  // On a short (phone) screen the board would sit on top of the pedals.
+  if (ch >= 520) drawFastestBoard(ctx, state, boardX, 12 + 30 + order.length * 18 + 8);
 
   ctx.font = '500 12px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.75)';

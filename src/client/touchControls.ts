@@ -1,16 +1,16 @@
 import type { PlayerInput } from '../sim';
 import {
-  STEER_GAIN,
+  STEER_FULL_PX,
   isLandscapeView,
   isMobileLike,
-  mapPointersToControls,
+  mapPedals,
   overlayInsets,
-  pointInRect,
   readBrowserMobileFlags,
   shouldBlockPortrait,
+  steerFromDrag,
+  type PedalLayout,
   type Point,
   type Rect,
-  type TouchLayout,
 } from './touchMap';
 
 export {
@@ -18,12 +18,12 @@ export {
   isLandscapeView,
   isMobileLike,
   isPortraitView,
-  mapPointersToControls,
-  mapSteerAxis,
+  mapPedals,
   overlayInsets,
   readBrowserMobileFlags,
   shouldBlockPortrait,
   shouldShowRotateHint,
+  steerFromDrag,
 } from './touchMap';
 
 const ZERO: PlayerInput = { throttle: 0, steer: 0, handbrake: false };
@@ -70,22 +70,6 @@ function rectOf(el: HTMLElement): Rect {
   return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
 }
 
-function layoutOf(
-  steer: HTMLElement,
-  forward: HTMLElement,
-  reverse: HTMLElement,
-  brake: HTMLElement,
-  camera: HTMLElement,
-): TouchLayout {
-  return {
-    steer: rectOf(steer),
-    forward: rectOf(forward),
-    reverse: rectOf(reverse),
-    brake: rectOf(brake),
-    camera: rectOf(camera),
-  };
-}
-
 function applyOverlayInsets() {
   const vv = window.visualViewport;
   const view = {
@@ -108,22 +92,26 @@ export interface TouchControls {
   destroy(): void;
 }
 
+/**
+ * Phone controls. Left half of the screen: a floating steering stick: put a
+ * thumb down anywhere and slide it left or right. Right side: GAS, BRAKE/REV
+ * and HANDBRAKE pedals; a thumb can slide between them. CAM switches camera.
+ */
 export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElement }): TouchControls {
   const host = opts.root ?? document.body;
   const overlay = document.createElement('div');
   overlay.id = 'mobile-controls';
   overlay.hidden = true;
   overlay.innerHTML = `
+    <div id="mc-steer-zone" class="mc-steer-zone"><span class="mc-hint">◀ slide to steer ▶</span></div>
+    <div id="mc-stick" class="mc-stick" hidden><div id="mc-knob" class="mc-knob"></div></div>
     <button type="button" id="mc-full" class="mc-full" aria-label="Fullscreen">FULL</button>
-    <div class="mc-left">
-      <button type="button" id="mc-cam" class="mc-btn mc-cam" aria-label="Camera">CAM</button>
-      <button type="button" id="mc-fwd" class="mc-btn mc-drive" aria-label="Forward">FWD</button>
-      <button type="button" id="mc-rev" class="mc-btn mc-drive" aria-label="Reverse">REV</button>
-      <button type="button" id="mc-brake" class="mc-btn mc-brake" aria-label="Brake">BRAKE</button>
-    </div>
-    <div class="mc-right">
-      <div id="mc-steer" class="mc-steer" aria-label="Steer">
-        <div id="mc-knob" class="mc-knob"></div>
+    <button type="button" id="mc-cam" class="mc-btn mc-cam" aria-label="Camera">CAM</button>
+    <div class="mc-pedals">
+      <button type="button" id="mc-hb" class="mc-btn mc-hb" aria-label="Handbrake">HANDBRAKE</button>
+      <div class="mc-pedal-row">
+        <button type="button" id="mc-brake" class="mc-btn mc-brake" aria-label="Brake and reverse">BRAKE<small>REV</small></button>
+        <button type="button" id="mc-gas" class="mc-btn mc-gas" aria-label="Gas">GAS</button>
       </div>
     </div>
   `;
@@ -139,61 +127,40 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
   `;
   host.append(overlay, gate);
 
-  const camBtn = overlay.querySelector<HTMLButtonElement>('#mc-cam')!;
-  const fwdBtn = overlay.querySelector<HTMLButtonElement>('#mc-fwd')!;
-  const revBtn = overlay.querySelector<HTMLButtonElement>('#mc-rev')!;
-  const brakeBtn = overlay.querySelector<HTMLButtonElement>('#mc-brake')!;
-  const fullBtn = overlay.querySelector<HTMLButtonElement>('#mc-full')!;
+  const $ = <T extends HTMLElement>(sel: string) => overlay.querySelector<T>(sel)!;
+  const zone = $('#mc-steer-zone');
+  const stick = $('#mc-stick');
+  const knob = $('#mc-knob');
+  const camBtn = $<HTMLButtonElement>('#mc-cam');
+  const gasBtn = $<HTMLButtonElement>('#mc-gas');
+  const brakeBtn = $<HTMLButtonElement>('#mc-brake');
+  const hbBtn = $<HTMLButtonElement>('#mc-hb');
   const gateFull = gate.querySelector<HTMLButtonElement>('#rotate-full')!;
-  const steerEl = overlay.querySelector<HTMLElement>('#mc-steer')!;
-  const knob = overlay.querySelector<HTMLElement>('#mc-knob')!;
 
-  const pointers = new Map<number, Point>();
+  /** Thumbs on the pedals, by pointer id. */
+  const pedalThumbs = new Map<number, Point>();
   let steerId: number | null = null;
-  let cameraHeld = false;
+  let steerOrigin: Point = { x: 0, y: 0 };
+  let steerNow = 0;
   let visible = false;
   let blocked = false;
-
+  let chromeAsked = false;
   const input: PlayerInput = { ...ZERO };
 
-  const resetKnob = () => {
-    knob.style.transform = 'translate(-50%, -50%)';
-  };
+  const pedalLayout = (): PedalLayout => ({ gas: rectOf(gasBtn), brake: rectOf(brakeBtn), handbrake: rectOf(hbBtn) });
 
-  const currentLayout = () => layoutOf(steerEl, fwdBtn, revBtn, brakeBtn, camBtn);
-
-  const apply = () => {
+  const update = () => {
     if (blocked) {
-      input.throttle = 0;
-      input.steer = 0;
-      input.handbrake = false;
+      Object.assign(input, ZERO);
       return;
     }
-    const pts = [...pointers.entries()].filter(([id]) => id !== steerId).map(([, p]) => p);
-    const captured = steerId !== null ? pointers.get(steerId) ?? null : null;
-    const mapped = mapPointersToControls(pts, currentLayout(), { capturedSteer: captured });
-    input.throttle = mapped.throttle;
-    input.steer = mapped.steer;
-    input.handbrake = mapped.handbrake;
-    camBtn.classList.toggle('on', mapped.camera);
-    fwdBtn.classList.toggle('on', mapped.throttle > 0);
-    revBtn.classList.toggle('on', mapped.throttle < 0);
-    brakeBtn.classList.toggle('on', mapped.handbrake);
-    if (mapped.camera && !cameraHeld) opts.onCamera();
-    cameraHeld = mapped.camera;
-
-    const box = steerEl.getBoundingClientRect();
-    const max = Math.max(8, box.width / 2 - 32);
-    if (captured) {
-      const dx = Math.max(-max, Math.min(max, captured.x - (box.left + box.width / 2)));
-      knob.style.transform = `translate(calc(-50% + ${dx}px), -50%)`;
-    } else {
-      knob.style.transform = `translate(calc(-50% + ${(mapped.steer / STEER_GAIN) * max}px), -50%)`;
-    }
-  };
-
-  const setPointer = (e: PointerEvent) => {
-    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const pedals = mapPedals([...pedalThumbs.values()], pedalLayout());
+    input.throttle = pedals.throttle;
+    input.handbrake = pedals.handbrake;
+    input.steer = steerNow;
+    gasBtn.classList.toggle('on', pedals.throttle > 0);
+    brakeBtn.classList.toggle('on', pedals.throttle < 0);
+    hbBtn.classList.toggle('on', pedals.handbrake);
   };
 
   const requestChrome = () => {
@@ -204,56 +171,92 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
     })();
   };
 
+  const releaseSteer = () => {
+    steerId = null;
+    steerNow = 0;
+    stick.hidden = true;
+    zone.classList.remove('active');
+  };
+
   const onDown = (e: PointerEvent) => {
     if (!visible || blocked) return;
     const t = e.target as HTMLElement;
-    if (t === fullBtn || t.closest?.('#mc-full')) {
-      e.preventDefault();
+    e.preventDefault();
+    if (t.closest('#mc-full')) {
       requestChrome();
       return;
     }
-    e.preventDefault();
-    requestChrome();
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-    setPointer(e);
-    if (pointInRect({ x: e.clientX, y: e.clientY }, currentLayout().steer)) steerId = e.pointerId;
-    apply();
+    // Fullscreen and landscape lock once per race, on the first touch (browsers need a gesture).
+    if (!chromeAsked) {
+      chromeAsked = true;
+      requestChrome();
+    }
+    if (t.closest('#mc-cam')) {
+      opts.onCamera();
+      camBtn.classList.add('on');
+      setTimeout(() => camBtn.classList.remove('on'), 150);
+      return;
+    }
+    try {
+      t.setPointerCapture?.(e.pointerId);
+    } catch {
+      // Not a live pointer (synthetic event): moves still bubble to the overlay.
+    }
+    const p = { x: e.clientX, y: e.clientY };
+    if (t.closest('#mc-steer-zone') && steerId === null) {
+      steerId = e.pointerId;
+      steerOrigin = p;
+      steerNow = 0;
+      stick.hidden = false;
+      stick.style.left = `${p.x}px`;
+      stick.style.top = `${p.y}px`;
+      knob.style.transform = 'translate(-50%, -50%)';
+      zone.classList.add('active');
+    } else if (t.closest('.mc-pedals')) {
+      pedalThumbs.set(e.pointerId, p);
+    }
+    update();
   };
 
   const onMove = (e: PointerEvent) => {
-    if (!pointers.has(e.pointerId)) return;
-    e.preventDefault();
-    setPointer(e);
-    apply();
+    if (e.pointerId === steerId) {
+      e.preventDefault();
+      const dx = e.clientX - steerOrigin.x;
+      steerNow = steerFromDrag(dx);
+      const shown = Math.max(-STEER_FULL_PX, Math.min(STEER_FULL_PX, dx));
+      knob.style.transform = `translate(calc(-50% + ${shown}px), -50%)`;
+      update();
+    } else if (pedalThumbs.has(e.pointerId)) {
+      e.preventDefault();
+      pedalThumbs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      update();
+    }
   };
 
   const onUp = (e: PointerEvent) => {
-    pointers.delete(e.pointerId);
-    if (steerId === e.pointerId) steerId = null;
-    apply();
-    if (pointers.size === 0) {
-      input.throttle = 0;
-      input.steer = 0;
-      input.handbrake = false;
-      cameraHeld = false;
-      resetKnob();
-      camBtn.classList.remove('on');
-      fwdBtn.classList.remove('on');
-      revBtn.classList.remove('on');
-      brakeBtn.classList.remove('on');
-    }
+    if (e.pointerId === steerId) releaseSteer();
+    pedalThumbs.delete(e.pointerId);
+    update();
   };
 
   overlay.addEventListener('pointerdown', onDown);
   overlay.addEventListener('pointermove', onMove);
   overlay.addEventListener('pointerup', onUp);
   overlay.addEventListener('pointercancel', onUp);
+  overlay.addEventListener('lostpointercapture', onUp);
   overlay.addEventListener('contextmenu', (e) => e.preventDefault());
   gateFull.addEventListener('click', (e) => {
     e.preventDefault();
     requestChrome();
   });
   gate.addEventListener('pointerdown', () => requestChrome());
+
+  const clearAll = () => {
+    pedalThumbs.clear();
+    releaseSteer();
+    Object.assign(input, ZERO);
+    for (const b of [gasBtn, brakeBtn, hbBtn, camBtn]) b.classList.remove('on');
+  };
 
   const syncLayout = () => {
     const mobile = detectMobile();
@@ -268,6 +271,7 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
     const ori = (window.screen as Screen & { orientation?: LockableOrientation }).orientation?.type;
     const landscape = isLandscapeView(vv?.width ?? window.innerWidth, vv?.height ?? window.innerHeight, ori);
     blocked = shouldBlockPortrait(mobile, visible, landscape);
+    if (blocked) clearAll();
     document.documentElement.classList.toggle('gg-portrait-block', blocked);
     gate.hidden = !blocked;
     overlay.hidden = !visible || blocked;
@@ -291,20 +295,8 @@ export function mountTouchControls(opts: { onCamera: () => void; root?: HTMLElem
     setVisible(next) {
       visible = next;
       document.documentElement.classList.toggle('gg-racing', next);
-      if (!next) {
-        pointers.clear();
-        steerId = null;
-        cameraHeld = false;
-        input.throttle = 0;
-        input.steer = 0;
-        input.handbrake = false;
-        resetKnob();
-      } else {
-        input.throttle = 0;
-        input.steer = 0;
-        input.handbrake = false;
-        requestChrome();
-      }
+      clearAll();
+      chromeAsked = false;
       syncLayout();
     },
     destroy() {
