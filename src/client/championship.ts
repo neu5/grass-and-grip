@@ -89,6 +89,14 @@ export function seasonTable(season: Season): TableRow[] {
   });
 }
 
+/**
+ * Starting order for the next round: a random grid for the first race, then
+ * the championship order (leader on pole, last place at the back).
+ */
+export function seasonGrid(season: Season): 'random' | string[] {
+  return season.results.length === 0 ? 'random' : seasonTable(season).map((r) => r.name);
+}
+
 type KeyStore = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 function store(s?: KeyStore): KeyStore | null {

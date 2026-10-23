@@ -45,6 +45,12 @@ export interface GameOptions {
   persistFastest?: boolean;
   /** Called once when the race ends. */
   onFinish?: (state: GameState) => void;
+  /**
+   * Starting order. 'random' shuffles the grid on every start; a list of
+   * driver names puts them on the grid in that order (pole first). Default:
+   * players first, then AI.
+   */
+  grid?: 'random' | string[];
 }
 
 const HUMAN_NAMES = ['Player 1', 'Player 2'] as const;
@@ -104,6 +110,28 @@ export function gridCars(options: GameOptions): CarConfig[] {
   return [...humans, ...ai].slice(0, MAX_PLAYERS);
 }
 
+/** Put the cars on the grid in the requested order; slot 0 is pole. */
+export function orderGrid(cars: CarConfig[], grid: GameOptions['grid'], random = Math.random): CarConfig[] {
+  if (!grid) return cars;
+  if (grid === 'random') {
+    const out = cars.slice();
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  }
+  // Named drivers in that order; anyone not named keeps their order at the back.
+  const rank = (c: CarConfig) => {
+    const i = grid.indexOf(c.name);
+    return i < 0 ? grid.length : i;
+  };
+  return cars
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i)
+    .map(({ c }) => c);
+}
+
 const MAX_STEPS_PER_FRAME = 8;
 
 export class Game {
@@ -112,6 +140,7 @@ export class Game {
   private acc = 0;
   private lastTime = 0;
   private raf = 0;
+  /** Car id of each player, Player 1 first (the grid order may put them anywhere). */
   private humanIds: number[] = [];
   /** Every tick's inputs, in order: enough to replay the race exactly. */
   inputLog: TickInputs[] = [];
@@ -130,7 +159,9 @@ export class Game {
   }
 
   reset() {
-    const cars = gridCars(this.options);
+    const entries = gridCars(this.options);
+    const players = entries.filter((c) => c.controller === 'human');
+    const cars = orderGrid(entries, this.options.grid);
     const trackId = this.options.trackId ?? 'meadow';
     this.renderer.setTrack(trackId);
     this.curr = createRace({
@@ -143,17 +174,18 @@ export class Game {
     });
     this.options.setup?.(this.curr);
     this.prev = this.curr;
-    this.humanIds = cars.map((c, i) => (c.controller === 'human' ? i : -1)).filter((i) => i >= 0);
+    this.humanIds = players.map((p) => cars.findIndex((c) => c.name === p.name));
     this.inputLog = [];
     this.acc = 0;
     this.renderer.resetRace();
   }
 
   private sampleInputs(): TickInputs {
-    if (this.options.scriptedInput) return { 0: this.options.scriptedInput(this.curr) };
+    const [p1, p2] = this.humanIds;
+    if (this.options.scriptedInput) return { [p1]: this.options.scriptedInput(this.curr) };
     const extra = this.extraInput?.sample() ?? NO_PLAYER_INPUT;
-    if (this.options.humans === 1) return { 0: mergeInputs(this.keyboard.sample(BINDINGS_SOLO), extra) };
-    return { 0: mergeInputs(this.keyboard.sample(BINDINGS_P1), extra), 1: this.keyboard.sample(BINDINGS_P2) };
+    if (this.options.humans === 1) return { [p1]: mergeInputs(this.keyboard.sample(BINDINGS_SOLO), extra) };
+    return { [p1]: mergeInputs(this.keyboard.sample(BINDINGS_P1), extra), [p2]: this.keyboard.sample(BINDINGS_P2) };
   }
 
   start() {
