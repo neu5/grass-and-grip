@@ -1,5 +1,6 @@
 export * from './types';
 export * from './carMode';
+export * from './grid';
 export * from './fastestLaps';
 export * from './sim';
 export * from './track';

@@ -8,6 +8,7 @@ import {
   raceOrder,
   saveSeason,
   scoreRound,
+  seasonGrid,
   seasonOver,
   seasonTable,
   type Season,
@@ -292,6 +293,7 @@ function startRound() {
   startGame({
     ...season.options,
     trackId,
+    grid: seasonGrid(season),
     onFinish: (state) => {
       if (!season) return;
       season = scoreRound(season, raceOrder(state));
@@ -416,6 +418,7 @@ form.addEventListener('submit', (e) => {
   season = null;
   startGame({
     ...options,
+    grid: 'random',
     // Let the finish sink in, then offer the way back.
     onFinish: (state) => setTimeout(() => game?.state.phase === 'finished' && showRaceOver(state), 1500),
   });
