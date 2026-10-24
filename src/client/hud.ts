@@ -1,4 +1,4 @@
-import { CAR_KIND_SHORT, DEFAULT_RULES, standings, ticksToTime, TICK_RATE, toCarKind, type CarState, type GameState } from '../sim';
+import { CAR_KIND_SHORT, DEFAULT_RULES, newTrackRecord, standings, ticksToTime, TICK_RATE, toCarKind, type CarState, type GameState } from '../sim';
 import { cameraHudHint } from './touchMap';
 
 export interface Label {
@@ -7,6 +7,24 @@ export interface Label {
   y: number;
   /** Screen direction to a checkpoint this car drove past, if any. */
   missed?: { dx: number; dy: number };
+}
+
+/** How long the FINAL LAP banner stays up after crossing the line. */
+export const FINAL_LAP_SECONDS = 2.5;
+
+/** True while this car is on the last lap of a race longer than one lap. */
+export function onFinalLap(state: GameState, car: CarState): boolean {
+  return state.totalLaps > 1 && car.finishTick === null && car.lapsCompleted === state.totalLaps - 1;
+}
+
+/** Humans who started their last lap within the last `FINAL_LAP_SECONDS`, with the banner's remaining seconds. */
+export function finalLapBanners(state: GameState, humanIds: number[], tickNow: number): { car: CarState; left: number }[] {
+  if (state.phase !== 'racing') return [];
+  return humanIds
+    .map((id) => state.cars[id])
+    .filter((car) => car && onFinalLap(state, car))
+    .map((car) => ({ car, left: FINAL_LAP_SECONDS - (tickNow - car.lapStartTick) / TICK_RATE }))
+    .filter((b) => b.left > 0);
 }
 
 export function drawHud(
@@ -79,8 +97,8 @@ export function drawHud(
     rows.forEach(([label, value], i) => {
       ctx.fillStyle = 'rgba(255,255,255,0.6)';
       ctx.fillText(label, x + 14, y + 48 + i * 17);
-      ctx.fillStyle = label === 'Best' ? '#ffd54a' : '#fff';
-      ctx.fillText(value, x + 70, y + 48 + i * 17);
+      ctx.fillStyle = label === 'Best' || (label === 'Lap' && onFinalLap(state, car)) ? '#ffd54a' : '#fff';
+      ctx.fillText(label === 'Lap' && onFinalLap(state, car) ? `${value}  FINAL` : value, x + 70, y + 48 + i * 17);
     });
     const tyreLeft = 1 - Math.min(1, Math.max(0, car.tyreWear ?? 0));
     const fuelLeft = Math.min(1, Math.max(0, car.fuel ?? 1));
@@ -105,6 +123,18 @@ export function drawHud(
     bigText(ctx, 'GO!', cw / 2, ch / 2, big);
   } else if (state.phase === 'finished') {
     bigText(ctx, `${order[0].name} wins!`, cw / 2, ch / 2 - 20, big);
+  }
+  // Crossing the line onto the last lap.
+  const banners = finalLapBanners(state, humanIds, tickNow);
+  banners.forEach(({ car, left }, i) => {
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, left / 0.5);
+    const size = compact ? 34 : 52;
+    const y = ch * 0.28 + i * (size + 14);
+    bigText(ctx, humanIds.length > 1 ? `FINAL LAP — ${car.name}` : 'FINAL LAP', cw / 2, y, size, '#ffd54a');
+    ctx.restore();
+  });
+  if (state.phase === 'finished') {
     ctx.font = `600 ${compact ? 14 : 18}px system-ui, sans-serif`;
     ctx.fillStyle = '#fff';
     ctx.fillText(finishHint, cw / 2, ch / 2 + 36);
@@ -115,7 +145,7 @@ export function drawHud(
 function drawFastestBoard(ctx: CanvasRenderingContext2D, state: GameState, x: number, y: number) {
   const laps = state.fastestLaps ?? [];
   const rowH = 18;
-  const h = 30 + 3 * rowH;
+  const h = 30 + 3 * rowH + 26;
   ctx.fillStyle = 'rgba(10,14,20,0.6)';
   ctx.beginPath();
   ctx.roundRect(x, y, 248, h, 10);
@@ -123,7 +153,7 @@ function drawFastestBoard(ctx: CanvasRenderingContext2D, state: GameState, x: nu
   ctx.font = '600 12px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.6)';
   ctx.textAlign = 'left';
-  ctx.fillText('FASTEST', x + 12, y + 20);
+  ctx.fillText('FASTEST THIS RACE', x + 12, y + 20);
   for (let i = 0; i < 3; i++) {
     const e = laps[i];
     const rowY = y + 38 + i * rowH;
@@ -143,7 +173,29 @@ function drawFastestBoard(ctx: CanvasRenderingContext2D, state: GameState, x: nu
     ctx.fillText(ticksToTime(e.ticks), x + 236, rowY);
     ctx.textAlign = 'left';
   }
+
+  // All-time track record under the race's own times.
+  const ry = y + 38 + 3 * rowH + 8;
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.fillRect(x + 12, ry - 17, 224, 1);
+  const fresh = newTrackRecord(state);
+  const rec = fresh ?? state.trackRecord;
+  ctx.fillStyle = fresh ? '#ffd54a' : RECORD_COLOR;
+  ctx.fillText(fresh ? 'NEW RECORD' : 'RECORD', x + 12, ry);
+  if (rec) {
+    ctx.fillStyle = '#fff';
+    ctx.fillText(fit(ctx, rec.name, 72), x + 100, ry);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = fresh ? '#ffd54a' : RECORD_COLOR;
+    ctx.fillText(ticksToTime(rec.ticks), x + 236, ry);
+    ctx.textAlign = 'left';
+  } else {
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillText('–', x + 100, ry);
+  }
 }
+
+const RECORD_COLOR = '#c9a0ff';
 
 /** Pointer from the car label toward the checkpoint it skipped. */
 function drawMissedGate(ctx: CanvasRenderingContext2D, l: Label) {
@@ -252,8 +304,10 @@ function drawCompact(
     ctx.font = '500 11px ui-monospace, SFMono-Regular, Menlo, monospace';
     const lap = Math.min(car.lapsCompleted + 1, state.totalLaps);
     const running = car.finishTick !== null ? 0 : Math.max(0, tickNow - car.lapStartTick);
+    const final = onFinalLap(state, car);
+    ctx.fillStyle = final ? '#ffd54a' : '#fff';
+    ctx.fillText(car.finishTick !== null ? 'FINISHED' : final ? 'FINAL LAP' : `Lap ${lap}/${state.totalLaps}`, x + 10, y + 34);
     ctx.fillStyle = '#fff';
-    ctx.fillText(car.finishTick !== null ? 'FINISHED' : `Lap ${lap}/${state.totalLaps}`, x + 10, y + 34);
     ctx.textAlign = 'right';
     ctx.fillText(state.phase === 'countdown' ? '0:00.000' : ticksToTime(running), x + w - 8, y + 34);
     ctx.textAlign = 'left';
@@ -286,7 +340,7 @@ function drawCompact(
   const bx = humanIds.length > 1 ? cw / 2 - bw / 2 : cw - bw - 8;
   ctx.fillStyle = 'rgba(10,14,20,0.55)';
   ctx.beginPath();
-  ctx.roundRect(bx, 8, bw, 8 + order.length * row, 8);
+  ctx.roundRect(bx, 8, bw, 8 + (order.length + 2) * row + 4, 8);
   ctx.fill();
   ctx.font = '600 11px system-ui, sans-serif';
   order.forEach((c, i) => {
@@ -298,6 +352,29 @@ function drawCompact(
     ctx.textAlign = 'right';
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
     ctx.fillText(c.finishTick !== null ? 'FIN' : `L${Math.min(c.lapsCompleted + 1, state.totalLaps)}`, bx + bw - 8, ry + 11);
+    ctx.textAlign = 'left';
+  });
+
+  // Race fastest lap and the all-time record.
+  const best = state.fastestLaps?.[0];
+  const fresh = newTrackRecord(state);
+  const rec = fresh ?? state.trackRecord;
+  const lines: [string, string, string][] = [
+    ['FL', best ? `${best.name}` : '–', best ? ticksToTime(best.ticks) : ''],
+    [fresh ? 'NEW' : 'REC', rec ? rec.name : '–', rec ? ticksToTime(rec.ticks) : ''],
+  ];
+  lines.forEach(([tag, name, time], i) => {
+    const ry = 8 + 8 + (order.length + i) * row;
+    const color = i === 0 ? '#ffd54a' : fresh ? '#ffd54a' : RECORD_COLOR;
+    ctx.font = '700 9px system-ui, sans-serif';
+    ctx.fillStyle = color;
+    ctx.fillText(tag, bx + 8, ry + 11);
+    ctx.font = '600 11px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillText(fit(ctx, name, bw - 96), bx + 32, ry + 11);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = color;
+    ctx.fillText(time, bx + bw - 8, ry + 11);
     ctx.textAlign = 'left';
   });
 }
@@ -331,11 +408,11 @@ function drawRemainBar(
   ctx.textAlign = 'left';
 }
 
-function bigText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size = 72) {
+function bigText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size = 72, color = '#fff') {
   ctx.font = `800 ${size}px system-ui, sans-serif`;
   ctx.lineWidth = 8;
   ctx.strokeStyle = 'rgba(0,0,0,0.6)';
   ctx.strokeText(text, x, y);
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = color;
   ctx.fillText(text, x, y);
 }

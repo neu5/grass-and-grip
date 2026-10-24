@@ -134,5 +134,6 @@ export function decodeSnapshot(snap: CompactSnapshot, prev?: GameState): GameSta
     props: snap.pr ? decodeProps(snap.pr) : (prev?.props ?? []),
     cars: snap.c.map((c) => decodeCar(c, prev?.cars.find((x) => x.id === c.i))),
     fastestLaps: copyFastestLaps(snap.fl?.map(decodeFastest) ?? prev?.fastestLaps),
+    trackRecord: prev?.trackRecord ?? null,
   };
 }

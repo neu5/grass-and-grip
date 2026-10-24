@@ -28,7 +28,7 @@ import { mountLapsPicker } from './client/lapsPicker';
 import { mountRulesFields, mountSetupFields } from './client/raceOptionsUi';
 import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
 import { CAR_COLORS, CAR_KIND_SHORT, COLOR_NAMES, MAX_PLAYERS, clampAiCount, clampLaps, parseCarKind, parseCarMode } from './net/protocol';
-import { standings, ticksToTime, trackName as simTrackName, type GameState } from './sim';
+import { newTrackRecord, standings, ticksToTime, type FastestLap, trackName as simTrackName, type GameState } from './sim';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const hud = document.querySelector<HTMLCanvasElement>('#hud')!;
@@ -245,10 +245,25 @@ function showRaceOver(state: GameState) {
   document.querySelector('#race-over-sub')!.textContent = humans
     .map((c) => `${c.name}: P${order.indexOf(c) + 1} of ${order.length}`)
     .join(' · ');
+  const best = state.fastestLaps[0];
+  const fresh = newTrackRecord(state);
+  const lap = (e: FastestLap) => `${escapeHtml(e.name)} <b>${ticksToTime(e.ticks)}</b>`;
+  const was = state.trackRecord ? ` (was ${ticksToTime(state.trackRecord.ticks)})` : '';
+  document.querySelector('#race-over-laps')!.innerHTML = [
+    best ? `<span class="fl">Fastest lap</span> ${lap(best)}` : '',
+    fresh
+      ? `<span class="new-record">New track record!</span>${was}`
+      : state.trackRecord
+        ? `<span class="record">Track record</span> ${lap(state.trackRecord)}`
+        : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const bestTicks = best?.ticks ?? null;
   document.querySelector('#race-over-order')!.innerHTML = order
     .map(
       (c, i) =>
-        `<tr${c.controller === 'human' ? ' class="you"' : ''}><td>${i + 1}.</td><td><span class="swatch" style="background:${c.color}"></span>${escapeHtml(c.name)}</td><td class="muted">${CAR_KIND_SHORT[c.kind]}</td><td class="num">${c.bestLapTicks !== null ? ticksToTime(c.bestLapTicks) : '–'}</td></tr>`,
+        `<tr${c.controller === 'human' ? ' class="you"' : ''}><td>${i + 1}.</td><td><span class="swatch" style="background:${c.color}"></span>${escapeHtml(c.name)}</td><td class="muted">${CAR_KIND_SHORT[c.kind]}</td><td class="num${c.bestLapTicks !== null && c.bestLapTicks === bestTicks ? ' fl' : ''}">${c.bestLapTicks !== null ? ticksToTime(c.bestLapTicks) : '–'}</td></tr>`,
     )
     .join('');
   raceOverEl.hidden = false;

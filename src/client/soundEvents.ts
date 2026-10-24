@@ -5,6 +5,8 @@ export type SoundEvent =
   | { kind: 'crash'; car: number; strength: number }
   | { kind: 'cone'; index: number; x: number; y: number; strength: number }
   | { kind: 'lap'; car: number }
+  /** The leader starts the last lap: the bell. */
+  | { kind: 'lastLap' }
   | { kind: 'finish'; car: number }
   | { kind: 'pit'; car: number };
 
@@ -36,6 +38,11 @@ export function soundEvents(prev: GameState, curr: GameState): SoundEvent[] {
     }
     if (c.lapsCompleted > p.lapsCompleted) {
       out.push(c.finishTick !== null && p.finishTick === null ? { kind: 'finish', car: c.id } : { kind: 'lap', car: c.id });
+    }
+    // First car onto the last lap rings the bell, once per race.
+    const lastLap = curr.totalLaps - 1;
+    if (lastLap > 0 && c.lapsCompleted === lastLap && p.lapsCompleted < lastLap && prev.cars.every((q) => q.lapsCompleted < lastLap) && !out.some((e) => e.kind === 'lastLap')) {
+      out.push({ kind: 'lastLap' });
     }
     // Being serviced: a bar went back up while sitting still.
     const serviced = (c.fuel ?? 1) > (p.fuel ?? 1) + 1e-6 || (c.tyreWear ?? 0) < (p.tyreWear ?? 0) - 1e-6 || dmg < -1e-6;

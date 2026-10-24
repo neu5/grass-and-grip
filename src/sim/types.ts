@@ -198,8 +198,10 @@ export interface GameState {
   /** Cones and other loose objects. Missing means none. */
   props?: Prop[];
   cars: CarState[];
-  /** Fastest-first top 3 laps for this track (includes earlier races when seeded). */
+  /** Fastest-first top 3 laps of this race. */
   fastestLaps: FastestLap[];
+  /** Best lap ever on this track before this race started (from saved laps), for display. */
+  trackRecord?: FastestLap | null;
 }
 
 export interface CarConfig {
@@ -217,6 +219,8 @@ export interface RaceConfig {
   cars: CarConfig[];
   countdownSeconds?: number;
   rules?: RaceRules;
-  /** Seed the HUD / room board (e.g. persisted top 3). */
+  /** Seed the race's own top 3 (demos and tests). */
   fastestLaps?: FastestLap[];
+  /** All-time best lap on this track so far, shown next to the race's own times. */
+  trackRecord?: FastestLap | null;
 }

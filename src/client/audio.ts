@@ -206,6 +206,7 @@ export class SoundEngine {
       this.recent.set(key, now);
       if (e.kind === 'beep') this.tone(e.final ? 880 : 440, e.final ? 0.35 : 0.16, 0.22, 'sine');
       else if (e.kind === 'lap') this.chime([660, 990], 0.12);
+      else if (e.kind === 'lastLap') this.chime([1175, 1175, 1175], 0.18);
       else if (e.kind === 'finish') this.chime([523, 659, 784, 1047], 0.14);
       else if (e.kind === 'cone') this.tok(at(e.x, e.y) * (0.5 + e.strength * 0.5));
       else {
