@@ -188,7 +188,7 @@ export class SoundEngine {
     v.skid.gain.setTargetAtTime(squeal * 0.09 * fall, t, 0.04);
     const loose = surface !== 'asphalt' && surface !== 'ice';
     const roll = loose ? Math.min(1, speed / 260) : 0;
-    v.rumbleFilter.frequency.setTargetAtTime(surface === 'water' ? 900 : surface === 'gravel' ? 700 : 350, t, 0.1);
+    v.rumbleFilter.frequency.setTargetAtTime(surface === 'water' ? 900 : surface === 'gravel' || surface === 'dirt' ? 700 : surface === 'mud' ? 260 : 350, t, 0.1);
     v.rumble.gain.setTargetAtTime(roll * 0.12 * fall, t, 0.06);
   }
 

@@ -50,7 +50,7 @@ describe('racing line', () => {
       const painted = (track.def.patches ?? []).filter((p) => p.overRoad).map((p) => p.surface);
       for (const p of racingLine(track).points) {
         expect(distanceToCenterline(track, p.x, p.y)).toBeLessThanOrEqual(track.def.halfWidth);
-        expect(['asphalt', ...painted]).toContain(surfaceAt(track, p.x, p.y));
+        expect([track.def.road ?? 'asphalt', 'asphalt', ...painted]).toContain(surfaceAt(track, p.x, p.y));
       }
     }
   });

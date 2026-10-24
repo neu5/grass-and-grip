@@ -15,7 +15,9 @@ import {
   validateTrack,
   type MapSize,
   type Obstacle,
+  type RoadSurface,
   type Surface,
+  type Theme,
   type Track,
   type TrackDef,
   type TrackProblem,
@@ -28,6 +30,15 @@ const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)
 const canvas = $<HTMLCanvasElement>('#map');
 const ctx = canvas.getContext('2d')!;
 
+const OBJECT_COLORS: Record<Obstacle['kind'], string> = {
+  tree: '#2f6e2a',
+  tyres: '#1a1a1a',
+  cone: '#ff6a1a',
+  rock: '#8a7d70',
+  hay: '#d9b448',
+  solid: 'rgba(255,255,255,0.25)',
+};
+
 const SURFACE_COLORS: Record<Surface, string> = {
   grass: '#4a9a3f',
   snow: '#e6edf2',
@@ -36,6 +47,8 @@ const SURFACE_COLORS: Record<Surface, string> = {
   ice: '#bfe2f2',
   water: '#2a6fa8',
   asphalt: '#5d5f64',
+  dirt: '#8f7150',
+  mud: '#5b4330',
 };
 
 const HELP: Record<Tool, string> = {
@@ -303,7 +316,7 @@ canvas.addEventListener('pointerdown', (e) => {
     }
     if (i >= 0) drag = { kind: 'object', i };
     else {
-      const r = objectKind === 'cone' ? 6 : objectKind === 'tree' ? 16 : 16;
+      const r = objectKind === 'cone' ? 6 : objectKind === 'hay' ? 12 : 16;
       def.obstacles.push({ ...round(p), r, kind: objectKind });
       changed();
     }
@@ -459,7 +472,7 @@ function draw() {
   ctx.lineWidth = def.halfWidth * 2 + 14;
   ctx.stroke();
   loop();
-  ctx.strokeStyle = SURFACE_COLORS.asphalt;
+  ctx.strokeStyle = SURFACE_COLORS[def.road ?? 'asphalt'];
   ctx.lineWidth = def.halfWidth * 2;
   ctx.stroke();
   // Driving direction.
@@ -527,7 +540,7 @@ function draw() {
       ctx.lineTo(o.x - 7, o.y + 6);
       ctx.fill();
     } else {
-      ctx.fillStyle = o.kind === 'tree' ? '#2f6e2a' : '#1a1a1a';
+      ctx.fillStyle = OBJECT_COLORS[o.kind];
       ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
       ctx.fill();
       if (o.kind === 'tyres') {
@@ -641,7 +654,7 @@ function renderToolOptions() {
   const box = $('#tool-options');
   box.innerHTML = '';
   if (tool === 'paint') {
-    const names: Record<string, string> = { grass: 'Grass', sand: 'Sand', gravel: 'Gravel', snow: 'Snow', ice: 'Ice' };
+    const names: Record<string, string> = { grass: 'Grass', sand: 'Sand', gravel: 'Gravel', snow: 'Snow', ice: 'Ice', asphalt: 'Tarmac', dirt: 'Dirt', mud: 'Mud' };
     box.append(choiceRow(PATCH_SURFACES.map((k) => [k, names[k]]), paintSurface, (v) => (paintSurface = v as Surface)));
     const l = document.createElement('label');
     l.innerHTML = `<input type="checkbox" ${paintOverRoad ? 'checked' : ''} /> Paint over the road too`;
@@ -655,6 +668,8 @@ function renderToolOptions() {
           ['tree', 'Tree'],
           ['tyres', 'Tyres'],
           ['cone', 'Cone'],
+          ['rock', 'Rock'],
+          ['hay', 'Hay bale'],
         ],
         objectKind,
         (v) => (objectKind = v as Obstacle['kind']),
@@ -717,6 +732,8 @@ function syncFields() {
   $<HTMLInputElement>('#width').value = String(def.halfWidth);
   $('#width-val').textContent = String(def.halfWidth * 2);
   $<HTMLSelectElement>('#ground').value = def.ground ?? 'grass';
+  $<HTMLSelectElement>('#road').value = def.road ?? 'asphalt';
+  $<HTMLSelectElement>('#theme').value = def.theme ?? '';
   $<HTMLSelectElement>('#size').value = mapSizeOf(def);
 }
 
@@ -741,6 +758,18 @@ $<HTMLSelectElement>('#size').addEventListener('change', (e) => {
 $<HTMLSelectElement>('#ground').addEventListener('change', (e) => {
   snapshot();
   def.ground = (e.target as HTMLSelectElement).value as Surface;
+  changed();
+});
+$<HTMLSelectElement>('#road').addEventListener('change', (e) => {
+  snapshot();
+  def.road = (e.target as HTMLSelectElement).value as RoadSurface;
+  changed();
+});
+$<HTMLSelectElement>('#theme').addEventListener('change', (e) => {
+  snapshot();
+  const theme = (e.target as HTMLSelectElement).value as Theme | '';
+  if (theme) def.theme = theme;
+  else delete def.theme;
   changed();
 });
 

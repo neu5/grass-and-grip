@@ -5,8 +5,15 @@ import {
   inWater,
   pitComplex,
   PATCH_SURFACES,
+  DECOR_KINDS,
+  ROAD_SURFACES,
+  THEMES,
   type Bridge,
+  type DecorKind,
+  type Obstacle,
+  type RoadSurface,
   type Surface,
+  type Theme,
   type Track,
   type TrackDef,
   type Vec2,
@@ -53,12 +60,13 @@ const LIMITS = {
   riverPoints: 60,
   patches: 40,
   patchPoints: 60,
-  obstacles: 120,
-  barriers: 60,
+  obstacles: 160,
+  barriers: 200,
+  decor: 80,
   name: 24,
 };
 
-const GROUNDS: readonly Surface[] = ['grass', 'snow', 'sand', 'gravel'];
+const GROUNDS: readonly Surface[] = ['grass', 'snow', 'sand', 'gravel', 'dirt', 'asphalt'];
 
 /** A starter layout: the shared start straight and pits, and a plain loop. */
 export function starterTrack(id: string, name: string, size: MapSize = 'medium'): TrackDef {
@@ -175,6 +183,10 @@ export function autoBridges(def: TrackDef): Bridge[] {
   return bridges;
 }
 
+const OBSTACLE_NAMES: Record<Obstacle['kind'], string> = { tree: 'tree', tyres: 'tyre stack', cone: 'cone', rock: 'rock', hay: 'hay bale', solid: 'building' };
+/** What an imported track may use (hidden solids are for built-in scenery only). */
+const OBSTACLE_KINDS: Obstacle['kind'][] = ['tree', 'tyres', 'cone', 'rock', 'hay'];
+
 export interface TrackProblem {
   message: string;
   /** Where to point at, if somewhere in particular. */
@@ -236,7 +248,7 @@ export function validateTrack(def: TrackDef, built?: Track): TrackProblem[] {
   for (const o of def.obstacles) {
     const d = distanceToCenterline(t, o.x, o.y);
     if (o.kind !== 'cone' && d < def.halfWidth + o.r) {
-      out.push({ message: `A ${o.kind === 'tree' ? 'tree' : 'tyre stack'} is on the road.`, at: o });
+      out.push({ message: `A ${OBSTACLE_NAMES[o.kind]} is on the road.`, at: o });
       break;
     }
     if (o.kind === 'cone' && d < def.halfWidth * 0.5) {
@@ -309,7 +321,7 @@ export function parseTrackDef(raw: unknown): TrackDef | null {
       b: { x: num(b?.b?.x, 0, W), y: num(b?.b?.y, 0, H) },
     })),
     obstacles: (Array.isArray(o.obstacles) ? o.obstacles : []).slice(0, LIMITS.obstacles).map((ob) => {
-      const kind = ob?.kind === 'tree' || ob?.kind === 'cone' ? ob.kind : 'tyres';
+      const kind: Obstacle['kind'] = OBSTACLE_KINDS.includes(ob?.kind) ? ob.kind : 'tyres';
       return {
         x: num(ob?.x, 0, W),
         y: num(ob?.y, 0, H),
@@ -317,9 +329,24 @@ export function parseTrackDef(raw: unknown): TrackDef | null {
         kind,
       };
     }),
+    road: ROAD_SURFACES.includes(o.road as RoadSurface) ? (o.road as RoadSurface) : 'asphalt',
+    theme: THEMES.includes(o.theme as Theme) ? (o.theme as Theme) : undefined,
+    decor: (Array.isArray(o.decor) ? o.decor : [])
+      .slice(0, LIMITS.decor)
+      .filter((d) => DECOR_KINDS.includes(d?.kind))
+      .map((d) => ({
+        kind: d.kind as DecorKind,
+        x: num(d?.x, 0, W),
+        y: num(d?.y, 0, H),
+        w: num(d?.w, 10, 400, 60),
+        d: num(d?.d, 10, 400, 40),
+        angle: num(d?.angle, -Math.PI * 2, Math.PI * 2, 0),
+        ...(d?.h !== undefined ? { h: num(d.h, 4, 300, 40) } : {}),
+      })),
     pitLane: { x: 0, y: 0, w: 0, h: 0 },
     pitBoxes: [],
   };
+  if (!def.theme) delete def.theme;
   return finalizeTrack(def);
 }
 

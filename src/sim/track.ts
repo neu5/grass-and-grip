@@ -1,18 +1,46 @@
 import { datan2, normalizeAngle } from './dmath';
-import { COAST_GP } from './maps/coastGp';
-import { DUNE_RUN } from './maps/duneRun';
-import { FOREST_STAGE } from './maps/forestStage';
-import { KART_YARD } from './maps/kartYard';
-import { LAKESIDE } from './maps/lakeside';
+import { GRAND_PRIX } from './maps/grandPrix';
+import { HARVEST_RALLY } from './maps/harvestRally';
+import { JUNGLE } from './maps/jungle';
+import { OLD_TOWN } from './maps/oldTown';
+import { RED_CANYON } from './maps/redCanyon';
 
 export type Vec2 = { x: number; y: number };
 
-export type Surface = 'asphalt' | 'grass' | 'sand' | 'water' | 'gravel' | 'snow' | 'ice';
+export type Surface = 'asphalt' | 'grass' | 'sand' | 'water' | 'gravel' | 'snow' | 'ice' | 'dirt' | 'mud';
 
-/** Surfaces a patch can paint. */
-export const PATCH_SURFACES = ['grass', 'sand', 'gravel', 'snow', 'ice'] as const;
+/** Surfaces a patch can paint. Asphalt paints paved run-off; mud ploughed fields and puddles. */
+export const PATCH_SURFACES = ['grass', 'sand', 'gravel', 'snow', 'ice', 'asphalt', 'dirt', 'mud'] as const;
 
-export const TRACK_IDS = ['kartyard', 'dunes', 'lakeside', 'meadow', 'harbor', 'forest', 'alpine', 'coast'] as const;
+/** What the road itself is made of. */
+export type RoadSurface = 'asphalt' | 'dirt';
+export const ROAD_SURFACES: readonly RoadSurface[] = ['asphalt', 'dirt'];
+
+/**
+ * Look and feel of a map: ground colours, tree types, sky, barrier style.
+ * Purely visual; the surfaces decide how cars drive.
+ */
+export type Theme = 'meadow' | 'winter' | 'jungle' | 'desert' | 'city' | 'farm' | 'circuit';
+export const THEMES: readonly Theme[] = ['meadow', 'winter', 'jungle', 'desert', 'city', 'farm', 'circuit'];
+
+/** Scenery that is only drawn: cars never touch it, so keep it out of reach (behind barriers or off the road). */
+export type DecorKind = 'grandstand' | 'building' | 'house' | 'barn' | 'hut' | 'ruin' | 'billboard' | 'mesa' | 'tent';
+export const DECOR_KINDS: readonly DecorKind[] = ['grandstand', 'building', 'house', 'barn', 'hut', 'ruin', 'billboard', 'mesa', 'tent'];
+
+export interface Decor {
+  kind: DecorKind;
+  x: number;
+  y: number;
+  /** Footprint along its own axes, in world units. */
+  w: number;
+  d: number;
+  /** Turn about the vertical axis, radians. 0 means the long side runs along x. */
+  angle?: number;
+  /** Height for buildings and mesas. Each kind has a default. */
+  h?: number;
+}
+
+export const TRACK_IDS = ['oldtown', 'canyon', 'meadow', 'harbor', 'jungle', 'harvest', 'alpine', 'grandprix'] as const;
 export type TrackId = (typeof TRACK_IDS)[number];
 
 /** Marked stalls on tracks that have a pit lane. */
@@ -49,11 +77,11 @@ export const TRACK_NAMES: Record<TrackId, string> = {
   meadow: 'Meadow Ring',
   harbor: 'Harbor Bridge',
   alpine: 'Alpine Pass',
-  kartyard: 'Kart Yard',
-  dunes: 'Dune Run',
-  lakeside: 'Lakeside',
-  forest: 'Forest Stage',
-  coast: 'Coast GP',
+  oldtown: 'Old Town',
+  canyon: 'Red Canyon',
+  jungle: 'Jungle Temple',
+  harvest: 'Harvest Rally',
+  grandprix: 'Grand Prix',
 };
 
 export function isTrackId(id: string | undefined): id is TrackId {
@@ -85,8 +113,12 @@ export interface Obstacle {
   x: number;
   y: number;
   r: number;
-  /** Trees and tyre stacks are fixed; cones get knocked about (see `GameState.props`). */
-  kind: 'tyres' | 'tree' | 'cone';
+  /**
+   * Trees, tyre stacks, rocks and hay bales are fixed; cones get knocked about
+   * (see `GameState.props`). `solid` is never drawn: it makes a building or ruin
+   * from `decor` something cars hit.
+   */
+  kind: 'tyres' | 'tree' | 'cone' | 'rock' | 'hay' | 'solid';
 }
 
 /** Painted ground: a polygon of one surface. */
@@ -133,6 +165,17 @@ export interface TrackDef {
   bridges?: Bridge[];
   /** Rolling ground. Flat at 0 when absent. */
   terrain?: Terrain;
+  /** The road: asphalt (default) or a dirt rally stage. */
+  road?: RoadSurface;
+  /** Visual theme. Default follows the ground: snow is winter, anything else meadow. */
+  theme?: Theme;
+  /** Buildings, grandstands and other drawn-only scenery. */
+  decor?: Decor[];
+}
+
+/** The theme a map is drawn with. */
+export function themeOf(def: Pick<TrackDef, 'theme' | 'ground'>): Theme {
+  return def.theme ?? (def.ground === 'snow' ? 'winter' : 'meadow');
 }
 
 /** Water within `halfWidth` of a smooth line through `points` (may run off the map). */
@@ -830,7 +873,9 @@ export function onRacingSurface(track: Track, x: number, y: number): boolean {
 export function surfaceAt(track: Track, x: number, y: number): Surface {
   const over = patchAt(track, x, y, true);
   if (over) return over;
-  if (onRacingSurface(track, x, y)) return 'asphalt';
+  // Pit lane and bridge decks are always paved; the road may be dirt.
+  if (inPitLane(track, x, y) || inBridge(track, x, y)) return 'asphalt';
+  if (distanceToCenterline(track, x, y) <= track.def.halfWidth) return track.def.road ?? 'asphalt';
   if (inWater(track, x, y)) return 'water';
   return patchAt(track, x, y, false) ?? track.def.ground ?? 'grass';
 }
@@ -1310,11 +1355,11 @@ export const TRACKS: Record<string, TrackDef> = {
     ],
     ...pitComplex(480),
   },
-  kartyard: { ...KART_YARD, ...pitComplex(480) },
-  dunes: { ...DUNE_RUN, ...pitComplex(480) },
-  lakeside: { ...LAKESIDE, ...pitComplex(480) },
-  forest: { ...FOREST_STAGE, ...pitComplex(480) },
-  coast: { ...COAST_GP, ...pitComplex(480) },
+  oldtown: { ...OLD_TOWN, ...pitComplex(480) },
+  canyon: { ...RED_CANYON, ...pitComplex(480) },
+  jungle: { ...JUNGLE, ...pitComplex(480) },
+  harvest: { ...HARVEST_RALLY, ...pitComplex(480) },
+  grandprix: { ...GRAND_PRIX, ...pitComplex(480) },
 };
 
 const cache = new Map<string, Track>();

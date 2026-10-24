@@ -21,6 +21,10 @@ export const SURFACES: Record<Surface, SurfaceParams> = {
   snow: { grip: 0.36, engine: 0.66, rolling: 1.0 },
   /** Ice: almost no grip and almost no drag, so cars slide a long way. */
   ice: { grip: 0.13, engine: 0.5, rolling: 0.2 },
+  /** Packed dirt road: a rally stage, quick but loose. */
+  dirt: { grip: 0.72, engine: 0.92, rolling: 0.75 },
+  /** Mud: puddles and ploughed fields, slippery and draggy. */
+  mud: { grip: 0.3, engine: 0.55, rolling: 2.8 },
 };
 
 export interface CarStats {
@@ -388,7 +392,8 @@ export function stepCarPhysics(
     wearRate += TYRE.slip * car.slip;
     if (surface === 'grass') wearRate += TYRE.grass * spd;
     if (surface === 'sand') wearRate += TYRE.sand * spd;
-    if (surface === 'gravel') wearRate += TYRE.gravel * spd;
+    if (surface === 'gravel' || surface === 'dirt') wearRate += TYRE.gravel * spd;
+    if (surface === 'mud') wearRate += TYRE.sand * spd;
   }
   car.tyreWear = clamp(wear + wearRate * rules.tyreWear * dt, 0, 1);
 
