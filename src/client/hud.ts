@@ -9,6 +9,24 @@ export interface Label {
   missed?: { dx: number; dy: number };
 }
 
+/** How long the FINAL LAP banner stays up after crossing the line. */
+export const FINAL_LAP_SECONDS = 2.5;
+
+/** True while this car is on the last lap of a race longer than one lap. */
+export function onFinalLap(state: GameState, car: CarState): boolean {
+  return state.totalLaps > 1 && car.finishTick === null && car.lapsCompleted === state.totalLaps - 1;
+}
+
+/** Humans who started their last lap within the last `FINAL_LAP_SECONDS`, with the banner's remaining seconds. */
+export function finalLapBanners(state: GameState, humanIds: number[], tickNow: number): { car: CarState; left: number }[] {
+  if (state.phase !== 'racing') return [];
+  return humanIds
+    .map((id) => state.cars[id])
+    .filter((car) => car && onFinalLap(state, car))
+    .map((car) => ({ car, left: FINAL_LAP_SECONDS - (tickNow - car.lapStartTick) / TICK_RATE }))
+    .filter((b) => b.left > 0);
+}
+
 export function drawHud(
   ctx: CanvasRenderingContext2D,
   state: GameState,
@@ -79,8 +97,8 @@ export function drawHud(
     rows.forEach(([label, value], i) => {
       ctx.fillStyle = 'rgba(255,255,255,0.6)';
       ctx.fillText(label, x + 14, y + 48 + i * 17);
-      ctx.fillStyle = label === 'Best' ? '#ffd54a' : '#fff';
-      ctx.fillText(value, x + 70, y + 48 + i * 17);
+      ctx.fillStyle = label === 'Best' || (label === 'Lap' && onFinalLap(state, car)) ? '#ffd54a' : '#fff';
+      ctx.fillText(label === 'Lap' && onFinalLap(state, car) ? `${value}  FINAL` : value, x + 70, y + 48 + i * 17);
     });
     const tyreLeft = 1 - Math.min(1, Math.max(0, car.tyreWear ?? 0));
     const fuelLeft = Math.min(1, Math.max(0, car.fuel ?? 1));
@@ -105,6 +123,18 @@ export function drawHud(
     bigText(ctx, 'GO!', cw / 2, ch / 2, big);
   } else if (state.phase === 'finished') {
     bigText(ctx, `${order[0].name} wins!`, cw / 2, ch / 2 - 20, big);
+  }
+  // Crossing the line onto the last lap.
+  const banners = finalLapBanners(state, humanIds, tickNow);
+  banners.forEach(({ car, left }, i) => {
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, left / 0.5);
+    const size = compact ? 34 : 52;
+    const y = ch * 0.28 + i * (size + 14);
+    bigText(ctx, humanIds.length > 1 ? `FINAL LAP — ${car.name}` : 'FINAL LAP', cw / 2, y, size, '#ffd54a');
+    ctx.restore();
+  });
+  if (state.phase === 'finished') {
     ctx.font = `600 ${compact ? 14 : 18}px system-ui, sans-serif`;
     ctx.fillStyle = '#fff';
     ctx.fillText(finishHint, cw / 2, ch / 2 + 36);
@@ -274,8 +304,10 @@ function drawCompact(
     ctx.font = '500 11px ui-monospace, SFMono-Regular, Menlo, monospace';
     const lap = Math.min(car.lapsCompleted + 1, state.totalLaps);
     const running = car.finishTick !== null ? 0 : Math.max(0, tickNow - car.lapStartTick);
+    const final = onFinalLap(state, car);
+    ctx.fillStyle = final ? '#ffd54a' : '#fff';
+    ctx.fillText(car.finishTick !== null ? 'FINISHED' : final ? 'FINAL LAP' : `Lap ${lap}/${state.totalLaps}`, x + 10, y + 34);
     ctx.fillStyle = '#fff';
-    ctx.fillText(car.finishTick !== null ? 'FINISHED' : `Lap ${lap}/${state.totalLaps}`, x + 10, y + 34);
     ctx.textAlign = 'right';
     ctx.fillText(state.phase === 'countdown' ? '0:00.000' : ticksToTime(running), x + w - 8, y + 34);
     ctx.textAlign = 'left';
@@ -376,11 +408,11 @@ function drawRemainBar(
   ctx.textAlign = 'left';
 }
 
-function bigText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size = 72) {
+function bigText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size = 72, color = '#fff') {
   ctx.font = `800 ${size}px system-ui, sans-serif`;
   ctx.lineWidth = 8;
   ctx.strokeStyle = 'rgba(0,0,0,0.6)';
   ctx.strokeText(text, x, y);
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = color;
   ctx.fillText(text, x, y);
 }
