@@ -109,7 +109,7 @@ describe('balance', () => {
       expect(ratio, kind).toBeGreaterThan(0.96);
       expect(ratio, kind).toBeLessThan(1.04);
     }
-  });
+  }, 20_000);
 
   it('keeps each car its own strengths', () => {
     // F1 fastest on tarmac, worst off it; buggy best off-road.

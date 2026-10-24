@@ -129,6 +129,7 @@ export function createRace(config: RaceConfig): GameState {
     props: conesFromTrack(track),
     cars,
     fastestLaps: copyFastestLaps(config.fastestLaps),
+    trackRecord: config.trackRecord ? (copyFastestLaps([config.trackRecord])[0] ?? null) : null,
   };
 }
 

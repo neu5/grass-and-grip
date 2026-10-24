@@ -1,7 +1,7 @@
 import './style.css';
 import { fillFastestList } from './client/fastestBoard';
 import { trackLabelHtml } from './client/trackLabel';
-import { persistFastestLaps } from './client/fastestStore';
+import { loadFastestLaps, persistFastestLaps } from './client/fastestStore';
 import { BINDINGS_SOLO, Keyboard, mergeInputs, NO_PLAYER_INPUT } from './client/input';
 import { loadCustomTracks } from './client/customTracks';
 import { mountLapsPicker } from './client/lapsPicker';
@@ -241,9 +241,13 @@ function onSnapshot(raw: CompactSnapshot) {
   while (snapTimes[0] < now - 1000) snapTimes.shift();
   lastAck = raw.ack;
   const state = decodeSnapshot(raw, remotes.latest ?? predicted ?? undefined);
-  persistFastestLaps(state.trackId, state.fastestLaps ?? []);
   renderer.setTrack(state.trackId);
-  if (remotes.length === 0) renderer.resetRace();
+  if (remotes.length === 0) {
+    renderer.resetRace();
+    // Record from before this race; the saved laps already include the room's board.
+    state.trackRecord = loadFastestLaps(state.trackId)[0] ?? null;
+  }
+  persistFastestLaps(state.trackId, state.fastestLaps ?? []);
   remotes.push(state, now);
   renderer.onTick(state);
   const carId = myCarId();
