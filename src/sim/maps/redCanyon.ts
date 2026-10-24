@@ -6,7 +6,7 @@ export const RED_CANYON: MapDesign = {
   name: 'Red Canyon',
   width: 1200,
   height: 800,
-  halfWidth: 50,
+  halfWidth: 68,
   checkpointCount: 8,
   pits: { heading: 'east', side: 'right' },
   theme: 'desert',
@@ -103,9 +103,6 @@ export const RED_CANYON: MapDesign = {
   ],
   // Tyre walls on the outside of the two hairpins.
   barriers: [
-    { a: { x: 1170, y: 160 }, b: { x: 1150, y: 15 } },
-    { a: { x: 1150, y: 15 }, b: { x: 1000, y: 10 } },
-    { a: { x: 720, y: 508 }, b: { x: 580, y: 508 } },
   ],
   decor: [
     { kind: 'mesa', x: 345, y: 330, w: 190, d: 170, h: 75 },
@@ -121,7 +118,6 @@ export const RED_CANYON: MapDesign = {
     { x: 656, y: 120, r: 14, kind: 'rock' },
     { x: 650, y: 80, r: 14, kind: 'rock' },
     { x: 653, y: 40, r: 14, kind: 'rock' },
-    { x: 925, y: 160, r: 16, kind: 'rock' },
     { x: 890, y: 180, r: 14, kind: 'rock' },
     { x: 960, y: 185, r: 14, kind: 'rock' },
     { x: 1170, y: 690, r: 18, kind: 'rock' },

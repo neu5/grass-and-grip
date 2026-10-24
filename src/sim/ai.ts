@@ -557,6 +557,12 @@ function pitSteer(car: CarState, ai: AiMemory, track: Track, cars: CarState[]): 
   if (ai.pitPhase === 'box') {
     ai.reverseTicks = 0;
     ai.stuckTicks = 0;
+    // Nudged out of the stall before the job was done: drive back in.
+    if (!aiPitReady(car) && pitBoxIndex(track, car.x, car.y) !== ai.pitBox) {
+      ai.pitPhase = 'enter';
+      const c = boxCenter(track, ai.pitBox);
+      return c ? driveTo(car, c.x, c.y, 0.4, true) : sit();
+    }
     if (aiPitReady(car)) {
       ai.pitPhase = 'exit';
     } else {

@@ -49,8 +49,8 @@ export function mapSizeOf(def: { width: number; height: number }): MapSize {
 /** The start line stays here for every size; resizing scales away from it. */
 const ANCHOR = { x: 400, y: 210 };
 export const CUSTOM_PREFIX = 'custom-';
-export const MIN_HALF_WIDTH = 40;
-export const MAX_HALF_WIDTH = 70;
+export const MIN_HALF_WIDTH = 50;
+export const MAX_HALF_WIDTH = 95;
 /** Clearance from the road to the water under an auto bridge deck. */
 const BRIDGE_CLEARANCE = 16;
 const MIN_DECK_HEIGHT = 22;
@@ -79,7 +79,7 @@ export function starterTrack(id: string, name: string, size: MapSize = 'medium')
     name,
     width: MAP_WIDTH,
     height: MAP_HEIGHT,
-    halfWidth: 54,
+    halfWidth: 72,
     checkpointCount: 8,
     controlPoints: [
       { x: 400, y: 210 },

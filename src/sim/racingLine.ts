@@ -13,6 +13,8 @@ const EVEN_SCALES = [12, 6, 3, 2, 1];
 const EVEN_ITERATIONS = 60;
 const EVEN_STEP = 0.4;
 const EVEN_PROBE = 0.5;
+/** Share of a corner's radius the line may cut toward its centre. */
+const INSIDE_SHARE = 0.9;
 
 export interface RacingLine {
   /** Lateral offset from the centerline sample, along its normal. */
@@ -44,6 +46,20 @@ export function racingLine(track: Track): RacingLine {
   const nrm = track.normals;
   const n = s.length;
   const limit = Math.max(0, track.def.halfWidth - LINE_MARGIN);
+  // On a corner tighter than the road is wide, the inside edge folds over
+  // itself: keep the line well short of the corner's centre there.
+  const lo = new Array<number>(n).fill(-limit);
+  const hi = new Array<number>(n).fill(limit);
+  for (let i = 0; i < n; i++) {
+    let k = 0;
+    for (let d = -6; d <= 6; d++) {
+      const c = signedCurvature(s[(i + d - 2 + n * 2) % n], s[(i + d + n) % n], s[(i + d + 2 + n) % n]);
+      if (Math.abs(c) > Math.abs(k)) k = c;
+    }
+    const inside = Math.abs(k) > 1e-6 ? INSIDE_SHARE / Math.abs(k) : Infinity;
+    if (k > 0) hi[i] = Math.min(limit, inside);
+    else if (k < 0) lo[i] = Math.max(-limit, -inside);
+  }
   const offset = new Array<number>(n).fill(0);
   const at = (i: number) => {
     const k = ((i % n) + n) % n;
@@ -58,7 +74,7 @@ export function racingLine(track: Track): RacingLine {
         const my = (a.y + b.y) / 2 - s[i].y;
         const want = mx * nrm[i].x + my * nrm[i].y;
         const next = offset[i] + (want - offset[i]) * LINE_STEP;
-        offset[i] = next < -limit ? -limit : next > limit ? limit : next;
+        offset[i] = next < lo[i] ? lo[i] : next > hi[i] ? hi[i] : next;
       }
     }
   }
@@ -81,7 +97,7 @@ export function racingLine(track: Track): RacingLine {
         const slope = (probe - here) / EVEN_PROBE;
         if (Math.abs(slope) < 1e-9) continue;
         const moved = o + ((want - here) / slope) * EVEN_STEP;
-        offset[k] = moved < -limit ? -limit : moved > limit ? limit : moved;
+        offset[k] = moved < lo[k] ? lo[k] : moved > hi[k] ? hi[k] : moved;
       }
     }
   }
