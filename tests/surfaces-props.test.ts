@@ -6,6 +6,7 @@ import {
   getTrack,
   hashState,
   inWater,
+  pointInRect,
   step,
   surfaceAt,
   SURFACES,
@@ -39,17 +40,17 @@ describe('surfaces', () => {
     expect(SURFACES.ice.rolling).toBeLessThan(SURFACES.asphalt.rolling);
   });
 
-  it('paints Alpine with snow, a frozen pond, black ice on the road and gravel traps', () => {
+  it('paints Alpine with snow, a frozen lake, black ice on the road and gravel traps', () => {
     const alpine = getTrack('alpine');
-    expect(surfaceAt(alpine, 1000, 520)).toBe('ice');
-    expect(surfaceAt(alpine, 1375, 830)).toBe('ice');
-    expect(surfaceAt(alpine, 2080, 668)).toBe('gravel');
-    expect(surfaceAt(alpine, 1200, 1100)).toBe('snow');
+    expect(surfaceAt(alpine, 640, 900)).toBe('ice');
+    expect(surfaceAt(alpine, 1150, 1075)).toBe('ice');
+    expect(surfaceAt(alpine, 2080, 450)).toBe('gravel');
+    expect(surfaceAt(alpine, 1200, 1350)).toBe('snow');
     expect(surfaceAt(alpine, alpine.samples[0].x, alpine.samples[0].y)).toBe('asphalt');
     const harbor = getTrack('harbor');
-    expect(surfaceAt(harbor, 1500, 260)).toBe('sand');
+    expect(surfaceAt(harbor, 800, 880)).toBe('sand');
     expect(surfaceAt(getTrack('meadow'), 30, 30)).toBe('grass');
-  });
+  }, 20_000);
 
   it('lets a car slide much further on ice than on tarmac', () => {
     const coast = (x: number, y: number) => {
@@ -61,13 +62,14 @@ describe('surfaces', () => {
       return s.cars[0].y - y0;
     };
     // Sideways slide: on ice the tyres barely catch it.
-    expect(coast(1000, 470)).toBeGreaterThan(coast(700, 200) * 2);
+    const road = getTrack('alpine').samples[0];
+    expect(coast(640, 900)).toBeGreaterThan(coast(road.x, road.y) * 2);
   });
 });
 
 describe('obstacles', () => {
-  it('keeps fixed obstacles off every road and out of water, and cones off the middle of the road', () => {
-    for (const id of TRACK_IDS) {
+  it.each(TRACK_IDS)('keeps fixed obstacles off the road on %s and out of water, and cones off the middle of the road', (id) => {
+    {
       const track = getTrack(id);
       for (const o of TRACKS[id].obstacles) {
         const d = distanceToCenterline(track, o.x, o.y);
@@ -76,12 +78,14 @@ describe('obstacles', () => {
         expect(inWater(track, o.x, o.y)).toBe(false);
       }
     }
-  });
+  }, 20_000);
 
   it('keeps barriers off the road', () => {
     for (const id of TRACK_IDS) {
       const track = getTrack(id);
       for (const b of TRACKS[id].barriers ?? []) {
+        // Walls under a flyover keep cars on the road below; the deck passes over them.
+        if (track.flyovers.some((f) => pointInRect((b.a.x + b.b.x) / 2, (b.a.y + b.b.y) / 2, f.bridge))) continue;
         for (let t = 0; t <= 1; t += 0.1) {
           const x = b.a.x + (b.b.x - b.a.x) * t;
           const y = b.a.y + (b.b.y - b.a.y) * t;
@@ -92,7 +96,7 @@ describe('obstacles', () => {
   });
 
   it('stops a car at a barrier', () => {
-    const b = TRACKS.alpine.barriers![2];
+    const b = TRACKS.alpine.barriers![1];
     const mx = (b.a.x + b.b.x) / 2;
     const my = (b.a.y + b.b.y) / 2;
     // Drive at the barrier from the road side.

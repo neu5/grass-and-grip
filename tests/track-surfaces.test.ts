@@ -255,13 +255,14 @@ describe('surfaces', () => {
     expect(sandSlip).toBeGreaterThan(grassSlip * 1.2);
   });
 
-  it('keeps meadow off-track as grass with no water, and sand only in the two traps', () => {
+  it('keeps meadow off-track as grass, with a pond to avoid and sand traps', () => {
     expect(surfaceAt(meadow, 30, 30)).toBe('grass');
-    expect(surfaceAt(meadow, 1540, 520)).toBe('sand');
+    expect(surfaceAt(meadow, 1178, 600)).toBe('sand');
+    expect(surfaceAt(meadow, 560, 350)).toBe('water');
     expect(meadow.def.patches?.every((p) => p.surface === 'sand')).toBe(true);
-    expect(meadow.def.patches).toHaveLength(2);
-    expect(meadow.def.rivers).toBeUndefined();
+    // The road never needs a bridge: the pond sits in the infield.
     expect(meadow.def.bridges).toBeUndefined();
+    for (const p of meadow.samples) expect(inWater(meadow, p.x, p.y)).toBe(false);
   });
 });
 

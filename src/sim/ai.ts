@@ -1,6 +1,6 @@
 import { clamp, datan2, dcos, dsin, normalizeAngle } from './dmath';
 import { carStats, tyreFactor, TYRE } from './physics';
-import { distanceToCenterline, inPitLane, nearestSampleIndex, pitBoxIndex, type Track } from './track';
+import { carSampleIndex, distanceToCenterline, inPitLane, pitBoxIndex, startAxis, type Rect, type Track } from './track';
 import { PIT } from './pits';
 import { missedGate, pastNextGate, racingLine, speedProfile, MISSED_GATE_DISTANCE } from './racingLine';
 import type { AiMemory, CarState, PlayerInput } from './types';
@@ -83,20 +83,34 @@ function boxCenter(track: Track, index: number): { x: number; y: number } | null
   return { x: b.x + b.w / 2, y: b.y + b.h / 2 };
 }
 
-function boxesMaxX(track: Track): number {
-  let maxX = track.def.pitLane.x;
-  for (const b of track.def.pitBoxes) maxX = Math.max(maxX, b.x + b.w);
-  return maxX;
+/** Distance along the start straight (the way the pits run). */
+function along(track: Track, p: { x: number; y: number }): number {
+  const u = startAxis(track);
+  return p.x * u.x + p.y * u.y;
+}
+
+/** First and last `along` reached by a rectangle. */
+function alongSpan(track: Track, r: Rect): [number, number] {
+  const a = along(track, { x: r.x, y: r.y });
+  const b = along(track, { x: r.x + r.w, y: r.y + r.h });
+  return a < b ? [a, b] : [b, a];
+}
+
+/** Where the last stall ends, along the straight. */
+function boxesEnd(track: Track): number {
+  let end = alongSpan(track, track.def.pitLane)[0];
+  for (const b of track.def.pitBoxes) end = Math.max(end, alongSpan(track, b)[1]);
+  return end;
 }
 
 /** Near the S/F pits, not yet past the stalls. */
 export function inPitApproach(track: Track, car: CarState): boolean {
   if (track.def.pitBoxes.length === 0) return false;
-  const idx = nearestSampleIndex(track, car.x, car.y);
+  const idx = carSampleIndex(track, car);
   const n = track.samples.length;
   if (idx >= n * 0.14 && idx <= n * 0.86) return false;
-  const lane = track.def.pitLane;
-  return car.x > lane.x - 180 && car.x < boxesMaxX(track) + 10;
+  const s = along(track, car);
+  return s > alongSpan(track, track.def.pitLane)[0] - 180 && s < boxesEnd(track) + 10;
 }
 
 /** Racing-line offset that hugs the pit-lane side without leaving the asphalt. */
@@ -112,22 +126,29 @@ function pitSideOffset(track: Track, idx: number): number {
   return toward >= 0 ? mag : -mag;
 }
 
+/** Wait in the lane just before the first stall, in line with the stalls. */
 function pitHoldPoint(track: Track): { x: number; y: number } {
-  const lane = track.def.pitLane;
-  let minX = lane.x + lane.w;
-  for (const b of track.def.pitBoxes) minX = Math.min(minX, b.x);
-  return { x: Math.max(lane.x + 28, minX - 24), y: lane.y + 36 };
+  const u = startAxis(track);
+  let first = track.def.pitBoxes[0];
+  for (const b of track.def.pitBoxes) if (alongSpan(track, b)[0] < alongSpan(track, first)[0]) first = b;
+  const c = { x: first.x + first.w / 2, y: first.y + first.h / 2 };
+  const hold = Math.max(alongSpan(track, track.def.pitLane)[0] + 28, alongSpan(track, first)[0] - 24);
+  const back = hold - along(track, c);
+  return { x: c.x + u.x * back, y: c.y + u.y * back };
 }
 
+/** A road point just past the end of the pit lane. */
 function pitRejoinPoint(track: Track): { x: number; y: number } {
-  const lane = track.def.pitLane;
-  const targetX = lane.x + lane.w + 28;
-  const sfy = track.samples[0].y;
+  const u = startAxis(track);
+  const sf = track.samples[0];
+  const ahead = alongSpan(track, track.def.pitLane)[1] + 28 - along(track, sf);
+  const tx = sf.x + u.x * ahead;
+  const ty = sf.y + u.y * ahead;
   let best = track.samples[0];
   let bestD = Infinity;
   for (const p of track.samples) {
-    const dx = p.x - targetX;
-    const dy = p.y - sfy;
+    const dx = p.x - tx;
+    const dy = p.y - ty;
     const d = dx * dx + dy * dy;
     if (d < bestD) {
       bestD = d;
@@ -139,8 +160,7 @@ function pitRejoinPoint(track: Track): { x: number; y: number } {
 
 function hasRejoined(track: Track, car: CarState): boolean {
   if (inPitLane(track, car.x, car.y)) return false;
-  const lane = track.def.pitLane;
-  return car.x > lane.x + lane.w - 40;
+  return along(track, car) > alongSpan(track, track.def.pitLane)[1] - 40;
 }
 
 function boxBusy(track: Track, cars: CarState[], box: number, selfId: number): boolean {
@@ -198,7 +218,7 @@ function sit(): PlayerInput {
 function centerSteer(car: CarState, ai: AiMemory, track: Track, laneOffset: number): PlayerInput {
   const speed = Math.sqrt(car.vx * car.vx + car.vy * car.vy);
   const n = track.samples.length;
-  const idx = nearestSampleIndex(track, car.x, car.y);
+  const idx = carSampleIndex(track, car);
   const look = 4 + Math.floor(speed / 70);
   const ti = (idx + look) % n;
   const target = track.samples[ti];
@@ -301,7 +321,7 @@ function raceDrive(car: CarState, ai: AiMemory, track: Track, cars: CarState[], 
   const line = racingLine(track);
   const n = line.points.length;
   const speed = Math.hypot(car.vx, car.vy);
-  const idx = nearestSampleIndex(track, car.x, car.y);
+  const idx = carSampleIndex(track, car);
   const level = clamp(ai.skill, 0, 1);
 
   // A checkpoint missed (pushed wide, cut, or round the gate end): go back for it.
@@ -443,7 +463,7 @@ function passLane(
   if (!ahead) return { offset: clamp(nudge, -edge, edge), speedCap: Infinity };
 
   // Pass on whichever side of the car ahead has more road left.
-  const io = nearestSampleIndex(track, ahead.x, ahead.y);
+  const io = carSampleIndex(track, ahead);
   const center = track.samples[io];
   const nrm = track.normals[io];
   const theirs = (ahead.x - center.x) * nrm.x + (ahead.y - center.y) * nrm.y;
@@ -494,7 +514,7 @@ function pitSteer(car: CarState, ai: AiMemory, track: Track, cars: CarState[]): 
   }
 
   if (ai.pitPhase === 'enter') {
-    if (!inPitLane(track, car.x, car.y) && car.x > boxesMaxX(track) + 20) {
+    if (!inPitLane(track, car.x, car.y) && along(track, car) > boxesEnd(track) + 20) {
       ai.pitPhase = 'race';
       ai.pitBox = -1;
       return null;
@@ -530,7 +550,7 @@ function pitSteer(car: CarState, ai: AiMemory, track: Track, cars: CarState[]): 
     if (inPitLane(track, car.x, car.y)) {
       return driveTo(car, c.x, c.y, 0.55, true);
     }
-    const idx = nearestSampleIndex(track, car.x, car.y);
+    const idx = carSampleIndex(track, car);
     return centerSteer(car, ai, track, pitSideOffset(track, idx));
   }
 

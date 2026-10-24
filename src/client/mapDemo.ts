@@ -43,8 +43,8 @@ export function mapDemoOptions(renderer: Renderer3D): GameOptions {
   const deck = track.def.bridges![0];
   const bridgeIdx = nearestSampleIndex(track, deck.x + deck.w / 2, deck.y + deck.h / 2);
   const approachIdx = Math.max(0, bridgeIdx - Math.floor(track.samples.length * 0.2));
-  // The river just upstream of the east bridge, then the runoff past the NE corner.
-  const water = { x: 1340, y: 482 };
+  // The west dock channel inland of its bridge, then the beach.
+  const water = { x: 528, y: 640 };
   const runoff = track.patches.find((p) => p.surface === 'sand')!.box;
   const sand = { x: runoff.x + runoff.w / 2, y: runoff.y + runoff.h / 2 };
   type Phase = 'show' | 'toBridge' | 'onBridge' | 'toWater' | 'inWater' | 'toSand';

@@ -150,6 +150,8 @@ export interface CompactCar {
   /** Crash damage 0–1000 (0 = fine, 1000 = wrecked). */
   dm: number;
   g: 0 | 1;
+  /** On a flyover deck. Omitted when not. */
+  dk?: 1;
   h: 0 | 1;
   lc: number;
   nc: number;

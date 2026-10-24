@@ -3,6 +3,8 @@ import {
   CARS,
   getTrack,
   heightAt,
+  carHeightAt,
+  carSampleIndex,
   isStoppedInPit,
   needsPitService,
   pitBoxIndex,
@@ -440,6 +442,9 @@ interface CrewActor {
   mesh: THREE.Group;
   restX: number;
   restY: number;
+  /** Unit vector from the road toward the pit wall behind this stall. */
+  wallX: number;
+  wallY: number;
   x: number;
   y: number;
   heading: number;
@@ -452,21 +457,38 @@ interface CrewActor {
   rightArm: THREE.Object3D;
 }
 
+/** Axis direction from the road to the wall side of the pits. */
+function pitWall(track: Track): { x: number; y: number } {
+  const b = track.def.pitBoxes[0];
+  if (!b) return { x: 0, y: -1 };
+  const cx = b.x + b.w / 2;
+  const cy = b.y + b.h / 2;
+  const p = track.samples[nearestSampleIndex(track, cx, cy)];
+  const dx = cx - p.x;
+  const dy = cy - p.y;
+  return Math.abs(dx) > Math.abs(dy) ? { x: Math.sign(dx), y: 0 } : { x: 0, y: Math.sign(dy) };
+}
+
 function spawnCrew(track: Track): CrewActor[] {
   const crew: CrewActor[] = [];
+  const wall = pitWall(track);
   track.def.pitBoxes.forEach((b, box) => {
     for (let slot = 0; slot < 2; slot++) {
-      const restX = b.x + b.w * (0.28 + slot * 0.44);
-      const restY = b.y - 12;
+      // Two crew per stall, standing at its wall side, spaced along the stall.
+      const t = 0.28 + slot * 0.44;
+      const restX = wall.x !== 0 ? b.x + b.w / 2 + wall.x * (b.w / 2 + 12) : b.x + b.w * t;
+      const restY = wall.y !== 0 ? b.y + b.h / 2 + wall.y * (b.h / 2 + 12) : b.y + b.h * t;
       const mesh = buildCrewPerson(CREW_SHIRTS[(box * 2 + slot) % CREW_SHIRTS.length]);
       mesh.position.set(restX, terrainHeightAt(track, restX, restY), restY);
       crew.push({
         mesh,
         restX,
         restY,
+        wallX: wall.x,
+        wallY: wall.y,
         x: restX,
         y: restY,
-        heading: Math.PI / 2,
+        heading: Math.atan2(-wall.y, -wall.x),
         box,
         slot,
         phase: 0,
@@ -483,9 +505,12 @@ function spawnCrew(track: Track): CrewActor[] {
 function buildPitDecor(track: Track): THREE.Group {
   const g = new THREE.Group();
   const lane = track.def.pitLane;
-  const curbH = terrainHeightAt(track, lane.x + lane.w / 2, lane.y + 2);
-  const curb = new THREE.Mesh(new THREE.BoxGeometry(lane.w, 3.2, 4), std('#d5d0c6'));
-  curb.position.set(lane.x + lane.w / 2, curbH + 1.6, lane.y + 2);
+  // Low wall along the far side of the lane.
+  const wall = pitWall(track);
+  const cx = wall.x === 0 ? lane.x + lane.w / 2 : wall.x > 0 ? lane.x + lane.w - 2 : lane.x + 2;
+  const cz = wall.y === 0 ? lane.y + lane.h / 2 : wall.y > 0 ? lane.y + lane.h - 2 : lane.y + 2;
+  const curb = new THREE.Mesh(new THREE.BoxGeometry(wall.x === 0 ? lane.w : 4, 3.2, wall.x === 0 ? 4 : lane.h), std('#d5d0c6'));
+  curb.position.set(cx, terrainHeightAt(track, cx, cz) + 1.6, cz);
   g.add(curb);
   const paint = std('#f6f6f6');
   const t = 1.8;
@@ -510,9 +535,9 @@ function crewTarget(actor: CrewActor, car: CarState | null, serving: boolean): {
   if (!car || !serving) return { x: actor.restX, y: actor.restY };
   const ca = Math.cos(car.angle);
   const sa = Math.sin(car.angle);
-  // Wall side of the stalls is -y, which is to the car's right when heading +x.
-  const rx = sa;
-  const ry = -ca;
+  // Work from the wall side of the car.
+  const rx = actor.wallX;
+  const ry = actor.wallY;
   if (actor.slot === 0) {
     return { x: car.x + rx * 16, y: car.y + ry * 16 };
   }
@@ -816,6 +841,16 @@ function buildBridge(track: Track, b: Bridge, deckTex: THREE.Texture): THREE.Gro
     g.add(bulb);
   }
 
+  // Flyover: concrete abutments at both ends of the deck, clear of the road below.
+  if (b.over !== undefined) {
+    for (const k of [0, span.length - 1]) {
+      const i = span[k];
+      const p = track.samples[i];
+      g.add(pillar(p.x, p.y, terrainHeightAt(track, p.x, p.y) - 2, under, 16, edge * 2 + 10, track.tangentAngles[i], concrete));
+    }
+    return g;
+  }
+
   // Stretch over water: arch springs from the abutments at each bank.
   const wet = span.map((i) => inWater(track, track.samples[i].x, track.samples[i].y));
   const ws = wet.indexOf(true);
@@ -1077,7 +1112,7 @@ export class Renderer3D {
     for (const actor of this.crew) {
       actor.x = actor.restX;
       actor.y = actor.restY;
-      actor.heading = Math.PI / 2;
+      actor.heading = Math.atan2(-actor.wallY, -actor.wallX);
       actor.phase = 0;
       actor.mesh.position.set(actor.x, terrainHeightAt(this.track, actor.x, actor.y), actor.y);
       actor.mesh.rotation.y = -actor.heading;
@@ -1342,9 +1377,9 @@ export class Renderer3D {
       const x = a.x + (b.x - a.x) * alpha;
       const y = a.y + (b.y - a.y) * alpha;
       const angle = lerpAngle(a.angle, b.angle, alpha);
-      const h = heightAt(this.track, x, y);
+      const h = carHeightAt(this.track, x, y, b.onDeck);
       const mesh = this.carMeshes[i];
-      const slope = slopeAttitude(this.track, x, y, angle);
+      const slope = slopeAttitude(this.track, x, y, angle, b.onDeck);
       const follow = 1 - Math.exp(-dt * 12);
       const targetRoll = slope.roll + bodyRoll(b);
       if (this.carPitch[i] == null) {
@@ -1388,7 +1423,7 @@ export class Renderer3D {
       const label: Label = { text: curr.cars[id].name, x: at.x, y: at.y };
       const car = curr.cars[id];
       if (curr.phase === 'racing' && car.finishTick === null) {
-        const idx = nearestSampleIndex(this.track, car.x, car.y);
+        const idx = carSampleIndex(this.track, car);
         if (missedGate(this.track, car, idx)) {
           const gate = this.track.gates[car.nextCheckpoint];
           const from = toScreen(positions[id]);

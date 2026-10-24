@@ -1,9 +1,13 @@
+import { normalizeAngle } from './dmath';
 import {
   buildTrack,
   distanceToCenterline,
   inBridge,
   inWater,
+  nearestSampleIndex,
   pitComplex,
+  pitComplexAt,
+  startHeading,
   PATCH_SURFACES,
   DECOR_KINDS,
   ROAD_SURFACES,
@@ -138,7 +142,8 @@ export function finalizeTrack(def: TrackDef): TrackDef {
     height: size.height,
     checkpointCount: 8,
     halfWidth: Math.min(MAX_HALF_WIDTH, Math.max(MIN_HALF_WIDTH, def.halfWidth)),
-    ...pitComplex(480),
+    // Pits beside the start line, on the chosen side.
+    ...pitComplexAt(def.controlPoints[0], startHeading(def.controlPoints), def.pitSide ?? 'left'),
     bridges: [],
   };
   return { ...base, bridges: autoBridges(base) };
@@ -187,6 +192,10 @@ const OBSTACLE_NAMES: Record<Obstacle['kind'], string> = { tree: 'tree', tyres: 
 /** What an imported track may use (hidden solids are for built-in scenery only). */
 const OBSTACLE_KINDS: Obstacle['kind'][] = ['tree', 'tyres', 'cone', 'rock', 'hay'];
 
+function nearRect(p: Vec2, r: { x: number; y: number; w: number; h: number }, pad: number): boolean {
+  return p.x > r.x - pad && p.x < r.x + r.w + pad && p.y > r.y - pad && p.y < r.y + r.h + pad;
+}
+
 export interface TrackProblem {
   message: string;
   /** Where to point at, if somewhere in particular. */
@@ -209,11 +218,17 @@ export function validateTrack(def: TrackDef, built?: Track): TrackProblem[] {
   const s = t.samples;
   const n = s.length;
 
-  // Start straight: heading east along the top, so the pits fit beside it.
+  // Start straight: along an axis, with the pits beside it and inside the map.
   const a0 = t.tangentAngles[0];
   const start = s[0];
-  if (Math.abs(a0) > 0.35 || start.y < 150 || start.y > 280 || start.x < 300 || start.x > 700) {
-    out.push({ message: 'Start line must be on an east-going straight near the top, beside the pits.', at: start });
+  const offAxis = Math.abs(normalizeAngle(a0 - Math.round(a0 / (Math.PI / 2)) * (Math.PI / 2)));
+  const lane = def.pitLane;
+  const pitsBeside = def.pitBoxes.every((b) => {
+    const k = nearestSampleIndex(t, b.x + b.w / 2, b.y + b.h / 2);
+    return k < n * 0.3 && distanceToCenterline(t, b.x + b.w / 2, b.y + b.h / 2) < 200;
+  });
+  if (offAxis > 0.35 || !pitsBeside || lane.x < 0 || lane.y < 0 || lane.x + lane.w > def.width || lane.y + lane.h > def.height) {
+    out.push({ message: 'Start line must be on a straight right beside the pits.', at: start });
   }
 
   // The road must not overlap itself.
@@ -226,6 +241,8 @@ export function validateTrack(def: TrackDef, built?: Track): TrackProblem[] {
     for (let j = i + 2; j < n; j += 2) {
       const along = Math.min(arc[j] - arc[i], lap - (arc[j] - arc[i]));
       if (along < clear * 2.5) continue;
+      // Roads may cross where one goes over the other on a flyover.
+      if (t.flyovers.some((f) => nearRect(s[i], f.bridge, def.halfWidth * 2) && nearRect(s[j], f.bridge, def.halfWidth * 2))) continue;
       if (Math.hypot(s[i].x - s[j].x, s[i].y - s[j].y) < clear) {
         overlap = s[i];
         break;
@@ -330,6 +347,7 @@ export function parseTrackDef(raw: unknown): TrackDef | null {
       };
     }),
     road: ROAD_SURFACES.includes(o.road as RoadSurface) ? (o.road as RoadSurface) : 'asphalt',
+    pitSide: o.pitSide === 'right' ? 'right' : 'left',
     theme: THEMES.includes(o.theme as Theme) ? (o.theme as Theme) : undefined,
     decor: (Array.isArray(o.decor) ? o.decor : [])
       .slice(0, LIMITS.decor)

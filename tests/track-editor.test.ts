@@ -12,6 +12,7 @@ import {
   MAP_SIZES,
   mapSizeOf,
   parseTrackDef,
+  pitComplex,
   registerTrack,
   resizeTrack,
   starterTrack,
@@ -130,7 +131,7 @@ describe('parsing untrusted tracks', () => {
     const def = parseTrackDef(raw)!;
     expect(def.halfWidth).toBe(70);
     expect(def.name.length).toBeLessThanOrEqual(24);
-    expect(def.pitBoxes).toEqual(TRACKS.meadow.pitBoxes.map((b) => ({ ...b, x: b.x - TRACKS.meadow.pitBoxes[0].x + 480 })));
+    expect(def.pitBoxes).toEqual(pitComplex(480).pitBoxes);
     expect(def.bridges).toHaveLength(2);
     expect(def.obstacles[0]).toMatchObject({ x: 0, r: 30, kind: 'tyres' });
   });
@@ -153,7 +154,7 @@ describe('map sizes', () => {
   });
 
   it('resizes a design to fit, keeping the start and pits in place', () => {
-    const harbor = finalizeTrack({ ...TRACKS.harbor, id: 'custom-harbor-size', bridges: [] });
+    const harbor = riverTrack('custom-river-size');
     for (const size of ['small', 'large'] as const) {
       const r = resizeTrack(harbor, size);
       expect(r.width).toBe(MAP_SIZES[size].width);

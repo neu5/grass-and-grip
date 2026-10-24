@@ -1,12 +1,6 @@
 import { statsFor, type CarState, type GameState, type Surface, type Track } from '../sim';
 import { themeLook, type EdgeStyle, type GroundPattern } from './themes';
 
-function tracePath(ctx: CanvasRenderingContext2D, track: Track) {
-  ctx.beginPath();
-  track.samples.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-  ctx.closePath();
-}
-
 /** Paints the ground, road, edges and the finish line in world units times `res`. */
 export function paintTrackSurface(track: Track, res: number): HTMLCanvasElement {
   const { width, height } = track.def;
@@ -29,8 +23,19 @@ export function paintTrackSurface(track: Track, res: number): HTMLCanvasElement 
 
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
-  if (track.def.road === 'dirt') paintDirtRoad(ctx, track);
-  else paintAsphaltRoad(ctx, track, look.edge, look.pattern === 'tiles');
+  paintRoad(ctx, track);
+  // Under each flyover: bare ground, then just the road that runs underneath.
+  for (const f of track.flyovers) {
+    const b = f.bridge;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(b.x, b.y, b.w, b.h);
+    ctx.clip();
+    ctx.fillStyle = ground.base;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    paintRoad(ctx, track, (i) => !f.raised[i]);
+    ctx.restore();
+  }
 
   const g = track.gates[0];
   const steps = 10;
@@ -63,6 +68,15 @@ function seeded(seed: number) {
     s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
     return s / 4294967296;
   };
+}
+
+/** The road in the map's style; `keep` paints only part of it. */
+function paintRoad(ctx: CanvasRenderingContext2D, track: Track, keep?: Keep) {
+  const look = themeLook(track.def);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  if (track.def.road === 'dirt') paintDirtRoad(ctx, track, keep);
+  else paintAsphaltRoad(ctx, track, look.edge, look.pattern === 'tiles', keep);
 }
 
 /** Texture over the plain ground colour. Fixed seeds, so it looks the same every load. */
@@ -105,16 +119,34 @@ function offsetLine(track: Track, off: number): { x: number; y: number }[] {
   return track.samples.map((p, i) => ({ x: p.x + track.normals[i].x * off, y: p.y + track.normals[i].y * off }));
 }
 
-function strokeLine(ctx: CanvasRenderingContext2D, pts: { x: number; y: number }[], closed = true) {
+/** Which samples to paint: all of them, or only some (the deck of a flyover, or the road under it). */
+type Keep = ((i: number) => boolean) | undefined;
+
+/** Path through `pts`: the closed loop, or open runs of kept samples. */
+function tracePoints(ctx: CanvasRenderingContext2D, pts: { x: number; y: number }[], keep: Keep) {
   ctx.beginPath();
-  pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-  if (closed) ctx.closePath();
+  if (!keep) {
+    pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+    ctx.closePath();
+    return;
+  }
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    if (!keep(i)) continue;
+    const next = pts[(i + 1) % n];
+    if (!keep((i - 1 + n) % n)) ctx.moveTo(pts[i].x, pts[i].y);
+    ctx.lineTo(next.x, next.y);
+  }
+}
+
+function strokeLine(ctx: CanvasRenderingContext2D, pts: { x: number; y: number }[], keep?: Keep) {
+  tracePoints(ctx, pts, keep);
   ctx.stroke();
 }
 
-function paintAsphaltRoad(ctx: CanvasRenderingContext2D, track: Track, edge: EdgeStyle, centreLine: boolean) {
+function paintAsphaltRoad(ctx: CanvasRenderingContext2D, track: Track, edge: EdgeStyle, centreLine: boolean, keep?: Keep) {
   const hw = track.def.halfWidth;
-  tracePath(ctx, track);
+  tracePoints(ctx, track.samples, keep);
   if (edge === 'curbs') {
     // Painted red and white curbs the whole way round.
     ctx.strokeStyle = '#f4f4f4';
@@ -151,11 +183,11 @@ function paintAsphaltRoad(ctx: CanvasRenderingContext2D, track: Track, edge: Edg
     ctx.stroke();
     ctx.setLineDash([]);
   }
-  if (edge === 'kerbs') paintKerbs(ctx, track);
+  if (edge === 'kerbs') paintKerbs(ctx, track, keep);
 }
 
 /** Red and white kerbs on both edges wherever the road bends. */
-function paintKerbs(ctx: CanvasRenderingContext2D, track: Track) {
+function paintKerbs(ctx: CanvasRenderingContext2D, track: Track, keep?: Keep) {
   const hw = track.def.halfWidth;
   const s = track.samples;
   const n = s.length;
@@ -169,7 +201,7 @@ function paintKerbs(ctx: CanvasRenderingContext2D, track: Track) {
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n;
     const len = track.segmentLengths[i];
-    if (bend[i] > 1 / 420) {
+    if (bend[i] > 1 / 420 && (!keep || keep(i))) {
       for (const side of [1, -1]) {
         const a0 = hw - 9;
         const a1 = hw + 4;
@@ -190,9 +222,9 @@ function paintKerbs(ctx: CanvasRenderingContext2D, track: Track) {
 }
 
 /** A rally stage: packed earth with soft edges, two worn ruts and loose stones. */
-function paintDirtRoad(ctx: CanvasRenderingContext2D, track: Track) {
+function paintDirtRoad(ctx: CanvasRenderingContext2D, track: Track, keep?: Keep) {
   const hw = track.def.halfWidth;
-  tracePath(ctx, track);
+  tracePoints(ctx, track.samples, keep);
   ctx.strokeStyle = 'rgba(122, 94, 62, 0.55)';
   ctx.lineWidth = hw * 2 + 18;
   ctx.stroke();
@@ -201,14 +233,14 @@ function paintDirtRoad(ctx: CanvasRenderingContext2D, track: Track) {
   ctx.stroke();
   ctx.strokeStyle = '#7b5d3f';
   ctx.lineWidth = 8;
-  for (const off of [-hw * 0.38, hw * 0.38]) strokeLine(ctx, offsetLine(track, off));
+  for (const off of [-hw * 0.38, hw * 0.38]) strokeLine(ctx, offsetLine(track, off), keep);
   ctx.strokeStyle = 'rgba(160, 128, 92, 0.6)';
   ctx.lineWidth = 3;
-  strokeLine(ctx, offsetLine(track, 0));
+  strokeLine(ctx, offsetLine(track, 0), keep);
   const rand = seeded(5);
   ctx.fillStyle = '#a58660';
   track.samples.forEach((p, i) => {
-    if (i % 2) return;
+    if (i % 2 || (keep && !keep(i))) return;
     const nrm = track.normals[i];
     for (let k = 0; k < 3; k++) {
       const off = (rand() * 2 - 1) * hw * 0.95;
@@ -294,6 +326,13 @@ export function splitBridgeDecks(surface: HTMLCanvasElement, track: Track, res: 
     const deck = document.createElement('canvas');
     deck.width = Math.round(b.w * res);
     deck.height = Math.round(b.h * res);
+    const fly = track.flyovers.find((f) => f.bridge === b);
+    if (fly) {
+      const dctx = deck.getContext('2d')!;
+      dctx.setTransform(res, 0, 0, res, -b.x * res, -b.y * res);
+      paintRoad(dctx, track, (i) => !!fly.raised[i]);
+      return deck;
+    }
     deck.getContext('2d')!.drawImage(surface, b.x * res, b.y * res, b.w * res, b.h * res, 0, 0, deck.width, deck.height);
     ctx.save();
     ctx.setTransform(res, 0, 0, res, 0, 0);

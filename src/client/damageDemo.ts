@@ -34,7 +34,8 @@ type Phase = 'hold' | 'ram' | 'back' | 'toPit' | 'wait' | 'out';
 
 /** Auto-drive crash → smoke, harder crash → fire, then a pit repair. `?demo=damage` */
 export function damageDemoOptions(): GameOptions {
-  const track = getTrack('meadow');
+  // Jungle Temple's pits back onto the north wall, which the demo drives into.
+  const track = getTrack('jungle');
   const box = track.def.pitBoxes[0];
   const boxX = box.x + box.w / 2;
   const boxY = box.y + box.h / 2;
@@ -48,6 +49,7 @@ export function damageDemoOptions(): GameOptions {
     humans: 1,
     aiCount: 0,
     laps: 1,
+    trackId: 'jungle',
     p1Car: 'f1',
     countdownSeconds: 0,
     setup: (state) => {

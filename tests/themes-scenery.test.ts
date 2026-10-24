@@ -41,7 +41,8 @@ describe('road surfaces', () => {
     expect(surfaceAt(t, p.x, p.y)).toBe('dirt');
     const box = t.def.pitBoxes[0];
     expect(surfaceAt(t, box.x + box.w / 2, box.y + box.h / 2)).toBe('asphalt');
-    expect(surfaceAt(getTrack('meadow'), p.x, p.y)).toBe('asphalt');
+    const meadow = getTrack('meadow');
+    expect(surfaceAt(meadow, meadow.samples[0].x, meadow.samples[0].y)).toBe('asphalt');
   });
 
   it('is quicker on tarmac than dirt, and much quicker than through mud', () => {
