@@ -919,3 +919,10 @@ button.secondary {
     padding: 3px 6px;
   }
 }
+
+.map-size {
+  margin-left: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.6;
+}

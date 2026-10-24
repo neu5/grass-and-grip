@@ -10,6 +10,7 @@ import {
   normalizeRules,
   normalizeSetup,
   step,
+  TRACK_IDS,
   type CarKind,
   type CarSetup,
   type CarState,
@@ -101,7 +102,8 @@ describe('balance', () => {
       for (let i = 0; i < 60 * 60 && s.phase !== 'finished'; i++) s = step(s, {});
       return s.cars[0].bestLapTicks!;
     };
-    const tracks = ['meadow', 'harbor', 'alpine'];
+    // Every map: dirt stages favour the buggy and hurt the F1, tarmac the other way round.
+    const tracks = [...TRACK_IDS];
     const rally = tracks.map((t) => lap(t, 'rally'));
     for (const kind of CAR_KINDS) {
       // Geometric mean of lap time relative to Rally.
@@ -109,7 +111,7 @@ describe('balance', () => {
       expect(ratio, kind).toBeGreaterThan(0.96);
       expect(ratio, kind).toBeLessThan(1.04);
     }
-  }, 20_000);
+  }, 90_000);
 
   it('keeps each car its own strengths', () => {
     // F1 fastest on tarmac, worst off it; buggy best off-road.

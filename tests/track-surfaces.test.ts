@@ -124,7 +124,7 @@ describe('harbor layout', () => {
 
   it('keeps obstacles off the road and out of the river', () => {
     for (const o of TRACKS.harbor.obstacles) {
-      expect(distanceToCenterline(track, o.x, o.y)).toBeGreaterThan(track.def.halfWidth + o.r);
+      if (o.kind !== 'cone') expect(distanceToCenterline(track, o.x, o.y)).toBeGreaterThan(track.def.halfWidth + o.r);
       expect(inWater(track, o.x, o.y)).toBe(false);
     }
   });
@@ -255,12 +255,14 @@ describe('surfaces', () => {
     expect(sandSlip).toBeGreaterThan(grassSlip * 1.2);
   });
 
-  it('keeps meadow off-track as grass, not water or sand', () => {
+  it('keeps meadow off-track as grass, with a pond to avoid and sand traps', () => {
     expect(surfaceAt(meadow, 30, 30)).toBe('grass');
-    expect(meadow.def.rivers).toBeUndefined();
-    expect(meadow.def.patches).toBeUndefined();
+    expect(surfaceAt(meadow, 1178, 600)).toBe('sand');
+    expect(surfaceAt(meadow, 560, 350)).toBe('water');
+    expect(meadow.def.patches?.every((p) => p.surface === 'sand')).toBe(true);
+    // The road never needs a bridge: the pond sits in the infield.
     expect(meadow.def.bridges).toBeUndefined();
-    expect(heightAt(meadow, meadow.samples[0].x, meadow.samples[0].y)).toBeCloseTo(0, 5);
+    for (const p of meadow.samples) expect(inWater(meadow, p.x, p.y)).toBe(false);
   });
 });
 

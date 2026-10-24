@@ -3,8 +3,8 @@ import { CAR_COLORS } from '../src/net/protocol';
 import { createRace, distanceToCenterline, distToSegmentSq, getTrack, step, TRACK_IDS } from '../src/sim';
 
 describe('checkpoint gates', () => {
-  it('stand on fairly straight road, not on a hairpin apex', () => {
-    for (const id of TRACK_IDS) {
+  it.each(TRACK_IDS)('stand on fairly straight road on %s, not on a hairpin apex', (id) => {
+    {
       const t = getTrack(id);
       t.gates.forEach((g, i) => {
         expect(1 / t.curvature[g.index], `${id} gate ${i + 1}`).toBeGreaterThan(250);
@@ -12,8 +12,8 @@ describe('checkpoint gates', () => {
     }
   });
 
-  it('cover the whole road and stop short of any other part of it', () => {
-    for (const id of TRACK_IDS) {
+  it.each(TRACK_IDS)('cover the whole road on %s and stop short of any other part of it', (id) => {
+    {
       const t = getTrack(id);
       const hw = t.def.halfWidth;
       const n = t.samples.length;

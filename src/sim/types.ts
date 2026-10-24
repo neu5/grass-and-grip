@@ -164,6 +164,8 @@ export interface CarState {
   /** 0 = fine, 1 = wrecked. Hits raise it; pit boxes repair it. */
   damage: number;
   onGrass: boolean;
+  /** On a flyover's deck (or its ramps) rather than the road below. Missing means no. */
+  onDeck?: boolean;
   handbrake: boolean;
   lapsCompleted: number;
   nextCheckpoint: number;

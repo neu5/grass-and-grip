@@ -1,5 +1,6 @@
 import './style.css';
 import { fillFastestList } from './client/fastestBoard';
+import { trackLabelHtml } from './client/trackLabel';
 import { loadFastestLaps, persistFastestLaps } from './client/fastestStore';
 import { BINDINGS_SOLO, Keyboard, mergeInputs, NO_PLAYER_INPUT } from './client/input';
 import { loadCustomTracks } from './client/customTracks';
@@ -9,11 +10,11 @@ import { drawNetDebug } from './client/netDebug';
 import { SoundEngine } from './client/audio';
 import { Renderer3D } from './client/renderer3d';
 import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
-import { SNAPSHOT_HZ, CAR_COLORS, CAR_KINDS, CAR_KIND_NAMES, CAR_KIND_SHORT, CAR_MODES, CAR_MODE_NAMES, COLOR_NAMES, MAX_PLAYERS, TRACK_IDS, TRACK_NAMES, parseCarKind, parseCarMode, type CarKind, type ClientMessage, type CompactSnapshot, type LobbyState, type ServerMessage, type TrackId } from './net/protocol';
+import { SNAPSHOT_HZ, CAR_COLORS, CAR_KINDS, CAR_KIND_NAMES, CAR_KIND_SHORT, CAR_MODES, CAR_MODE_NAMES, COLOR_NAMES, MAX_PLAYERS, TRACK_IDS, parseCarKind, parseCarMode, type CarKind, type ClientMessage, type CompactSnapshot, type LobbyState, type ServerMessage } from './net/protocol';
 import { SnapshotBuffer, mergeOwn } from './net/interpolate';
 import { InputQueue, lerpCar, reconcile, replaceCar } from './net/prediction';
 import { decodeSnapshot } from './net/snapshot';
-import { DT, parseTrackDef, registerTrack, stepOwnCar, type GameState, type PlayerInput, type TrackDef } from './sim';
+import { DT, parseTrackDef, registerTrack, stepOwnCar, TRACKS, type GameState, type PlayerInput, type TrackDef } from './sim';
 
 const MAX_STEPS_PER_FRAME = 8;
 const PING_EVERY_MS = 500;
@@ -75,14 +76,14 @@ radios($('#colors'), 'color', CAR_COLORS, (c) => COLOR_NAMES[c], (c) => `backgro
 radios($('#cars'), 'car', CAR_KINDS, (k) => CAR_KIND_SHORT[k as keyof typeof CAR_KIND_SHORT]);
 radios($('#ai'), 'ai', Array.from({ length: MAX_PLAYERS }, (_, i) => i), (v) => v);
 radios($('#carmode'), 'carmode', CAR_MODES, (v) => (v === 'mixed' ? CAR_MODE_NAMES.mixed : CAR_KIND_SHORT[v as keyof typeof CAR_KIND_SHORT]) ?? v);
-radios($('#track'), 'track', TRACK_IDS, (v) => TRACK_NAMES[v as TrackId] ?? v);
+radios($('#track'), 'track', TRACK_IDS, (v) => trackLabelHtml(TRACKS[v]));
 // The host's own editor tracks; picking one sends the whole track to the room.
 const myTracks = new Map<string, TrackDef>(loadCustomTracks().map((d) => [d.id, d]));
-radios($('#track'), 'track', [...myTracks.keys()], (id) => escapeHtml(myTracks.get(id)?.name ?? id));
+radios($('#track'), 'track', [...myTracks.keys()], (id) => trackLabelHtml(myTracks.get(id)!));
 /** Radio for a custom track the host picked that this player does not have. */
 function ensureTrackRadio(def: TrackDef) {
   if ($('#track').querySelector(`input[value="${CSS.escape(def.id)}"]`)) return;
-  radios($('#track'), 'track', [def.id], () => escapeHtml(def.name));
+  radios($('#track'), 'track', [def.id], () => trackLabelHtml(def));
 }
 const lapsPicker = mountLapsPicker($('#laps'), (laps) => {
   if (laps !== lobby?.laps) send({ t: 'settings', laps });

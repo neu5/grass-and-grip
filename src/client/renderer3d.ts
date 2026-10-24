@@ -3,13 +3,15 @@ import {
   CARS,
   getTrack,
   heightAt,
+  carHeightAt,
+  carSampleIndex,
   isStoppedInPit,
   needsPitService,
   pitBoxIndex,
   slopeAttitude,
   terrainHeightAt,
+  themeOf,
   toCarKind,
-  BARRIER_HALF,
   missedGate,
   nearestSampleIndex,
   bridgeSpan,
@@ -27,6 +29,8 @@ import type { SoundEngine } from './audio';
 import { checkpointDebugPose } from './checkpointDebug';
 import { soundEvents } from './soundEvents';
 import { drawHud, type Label } from './hud';
+import { buildBarriers, buildDecor, buildForest, buildHayBales, buildOutsideMesas, buildRocks, buildSkyline, type TreeSpot } from './scenery';
+import { themeLook } from './themes';
 import { paintTrackSurface, SkidMarks, splitBridgeDecks } from './trackTexture';
 
 export type CameraMode = 'follow' | 'overview';
@@ -359,71 +363,6 @@ function buildTyreStack(r: number): THREE.Group {
   return shadowed(g);
 }
 
-interface TreeSpot {
-  x: number;
-  y: number;
-  r: number;
-  h?: number;
-}
-
-const TREE_GREENS = ['#2f6e2a', '#3a7d31', '#2a6326'].map((c) => new THREE.Color(c));
-
-/** All trees as a handful of instanced meshes: one draw call per tree part. */
-const SNOW_TOP = new THREE.Color('#eef3f6');
-
-/** Pines; on a snowy map the top tier is white. */
-function buildForest(spots: TreeSpot[], winter = false): THREE.Group {
-  const g = new THREE.Group();
-  const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.18, 0.24, 0.9, 7).translate(0, 0.45, 0), std('#6b4a2b'), spots.length);
-  const tiers = [0, 1, 2].map(
-    (i) =>
-      new THREE.InstancedMesh(
-        new THREE.ConeGeometry(1.15 - i * 0.28, 1.3, 9).translate(0, 1.25 + i * 0.75, 0),
-        std('#ffffff', { flatShading: true }),
-        spots.length,
-      ),
-  );
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const up = new THREE.Vector3(0, 1, 0);
-  spots.forEach((t, i) => {
-    q.setFromAxisAngle(up, i * 1.7);
-    m.compose(new THREE.Vector3(t.x, t.h ?? 0, t.y), q, new THREE.Vector3(t.r, t.r, t.r));
-    trunk.setMatrixAt(i, m);
-    tiers.forEach((tier, k) => {
-      tier.setMatrixAt(i, m);
-      tier.setColorAt(i, winter && k === 2 ? SNOW_TOP : TREE_GREENS[(i + k) % 3]);
-    });
-  });
-  g.add(trunk, ...tiers);
-  return shadowed(g);
-}
-
-/** Red and white concrete blocks along each barrier line, riding the ground. */
-function buildBarriers(track: Track): THREE.Group {
-  const g = new THREE.Group();
-  const red = std('#c9372c', { roughness: 0.8 });
-  const white = std('#e9e6df', { roughness: 0.85 });
-  const block = 22;
-  for (const b of track.def.barriers ?? []) {
-    const dx = b.b.x - b.a.x;
-    const dy = b.b.y - b.a.y;
-    const len = Math.hypot(dx, dy);
-    const n = Math.max(1, Math.round(len / block));
-    const angle = Math.atan2(dy, dx);
-    for (let i = 0; i < n; i++) {
-      const t = (i + 0.5) / n;
-      const x = b.a.x + dx * t;
-      const z = b.a.y + dy * t;
-      const m = new THREE.Mesh(new THREE.BoxGeometry((len / n) * 0.96, 9, BARRIER_HALF * 2), i % 2 ? white : red);
-      m.position.set(x, terrainHeightAt(track, x, z) + 4, z);
-      m.rotation.y = -angle;
-      g.add(m);
-    }
-  }
-  return shadowed(g);
-}
-
 const coneMat = std('#ff6a1a', { roughness: 0.6 });
 const coneBandMat = std('#f4f4f4', { roughness: 0.5 });
 const coneBaseMat = std('#262626', { roughness: 0.8 });
@@ -503,6 +442,9 @@ interface CrewActor {
   mesh: THREE.Group;
   restX: number;
   restY: number;
+  /** Unit vector from the road toward the pit wall behind this stall. */
+  wallX: number;
+  wallY: number;
   x: number;
   y: number;
   heading: number;
@@ -515,21 +457,38 @@ interface CrewActor {
   rightArm: THREE.Object3D;
 }
 
+/** Axis direction from the road to the wall side of the pits. */
+function pitWall(track: Track): { x: number; y: number } {
+  const b = track.def.pitBoxes[0];
+  if (!b) return { x: 0, y: -1 };
+  const cx = b.x + b.w / 2;
+  const cy = b.y + b.h / 2;
+  const p = track.samples[nearestSampleIndex(track, cx, cy)];
+  const dx = cx - p.x;
+  const dy = cy - p.y;
+  return Math.abs(dx) > Math.abs(dy) ? { x: Math.sign(dx), y: 0 } : { x: 0, y: Math.sign(dy) };
+}
+
 function spawnCrew(track: Track): CrewActor[] {
   const crew: CrewActor[] = [];
+  const wall = pitWall(track);
   track.def.pitBoxes.forEach((b, box) => {
     for (let slot = 0; slot < 2; slot++) {
-      const restX = b.x + b.w * (0.28 + slot * 0.44);
-      const restY = b.y - 12;
+      // Two crew per stall, standing at its wall side, spaced along the stall.
+      const t = 0.28 + slot * 0.44;
+      const restX = wall.x !== 0 ? b.x + b.w / 2 + wall.x * (b.w / 2 + 12) : b.x + b.w * t;
+      const restY = wall.y !== 0 ? b.y + b.h / 2 + wall.y * (b.h / 2 + 12) : b.y + b.h * t;
       const mesh = buildCrewPerson(CREW_SHIRTS[(box * 2 + slot) % CREW_SHIRTS.length]);
       mesh.position.set(restX, terrainHeightAt(track, restX, restY), restY);
       crew.push({
         mesh,
         restX,
         restY,
+        wallX: wall.x,
+        wallY: wall.y,
         x: restX,
         y: restY,
-        heading: Math.PI / 2,
+        heading: Math.atan2(-wall.y, -wall.x),
         box,
         slot,
         phase: 0,
@@ -546,9 +505,12 @@ function spawnCrew(track: Track): CrewActor[] {
 function buildPitDecor(track: Track): THREE.Group {
   const g = new THREE.Group();
   const lane = track.def.pitLane;
-  const curbH = terrainHeightAt(track, lane.x + lane.w / 2, lane.y + 2);
-  const curb = new THREE.Mesh(new THREE.BoxGeometry(lane.w, 3.2, 4), std('#d5d0c6'));
-  curb.position.set(lane.x + lane.w / 2, curbH + 1.6, lane.y + 2);
+  // Low wall along the far side of the lane.
+  const wall = pitWall(track);
+  const cx = wall.x === 0 ? lane.x + lane.w / 2 : wall.x > 0 ? lane.x + lane.w - 2 : lane.x + 2;
+  const cz = wall.y === 0 ? lane.y + lane.h / 2 : wall.y > 0 ? lane.y + lane.h - 2 : lane.y + 2;
+  const curb = new THREE.Mesh(new THREE.BoxGeometry(wall.x === 0 ? lane.w : 4, 3.2, wall.x === 0 ? 4 : lane.h), std('#d5d0c6'));
+  curb.position.set(cx, terrainHeightAt(track, cx, cz) + 1.6, cz);
   g.add(curb);
   const paint = std('#f6f6f6');
   const t = 1.8;
@@ -573,9 +535,9 @@ function crewTarget(actor: CrewActor, car: CarState | null, serving: boolean): {
   if (!car || !serving) return { x: actor.restX, y: actor.restY };
   const ca = Math.cos(car.angle);
   const sa = Math.sin(car.angle);
-  // Wall side of the stalls is -y, which is to the car's right when heading +x.
-  const rx = sa;
-  const ry = -ca;
+  // Work from the wall side of the car.
+  const rx = actor.wallX;
+  const ry = actor.wallY;
   if (actor.slot === 0) {
     return { x: car.x + rx * 16, y: car.y + ry * 16 };
   }
@@ -650,6 +612,10 @@ function buildGantry(track: Track): THREE.Group {
 }
 
 /** Ground level beyond the boundary wall: the map's base, so it does not sit on a plateau. */
+function themeLookIsWinter(track: Track): boolean {
+  return themeOf(track.def) === 'winter';
+}
+
 function outsideLevel(track: Track): number {
   return track.def.terrain?.base ?? 0;
 }
@@ -696,12 +662,12 @@ function seededRandom(seed: number) {
   };
 }
 
-/** Cosmetic trees outside the walls; cars can never reach them, so they stay client-only. */
-function sceneryTrees(width: number, height: number): TreeSpot[] {
+/** Cosmetic scenery outside the walls; cars can never reach it, so it stays client-only. */
+function outsideSpots(width: number, height: number, count: number): { x: number; y: number; r: number }[] {
   const rand = seededRandom(7);
   const margin = 40;
-  const spots: TreeSpot[] = [];
-  for (let i = 0; i < 260; i++) {
+  const spots: { x: number; y: number; r: number }[] = [];
+  for (let i = 0; i < count; i++) {
     const x = -700 + rand() * (width + 1400);
     const y = -700 + rand() * (height + 1400);
     const r = 14 + rand() * 10;
@@ -729,32 +695,27 @@ function buildHeightGround(track: Track, map: THREE.Texture): THREE.Mesh {
   return mesh;
 }
 
+/**
+ * One water sheet at the water line over the whole map. The ground is opaque
+ * and only dips below the line in river beds, so the shore follows the banks
+ * exactly and lakes and rivers never overlap.
+ */
 function buildWater(track: Track): THREE.Group {
   const g = new THREE.Group();
+  if (!track.rivers.length) return g;
+  const { width, height } = track.def;
   const mat = new THREE.MeshStandardMaterial({
     color: '#1c6aa6',
     roughness: 0.16,
     metalness: 0.28,
     transparent: true,
-    opacity: 0.58,
+    opacity: 0.6,
     depthWrite: false,
-    side: THREE.DoubleSide,
   });
-  // A ribbon a little wider than the river; the banks rise over its edges.
-  for (const r of track.rivers) {
-    const pts = r.points;
-    const side = (s: number) =>
-      pts.map((p, i) => {
-        const a = pts[Math.max(0, i - 1)];
-        const b = pts[Math.min(pts.length - 1, i + 1)];
-        const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-        const off = s * (r.halfWidth + 10);
-        return new THREE.Vector3(p.x - ((b.y - a.y) / len) * off, WATER_SURFACE, p.y + ((b.x - a.x) / len) * off);
-      });
-    const mesh = sheet(side(-1), side(1), mat);
-    mesh.receiveShadow = true;
-    g.add(mesh);
-  }
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height).rotateX(-Math.PI / 2), mat);
+  mesh.position.set(width / 2, WATER_SURFACE, height / 2);
+  mesh.receiveShadow = true;
+  g.add(mesh);
   return g;
 }
 
@@ -880,6 +841,16 @@ function buildBridge(track: Track, b: Bridge, deckTex: THREE.Texture): THREE.Gro
     g.add(bulb);
   }
 
+  // Flyover: concrete abutments at both ends of the deck, clear of the road below.
+  if (b.over !== undefined) {
+    for (const k of [0, span.length - 1]) {
+      const i = span[k];
+      const p = track.samples[i];
+      g.add(pillar(p.x, p.y, terrainHeightAt(track, p.x, p.y) - 2, under, 16, edge * 2 + 10, track.tangentAngles[i], concrete));
+    }
+    return g;
+  }
+
   // Stretch over water: arch springs from the abutments at each bank.
   const wet = span.map((i) => inWater(track, track.samples[i].x, track.samples[i].y));
   const ws = wet.indexOf(true);
@@ -988,7 +959,7 @@ export class Renderer3D {
     this.gl.outputColorSpace = THREE.SRGBColorSpace;
     this.scene.background = new THREE.Color('#9fd3f0');
 
-    this.scene.add(new THREE.HemisphereLight('#dff1ff', '#3d5a2a', 1.15));
+    this.scene.add(this.hemi);
     const sun = new THREE.DirectionalLight('#fff4e0', 2.6);
     this.sun = sun;
     this.aimSun();
@@ -1021,6 +992,7 @@ export class Renderer3D {
   }
 
   private sun!: THREE.DirectionalLight;
+  private hemi = new THREE.HemisphereLight('#dff1ff', '#3d5a2a', 1.15);
 
   /** Centre the sun and its shadow box on the current map (sizes differ). */
   private aimSun() {
@@ -1052,7 +1024,11 @@ export class Renderer3D {
       new THREE.Vector2(width / 2 - far, height / 2 + far),
     ]);
     frame.holes.push(new THREE.Path([new THREE.Vector2(0, 0), new THREE.Vector2(0, height), new THREE.Vector2(width, height), new THREE.Vector2(width, 0)]));
-    const outer = new THREE.Mesh(new THREE.ShapeGeometry(frame).rotateX(Math.PI / 2), std(this.track.def.ground === 'snow' ? '#e3eaef' : '#4b9c40', { roughness: 1, side: THREE.DoubleSide }));
+    const look = themeLook(this.track.def);
+    (this.scene.background as THREE.Color).set(look.sky);
+    this.hemi.color.set(look.hemiSky);
+    this.hemi.groundColor.set(look.hemiGround);
+    const outer = new THREE.Mesh(new THREE.ShapeGeometry(frame).rotateX(Math.PI / 2), std(look.outside, { roughness: 1, side: THREE.DoubleSide }));
     outer.position.y = outsideLevel(this.track) - 0.5;
     outer.receiveShadow = true;
     this.world.add(outer);
@@ -1075,22 +1051,46 @@ export class Renderer3D {
     skidPlane.receiveShadow = true;
     this.world.add(skidPlane);
 
-    const trees: TreeSpot[] = sceneryTrees(width, height).map((t) => ({ ...t, h: outsideLevel(this.track) }));
+    const trees: TreeSpot[] = [];
+    const rocks: { x: number; y: number; r: number; h: number }[] = [];
+    const hay: { x: number; y: number; r: number; h: number }[] = [];
+    const skyline: { x: number; y: number; r: number; h: number }[] = [];
+    const mesas: { x: number; y: number; r: number; h: number }[] = [];
+    const base = outsideLevel(this.track);
+    const outsideKinds = look.outsideScenery;
+    const outsideCount = outsideKinds.includes('building') ? 160 : 260;
+    outsideSpots(width, height, outsideCount).forEach((t, i) => {
+      const kind = outsideKinds[i % outsideKinds.length];
+      if (kind === 'building') skyline.push({ ...t, h: base });
+      else if (kind === 'mesa') mesas.push({ ...t, h: base });
+      else if (kind === 'rock') rocks.push({ ...t, r: t.r * 1.4, h: base });
+      else trees.push({ ...t, h: base, style: kind });
+    });
+    let treeCount = 0;
     for (const o of this.track.def.obstacles) {
       const h = terrainHeightAt(this.track, o.x, o.y);
+      if (o.kind === 'cone' || o.kind === 'solid') continue; // Cones are live props; solids are invisible.
       if (o.kind === 'tree') {
-        trees.push({ ...o, h });
+        const style = look.trees[treeCount++ % look.trees.length];
+        trees.push({ ...o, h, style });
+        // Jungle trees stand in undergrowth (inside their own footprint).
+        if (style === 'broadleaf') trees.push({ x: o.x + o.r * 0.4, y: o.y - o.r * 0.2, r: o.r * 0.55, h, style: 'bush' });
         continue;
       }
-      const mesh = buildTyreStack(o.r);
-      mesh.position.set(o.x, h, o.y);
-      this.world.add(mesh);
+      if (o.kind === 'rock') rocks.push({ ...o, h });
+      else if (o.kind === 'hay') hay.push({ ...o, h });
+      else {
+        const mesh = buildTyreStack(o.r);
+        mesh.position.set(o.x, h, o.y);
+        this.world.add(mesh);
+      }
     }
+    this.world.add(buildRocks(rocks, look.rock), buildHayBales(hay), buildSkyline(skyline), buildOutsideMesas(mesas), buildDecor(this.track));
     this.crew = spawnCrew(this.track);
     for (const c of this.crew) this.world.add(c.mesh);
     this.checkpointDebug = buildCheckpointDebug(this.track);
     this.checkpointDebug.visible = debugOn;
-    this.world.add(buildPitDecor(this.track), buildGantry(this.track), buildWalls(this.track), buildBarriers(this.track), buildForest(trees, this.track.def.ground === 'snow'), this.checkpointDebug);
+    this.world.add(buildPitDecor(this.track), buildGantry(this.track), buildWalls(this.track), buildBarriers(this.track, look.barrier), buildForest(trees, themeLookIsWinter(this.track)), this.checkpointDebug);
   }
 
   resetRace() {
@@ -1112,7 +1112,7 @@ export class Renderer3D {
     for (const actor of this.crew) {
       actor.x = actor.restX;
       actor.y = actor.restY;
-      actor.heading = Math.PI / 2;
+      actor.heading = Math.atan2(-actor.wallY, -actor.wallX);
       actor.phase = 0;
       actor.mesh.position.set(actor.x, terrainHeightAt(this.track, actor.x, actor.y), actor.y);
       actor.mesh.rotation.y = -actor.heading;
@@ -1377,9 +1377,9 @@ export class Renderer3D {
       const x = a.x + (b.x - a.x) * alpha;
       const y = a.y + (b.y - a.y) * alpha;
       const angle = lerpAngle(a.angle, b.angle, alpha);
-      const h = heightAt(this.track, x, y);
+      const h = carHeightAt(this.track, x, y, b.onDeck);
       const mesh = this.carMeshes[i];
-      const slope = slopeAttitude(this.track, x, y, angle);
+      const slope = slopeAttitude(this.track, x, y, angle, b.onDeck);
       const follow = 1 - Math.exp(-dt * 12);
       const targetRoll = slope.roll + bodyRoll(b);
       if (this.carPitch[i] == null) {
@@ -1423,7 +1423,7 @@ export class Renderer3D {
       const label: Label = { text: curr.cars[id].name, x: at.x, y: at.y };
       const car = curr.cars[id];
       if (curr.phase === 'racing' && car.finishTick === null) {
-        const idx = nearestSampleIndex(this.track, car.x, car.y);
+        const idx = carSampleIndex(this.track, car);
         if (missedGate(this.track, car, idx)) {
           const gate = this.track.gates[car.nextCheckpoint];
           const from = toScreen(positions[id]);

@@ -2,7 +2,7 @@ import { aiInput, aiSkill, createAiMemory } from './ai';
 import { collideBounds, collideCars, collideCircle, collideSegment, NO_INPUT, stepCarPhysics } from './physics';
 import { coneOffCircle, conesFromTrack, hitCone, stepCone } from './props';
 import { applyPitService } from './pits';
-import { HEIGHT_SEPARATION, getTrack, heightAt, segmentsIntersect, surfaceAt, terrainHeightAt, type Track } from './track';
+import { HEIGHT_SEPARATION, carHeightAt, flyoverAt, getTrack, segmentsIntersect, surfaceAt, terrainHeightAt, updateDeck, type Track } from './track';
 import { copyFastestLaps, insertFastestLap } from './fastestLaps';
 import { DEFAULT_RULES, normalizeRules, normalizeSetup, toCarKind, type CarState, type GameState, type PlayerInput, type RaceConfig, type RaceRules, type TickInputs } from './types';
 
@@ -193,7 +193,8 @@ export function step(prev: GameState, inputs: TickInputs): GameState {
   }
 
   const cars = state.cars;
-  const heights = cars.map((c) => heightAt(track, c.x, c.y));
+  for (const car of cars) updateDeck(track, car);
+  const heights = cars.map((c) => carHeightAt(track, c.x, c.y, c.onDeck));
   for (let i = 0; i < cars.length; i++) {
     for (let j = i + 1; j < cars.length && rules.collisions; j++) {
       if (Math.abs(heights[i] - heights[j]) > HEIGHT_SEPARATION) continue;
@@ -235,7 +236,8 @@ export function stepOwnCar(prev: GameState, carId: number, input: PlayerInput): 
   const py = car.y;
   stepCarPhysics(car, use, surfaceAt(track, car.x, car.y), DT, rules);
   if (canDrive) applyPitService(car, track, DT);
-  collideObstacles(car, heightAt(track, car.x, car.y), track, rules);
+  updateDeck(track, car);
+  collideObstacles(car, carHeightAt(track, car.x, car.y, car.onDeck), track, rules);
   collideBounds(car, track.def.width, track.def.height, rules);
   if (canDrive) updateCheckpoints(state, car, track, px, py);
   return state;
@@ -255,7 +257,14 @@ function collideObstacles(car: CarState, height: number, track: Track, rules: Ra
     const mx = (b.a.x + b.b.x) / 2;
     const my = (b.a.y + b.b.y) / 2;
     if (Math.abs(height - terrainHeightAt(track, mx, my)) > HEIGHT_SEPARATION) continue;
+    // Walls under a flyover only stop the cars down there.
+    if (car.onDeck && flyoverAt(track, mx, my)) continue;
     collideSegment(car, b.a, b.b, BARRIER_HALF, rules);
+  }
+  // Railings keep cars on a flyover deck.
+  if (car.onDeck) {
+    const f = flyoverAt(track, car.x, car.y);
+    if (f) for (const r of f.rails) collideSegment(car, r.a, r.b, 2, rules);
   }
 }
 

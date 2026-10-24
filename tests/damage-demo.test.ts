@@ -5,9 +5,9 @@ import { createRace, getTrack, pitBoxIndex, step } from '../src/sim';
 describe('damage demo driver', () => {
   it('crashes into smoke, then fire, then pits and repairs', () => {
     const opts = damageDemoOptions();
-    const track = getTrack('meadow');
+    const track = getTrack('jungle');
     let s = createRace({
-      trackId: 'meadow',
+      trackId: 'jungle',
       totalLaps: 1,
       cars: [{ name: 'P1', color: '#e8443a', controller: 'human', kind: 'f1' }],
       countdownSeconds: 0,

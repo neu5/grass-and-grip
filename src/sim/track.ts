@@ -1,13 +1,50 @@
 import { datan2, normalizeAngle } from './dmath';
+import type { MapDesign } from './maps/design';
+import { ALPINE } from './maps/alpine';
+import { GRAND_PRIX } from './maps/grandPrix';
+import { HARBOR } from './maps/harbor';
+import { HARVEST_RALLY } from './maps/harvestRally';
+import { JUNGLE } from './maps/jungle';
+import { MEADOW } from './maps/meadow';
+import { OLD_TOWN } from './maps/oldTown';
+import { RED_CANYON } from './maps/redCanyon';
 
 export type Vec2 = { x: number; y: number };
 
-export type Surface = 'asphalt' | 'grass' | 'sand' | 'water' | 'gravel' | 'snow' | 'ice';
+export type Surface = 'asphalt' | 'grass' | 'sand' | 'water' | 'gravel' | 'snow' | 'ice' | 'dirt' | 'mud';
 
-/** Surfaces a patch can paint. */
-export const PATCH_SURFACES = ['grass', 'sand', 'gravel', 'snow', 'ice'] as const;
+/** Surfaces a patch can paint. Asphalt paints paved run-off; mud ploughed fields and puddles. */
+export const PATCH_SURFACES = ['grass', 'sand', 'gravel', 'snow', 'ice', 'asphalt', 'dirt', 'mud'] as const;
 
-export const TRACK_IDS = ['meadow', 'harbor', 'alpine'] as const;
+/** What the road itself is made of. */
+export type RoadSurface = 'asphalt' | 'dirt';
+export const ROAD_SURFACES: readonly RoadSurface[] = ['asphalt', 'dirt'];
+
+/**
+ * Look and feel of a map: ground colours, tree types, sky, barrier style.
+ * Purely visual; the surfaces decide how cars drive.
+ */
+export type Theme = 'meadow' | 'winter' | 'jungle' | 'desert' | 'city' | 'farm' | 'circuit';
+export const THEMES: readonly Theme[] = ['meadow', 'winter', 'jungle', 'desert', 'city', 'farm', 'circuit'];
+
+/** Scenery that is only drawn: cars never touch it, so keep it out of reach (behind barriers or off the road). */
+export type DecorKind = 'grandstand' | 'building' | 'house' | 'barn' | 'hut' | 'ruin' | 'billboard' | 'mesa' | 'tent';
+export const DECOR_KINDS: readonly DecorKind[] = ['grandstand', 'building', 'house', 'barn', 'hut', 'ruin', 'billboard', 'mesa', 'tent'];
+
+export interface Decor {
+  kind: DecorKind;
+  x: number;
+  y: number;
+  /** Footprint along its own axes, in world units. */
+  w: number;
+  d: number;
+  /** Turn about the vertical axis, radians. 0 means the long side runs along x. */
+  angle?: number;
+  /** Height for buildings and mesas. Each kind has a default. */
+  h?: number;
+}
+
+export const TRACK_IDS = ['oldtown', 'canyon', 'meadow', 'harbor', 'jungle', 'harvest', 'alpine', 'grandprix'] as const;
 export type TrackId = (typeof TRACK_IDS)[number];
 
 /** Marked stalls on tracks that have a pit lane. */
@@ -15,35 +52,75 @@ export const PIT_STALLS = 4;
 const PIT_BOX_W = 90;
 const PIT_BOX_H = 54;
 const PIT_BOX_GAP = 12;
-const PIT_BOX_Y = 32;
 const PIT_LANE_PAD = 20;
 
-export function pitComplex(firstBoxX: number): { pitLane: Rect; pitBoxes: Rect[] } {
+/** The shared start and pits of custom tracks: an east-going straight at the top. */
+export const DEFAULT_START: Vec2 = { x: 400, y: 210 };
+
+export type Heading = 'east' | 'west' | 'north' | 'south';
+const HEADING_VEC: Record<Heading, Vec2> = { east: { x: 1, y: 0 }, west: { x: -1, y: 0 }, north: { x: 0, y: -1 }, south: { x: 0, y: 1 } };
+
+/** Where the stalls start after the line, how far they sit from the road centre, and the lane around them. */
+const PIT_FIRST_ALONG = 80;
+const PIT_BOX_NEAR = 124;
+const PIT_LANE_NEAR = 18;
+const PIT_LANE_FAR = 198;
+
+/**
+ * Pit lane and four stalls beside the start straight. `heading` is the way
+ * cars drive over the line (an axis, so stalls stay plain rectangles) and
+ * `side` which side of the road the pits are on.
+ */
+export function pitComplexAt(start: Vec2, heading: Heading, side: 'left' | 'right'): { pitLane: Rect; pitBoxes: Rect[] } {
+  const u = HEADING_VEC[heading];
+  // Left of travel with y pointing down the screen.
+  const l = side === 'left' ? { x: u.y, y: -u.x } : { x: -u.y, y: u.x };
+  const rect = (a0: number, a1: number, d0: number, d1: number): Rect => {
+    const xs = [start.x + u.x * a0 + l.x * d0, start.x + u.x * a1 + l.x * d1];
+    const ys = [start.y + u.y * a0 + l.y * d0, start.y + u.y * a1 + l.y * d1];
+    const x = Math.min(...xs);
+    const y = Math.min(...ys);
+    return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
+  };
   const pitBoxes: Rect[] = [];
   for (let i = 0; i < PIT_STALLS; i++) {
-    pitBoxes.push({
-      x: firstBoxX + i * (PIT_BOX_W + PIT_BOX_GAP),
-      y: PIT_BOX_Y,
-      w: PIT_BOX_W,
-      h: PIT_BOX_H,
-    });
+    const a = PIT_FIRST_ALONG + i * (PIT_BOX_W + PIT_BOX_GAP);
+    pitBoxes.push(rect(a, a + PIT_BOX_W, PIT_BOX_NEAR, PIT_BOX_NEAR + PIT_BOX_H));
   }
-  const last = pitBoxes[PIT_STALLS - 1];
-  return {
-    pitLane: {
-      x: firstBoxX - PIT_LANE_PAD,
-      y: 12,
-      w: last.x + last.w + PIT_LANE_PAD - (firstBoxX - PIT_LANE_PAD),
-      h: 180,
-    },
-    pitBoxes,
-  };
+  const end = PIT_FIRST_ALONG + PIT_STALLS * (PIT_BOX_W + PIT_BOX_GAP) - PIT_BOX_GAP;
+  return { pitLane: rect(PIT_FIRST_ALONG - PIT_LANE_PAD, end + PIT_LANE_PAD, PIT_LANE_NEAR, PIT_LANE_FAR), pitBoxes };
+}
+
+/** The classic layout: stalls along the top, first one at `firstBoxX`. */
+export function pitComplex(firstBoxX: number): { pitLane: Rect; pitBoxes: Rect[] } {
+  return pitComplexAt({ x: firstBoxX - PIT_FIRST_ALONG, y: DEFAULT_START.y }, 'east', 'left');
+}
+
+/** The axis heading from the first control point toward the second. */
+export function startHeading(points: Vec2[]): Heading {
+  const dx = points[1].x - points[0].x;
+  const dy = points[1].y - points[0].y;
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'east' : 'west';
+  return dy >= 0 ? 'south' : 'north';
+}
+
+/** Unit direction of travel over the start line, snapped to the nearest axis. */
+export function startAxis(track: Track): Vec2 {
+  const a = track.tangentAngles[0];
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  return Math.abs(c) >= Math.abs(s) ? { x: Math.sign(c), y: 0 } : { x: 0, y: Math.sign(s) };
 }
 
 export const TRACK_NAMES: Record<TrackId, string> = {
   meadow: 'Meadow Ring',
   harbor: 'Harbor Bridge',
   alpine: 'Alpine Pass',
+  oldtown: 'Old Town',
+  canyon: 'Red Canyon',
+  jungle: 'Jungle Temple',
+  harvest: 'Harvest Rally',
+  grandprix: 'Grand Prix',
 };
 
 export function isTrackId(id: string | undefined): id is TrackId {
@@ -69,14 +146,23 @@ export interface Bridge {
   h: number;
   /** Deck height in world units. */
   height: number;
+  /**
+   * Set for a flyover: the heading (radians) of the stretch of road that runs
+   * over the deck. Another stretch of the same road passes underneath.
+   */
+  over?: number;
 }
 
 export interface Obstacle {
   x: number;
   y: number;
   r: number;
-  /** Trees and tyre stacks are fixed; cones get knocked about (see `GameState.props`). */
-  kind: 'tyres' | 'tree' | 'cone';
+  /**
+   * Trees, tyre stacks, rocks and hay bales are fixed; cones get knocked about
+   * (see `GameState.props`). `solid` is never drawn: it makes a building or ruin
+   * from `decor` something cars hit.
+   */
+  kind: 'tyres' | 'tree' | 'cone' | 'rock' | 'hay' | 'solid';
 }
 
 /** Painted ground: a polygon of one surface. */
@@ -123,6 +209,19 @@ export interface TrackDef {
   bridges?: Bridge[];
   /** Rolling ground. Flat at 0 when absent. */
   terrain?: Terrain;
+  /** The road: asphalt (default) or a dirt rally stage. */
+  road?: RoadSurface;
+  /** Visual theme. Default follows the ground: snow is winter, anything else meadow. */
+  theme?: Theme;
+  /** Buildings, grandstands and other drawn-only scenery. */
+  decor?: Decor[];
+  /** Which side of the start straight the pits are on. Default left. */
+  pitSide?: 'left' | 'right';
+}
+
+/** The theme a map is drawn with. */
+export function themeOf(def: Pick<TrackDef, 'theme' | 'ground'>): Theme {
+  return def.theme ?? (def.ground === 'snow' ? 'winter' : 'meadow');
 }
 
 /** Water within `halfWidth` of a smooth line through `points` (may run off the map). */
@@ -188,6 +287,21 @@ export interface Track {
   patches: PatchShape[];
   /** gates[0] is the start/finish line. */
   gates: Gate[];
+  /** Road-over-road bridges and the stretches that climb onto them. */
+  flyovers: Flyover[];
+}
+
+/** A flyover as built: which samples are on the deck and which climb to it. */
+export interface Flyover {
+  bridge: Bridge;
+  /** Samples on the deck, in driving order. */
+  deck: number[];
+  /** Raised samples (deck and ramps): `true` where the road is lifted. */
+  raised: Uint8Array;
+  /** Ramp samples well clear of the deck: driving here means you are going over. */
+  climb: number[];
+  /** Railing lines along both deck edges. */
+  rails: { a: Vec2; b: Vec2 }[];
 }
 
 const SAMPLES_PER_SEGMENT = 24;
@@ -195,6 +309,8 @@ const HEIGHT_GRID_STEP = 4;
 const HEIGHT_SMOOTH_PASSES = 8;
 /** Arc length over which the road eases onto a flat bridge deck. */
 const BRIDGE_RAMP = 220;
+/** A flyover climbs over this distance, so the slope stays gentle. */
+const FLYOVER_RAMP = 300;
 /** How far the land shape may drift from its target; bigger = rounder hills. */
 const TERRAIN_SMOOTH_LENGTH = 36;
 /** Distance from shore to full river depth. */
@@ -237,7 +353,7 @@ export function buildTrack(def: TrackDef, opts: { grid?: boolean } = {}): Track 
   if (def.terrain) {
     smoothAlongArc(samples, sampleHeights, ROAD_GRADE_SMOOTH);
     smoothClosed(sampleHeights, HEIGHT_SMOOTH_PASSES);
-    for (const b of def.bridges ?? []) easeOntoBridge(samples, sampleHeights, b);
+    for (const b of def.bridges ?? []) easeOntoBridge(samples, sampleHeights, b, flyoverDeck(samples, b));
   }
   const m = samples.length;
   const tangentAngles: number[] = [];
@@ -281,9 +397,68 @@ export function buildTrack(def: TrackDef, opts: { grid?: boolean } = {}): Track 
       index: idx,
     });
   }
-  const heightGrid = def.terrain && opts.grid !== false ? buildHeightGrid(def, samples, sampleHeights, rivers) : null;
+  const flyovers = (def.bridges ?? []).filter((b) => b.over !== undefined).map((b) => buildFlyover(def, samples, normals, b));
+  const heightGrid = def.terrain && opts.grid !== false ? buildHeightGrid(def, samples, sampleHeights, rivers, flyovers) : null;
   const patches = (def.patches ?? []).map(patchShape);
-  return { def, samples, tangentAngles, normals, segmentLengths, curvature, sampleHeights, heightGrid, rivers, patches, gates };
+  return { def, samples, tangentAngles, normals, segmentLengths, curvature, sampleHeights, heightGrid, rivers, patches, gates, flyovers };
+}
+
+/** Samples on a flyover deck: inside its rect and heading its way. All of them for a water bridge. */
+function flyoverDeck(samples: Vec2[], b: Bridge): boolean[] {
+  const n = samples.length;
+  return samples.map((p, i) => {
+    if (!pointInRect(p.x, p.y, b)) return false;
+    if (b.over === undefined) return true;
+    const q = samples[(i + 1) % n];
+    const r = samples[(i - 1 + n) % n];
+    const a = Math.atan2(q.y - r.y, q.x - r.x);
+    return Math.abs(Math.cos(a - b.over)) > 0.6;
+  });
+}
+
+/** Arc distance from each sample to the nearest marked one, both ways round the loop. */
+function arcDistance(samples: Vec2[], marked: boolean[]): number[] {
+  const n = samples.length;
+  const dist = marked.map((m) => (m ? 0 : Infinity));
+  for (let pass = 0; pass < 2; pass++) {
+    for (let k = 0; k < n * 2; k++) {
+      const i = pass === 0 ? k % n : (n * 2 - 1 - k) % n;
+      const j = pass === 0 ? (i - 1 + n) % n : (i + 1) % n;
+      const d = dist[j] + Math.hypot(samples[i].x - samples[j].x, samples[i].y - samples[j].y);
+      if (d < dist[i]) dist[i] = d;
+    }
+  }
+  return dist;
+}
+
+function buildFlyover(def: TrackDef, samples: Vec2[], normals: Vec2[], b: Bridge): Flyover {
+  const n = samples.length;
+  const onDeck = flyoverDeck(samples, b);
+  const dist = arcDistance(samples, onDeck);
+  const deck: number[] = [];
+  // Deck samples in driving order, starting where the road comes onto it.
+  let start = 0;
+  while (start < n && !(onDeck[start] && !onDeck[(start - 1 + n) % n])) start++;
+  for (let k = 0; k < n && onDeck[(start + k) % n]; k++) deck.push((start + k) % n);
+  const raised = new Uint8Array(n);
+  const climb: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (dist[i] <= FLYOVER_RAMP) raised[i] = 1;
+    if (dist[i] > def.halfWidth + 20 && dist[i] <= FLYOVER_RAMP && !pointInRect(samples[i].x, samples[i].y, b)) climb.push(i);
+  }
+  const rails: { a: Vec2; b: Vec2 }[] = [];
+  const off = def.halfWidth + BRIDGE_DECK_MARGIN - 2;
+  for (const side of [-1, 1]) {
+    for (let k = 0; k + 1 < deck.length; k += 2) {
+      const i = deck[k];
+      const j = deck[Math.min(deck.length - 1, k + 2)];
+      rails.push({
+        a: { x: samples[i].x + normals[i].x * off * side, y: samples[i].y + normals[i].y * off * side },
+        b: { x: samples[j].x + normals[j].x * off * side, y: samples[j].y + normals[j].y * off * side },
+      });
+    }
+  }
+  return { bridge: b, deck, raised, climb, rails };
 }
 
 function patchShape(p: SurfacePatch): PatchShape {
@@ -500,23 +675,13 @@ function smoothClosed(values: number[], passes: number): void {
   }
 }
 
-/** Holds the road at deck height on the bridge and eases it in over `BRIDGE_RAMP`. */
-function easeOntoBridge(samples: Vec2[], heights: number[], b: Bridge): void {
+/** Holds the road at deck height on the bridge and eases it in over the ramp length. */
+function easeOntoBridge(samples: Vec2[], heights: number[], b: Bridge, deck: boolean[]): void {
   const n = samples.length;
-  const dist = samples.map((p) => (pointInRect(p.x, p.y, b) ? 0 : Infinity));
-  // Arc distance to the deck, both ways round the closed loop.
-  for (let pass = 0; pass < 2; pass++) {
-    for (let k = 0; k < n * 2; k++) {
-      const i = pass === 0 ? k % n : (n * 2 - 1 - k) % n;
-      const j = pass === 0 ? (i - 1 + n) % n : (i + 1) % n;
-      const a = samples[i];
-      const c = samples[j];
-      const d = dist[j] + Math.hypot(a.x - c.x, a.y - c.y);
-      if (d < dist[i]) dist[i] = d;
-    }
-  }
+  const dist = arcDistance(samples, deck);
+  const ramp = b.over === undefined ? BRIDGE_RAMP : FLYOVER_RAMP;
   for (let i = 0; i < n; i++) {
-    const t = Math.min(1, dist[i] / BRIDGE_RAMP);
+    const t = Math.min(1, dist[i] / ramp);
     const w = 1 - t * t * (3 - 2 * t);
     heights[i] += (b.height - heights[i]) * w;
   }
@@ -527,13 +692,15 @@ function projectCenterline(
   heights: number[],
   x: number,
   y: number,
-): { dist: number; height: number } {
+  skip?: Uint8Array,
+): { dist: number; height: number; seg: number } {
   const n = samples.length;
   let best = Infinity;
   let height = heights[0] ?? 0;
   let seg = 0;
   let along = 0;
   for (let i = 0; i < n; i++) {
+    if (skip && (skip[i] || skip[(i + 1) % n])) continue;
     const a = samples[i];
     const b = samples[(i + 1) % n];
     const abx = b.x - a.x;
@@ -555,10 +722,10 @@ function projectCenterline(
   const h2 = heights[(seg + 1) % n];
   const h3 = heights[(seg + 2) % n];
   height = catmullRom1(h0, h1, h2, h3, along);
-  return { dist: Math.sqrt(best), height };
+  return { dist: Math.sqrt(best), height, seg };
 }
 
-function buildHeightGrid(def: TrackDef, samples: Vec2[], heights: number[], rivers: RiverLine[]): HeightGrid {
+function buildHeightGrid(def: TrackDef, samples: Vec2[], heights: number[], rivers: RiverLine[], flyovers: Flyover[] = []): HeightGrid {
   const step = HEIGHT_GRID_STEP;
   const cols = Math.floor(def.width / step) + 1;
   const rows = Math.floor(def.height / step) + 1;
@@ -576,7 +743,9 @@ function buildHeightGrid(def: TrackDef, samples: Vec2[], heights: number[], rive
     for (let c = 0; c < cols; c++) {
       const x = c * step;
       const i = r * cols + c;
-      const hit = projectCenterline(samples, heights, x, y);
+      // Under a flyover the ground follows the road below, not the deck.
+      const fly = flyovers.find((f) => pointInRect(x, y, f.bridge));
+      const hit = projectCenterline(samples, heights, x, y, fly?.raised);
       let t = (hit.dist - inner) / span;
       t = t < 0 ? 0 : t > 1 ? 1 : t;
       const s = t * t * (3 - 2 * t);
@@ -584,7 +753,9 @@ function buildHeightGrid(def: TrackDef, samples: Vec2[], heights: number[], rive
       target[i] = hit.height * (1 - s) + landHeight(def, rivers, x, y, edge) * s;
       const wet = edge <= 0;
       // Road over water is a bridge deck; on land it is solid (the abutments).
-      if (hit.dist <= def.halfWidth + 4 && !(wet && inAnyRect(x, y, def.bridges))) {
+      // Flyover ramps get a wide flat top so their walls stand at road height.
+      const ramp = !fly && flyovers.some((f) => f.raised[hit.seg]);
+      if (hit.dist <= def.halfWidth + (ramp ? 34 : 4) && !(wet && inAnyRect(x, y, def.bridges))) {
         target[i] = hit.height;
         pinned[i] = 1;
       } else if (wet) {
@@ -788,17 +959,93 @@ export function inWater(track: Track, x: number, y: number): boolean {
 /** Deck width past each road edge: curb stripe plus a footway under the rail. */
 export const BRIDGE_DECK_MARGIN = 15;
 
+/** A water bridge's deck under this point, if any (flyovers need the car's level: see `carHeightAt`). */
 export function bridgeAt(track: Track, x: number, y: number): Bridge | null {
   const bridges = track.def.bridges;
   if (!bridges) return null;
   for (const b of bridges) {
+    if (b.over !== undefined) continue;
     if (pointInRect(x, y, b) && distanceToCenterline(track, x, y) <= track.def.halfWidth + BRIDGE_DECK_MARGIN) return b;
   }
   return null;
 }
 
+/** The flyover whose deck covers this point, if any. */
+export function flyoverAt(track: Track, x: number, y: number): Flyover | null {
+  for (const f of track.flyovers) if (pointInRect(x, y, f.bridge)) return f;
+  return null;
+}
+
+/**
+ * Keep a car's level up to date: on a flyover's ramp it is going over; well
+ * away from the ramps it is on the ground; on and near the deck it keeps
+ * whichever it was, so a car under the bridge stays under it.
+ */
+export function updateDeck(track: Track, car: { x: number; y: number; onDeck?: boolean }): void {
+  if (!track.flyovers.length) return;
+  const hw = track.def.halfWidth;
+  const s = track.samples;
+  for (const f of track.flyovers) {
+    if (pointInRect(car.x, car.y, f.bridge)) return;
+    let near = Infinity;
+    for (const i of f.climb) near = Math.min(near, distToSegmentSq(car.x, car.y, s[i], s[(i + 1) % s.length]));
+    if (near <= (hw + 10) * (hw + 10)) {
+      car.onDeck = true;
+      return;
+    }
+  }
+  // Clear of every ramp and deck: back on the ground.
+  for (const f of track.flyovers) {
+    const b = f.bridge;
+    const cx = Math.max(b.x, Math.min(b.x + b.w, car.x));
+    const cy = Math.max(b.y, Math.min(b.y + b.h, car.y));
+    if (Math.hypot(car.x - cx, car.y - cy) < FLYOVER_RAMP + hw) {
+      let near = Infinity;
+      for (let i = 0; i < s.length; i++) if (f.raised[i]) near = Math.min(near, distToSegmentSq(car.x, car.y, s[i], s[(i + 1) % s.length]));
+      if (near < (hw + 30) * (hw + 30)) return;
+    }
+  }
+  if (car.onDeck) car.onDeck = false;
+}
+
+/** What a car's wheels roll on, taking its level at a flyover into account. */
+export function carHeightAt(track: Track, x: number, y: number, onDeck?: boolean): number {
+  if (onDeck) {
+    const f = flyoverAt(track, x, y);
+    if (f) return f.bridge.height;
+  }
+  return heightAt(track, x, y);
+}
+
+/** Nearest centerline sample to a car, picking the right road where two cross. */
+export function carSampleIndex(track: Track, car: { x: number; y: number; onDeck?: boolean }): number {
+  if (track.flyovers.length) {
+    const hw = track.def.halfWidth;
+    for (const f of track.flyovers) {
+      const b = f.bridge;
+      if (car.x < b.x - hw * 2 || car.x > b.x + b.w + hw * 2 || car.y < b.y - hw * 2 || car.y > b.y + b.h + hw * 2) continue;
+      // Near the crossing: only the stretch on this car's level.
+      const s = track.samples;
+      let best = Infinity;
+      let bi = 0;
+      for (let i = 0; i < s.length; i++) {
+        if (!!f.raised[i] !== !!car.onDeck) continue;
+        const d = (s[i].x - car.x) ** 2 + (s[i].y - car.y) ** 2;
+        if (d < best) {
+          best = d;
+          bi = i;
+        }
+      }
+      return bi;
+    }
+  }
+  return nearestSampleIndex(track, car.x, car.y);
+}
+
 /** Centerline sample indices on a bridge, in driving order. */
 export function bridgeSpan(track: Track, b: Bridge): number[] {
+  const fly = track.flyovers.find((f) => f.bridge === b);
+  if (fly) return fly.deck;
   const s = track.samples;
   const n = s.length;
   const inside = (i: number) => pointInRect(s[i].x, s[i].y, b);
@@ -820,7 +1067,9 @@ export function onRacingSurface(track: Track, x: number, y: number): boolean {
 export function surfaceAt(track: Track, x: number, y: number): Surface {
   const over = patchAt(track, x, y, true);
   if (over) return over;
-  if (onRacingSurface(track, x, y)) return 'asphalt';
+  // Pit lane and bridge decks are always paved; the road may be dirt.
+  if (inPitLane(track, x, y) || inBridge(track, x, y)) return 'asphalt';
+  if (distanceToCenterline(track, x, y) <= track.def.halfWidth) return track.def.road ?? 'asphalt';
   if (inWater(track, x, y)) return 'water';
   return patchAt(track, x, y, false) ?? track.def.ground ?? 'grass';
 }
@@ -860,16 +1109,18 @@ export function slopeAttitude(
   x: number,
   y: number,
   angle: number,
+  onDeck?: boolean,
 ): { pitch: number; roll: number } {
-  if (surfaceAt(track, x, y) === 'water') return { pitch: 0, roll: 0 };
+  if (surfaceAt(track, x, y) === 'water' && !onDeck) return { pitch: 0, roll: 0 };
+  const driveHeight = (px: number, py: number) => carHeightAt(track, px, py, onDeck);
   const ca = Math.cos(angle);
   const sa = Math.sin(angle);
   const along = 18;
   const across = 14;
-  const hF = driveHeight(track, x + along * ca, y + along * sa);
-  const hB = driveHeight(track, x - along * ca, y - along * sa);
-  const hL = driveHeight(track, x - across * sa, y + across * ca);
-  const hR = driveHeight(track, x + across * sa, y - across * ca);
+  const hF = driveHeight(x + along * ca, y + along * sa);
+  const hB = driveHeight(x - along * ca, y - along * sa);
+  const hL = driveHeight(x - across * sa, y + across * ca);
+  const hR = driveHeight(x + across * sa, y - across * ca);
   return {
     pitch: Math.max(-0.38, Math.min(0.38, Math.atan2(hB - hF, along * 2))),
     roll: Math.max(-0.28, Math.min(0.28, Math.atan2(hL - hR, across * 2))),
@@ -911,333 +1162,21 @@ export function segmentsIntersect(p: Vec2, q: Vec2, a: Vec2, b: Vec2): boolean {
 }
 
 export const TRACKS: Record<string, TrackDef> = {
-  meadow: {
-    id: 'meadow',
-    name: 'Meadow Ring',
-    width: 1600,
-    height: 1050,
-    halfWidth: 58,
-    checkpointCount: 8,
-    // Shifted south a bit vs the original layout so four pit stalls fit
-    // off the racing line, outside the start/finish straight.
-    controlPoints: [
-      { x: 420, y: 220 },
-      { x: 800, y: 200 },
-      { x: 1150, y: 215 },
-      { x: 1420, y: 310 },
-      { x: 1440, y: 500 },
-      { x: 1250, y: 580 },
-      { x: 990, y: 520 },
-      { x: 790, y: 590 },
-      { x: 800, y: 770 },
-      { x: 1080, y: 770 },
-      { x: 1380, y: 820 },
-      { x: 1330, y: 940 },
-      { x: 1000, y: 940 },
-      { x: 560, y: 920 },
-      { x: 260, y: 850 },
-      { x: 150, y: 610 },
-      { x: 190, y: 340 },
-    ],
-    obstacles: [
-      { x: 520, y: 570, r: 20, kind: 'tyres' },
-      { x: 600, y: 500, r: 16, kind: 'tyres' },
-      { x: 1180, y: 410, r: 18, kind: 'tyres' },
-      { x: 1580, y: 650, r: 18, kind: 'tyres' },
-      { x: 1480, y: 150, r: 16, kind: 'tree' },
-      { x: 130, y: 990, r: 18, kind: 'tree' },
-      { x: 100, y: 210, r: 15, kind: 'tree' },
-      { x: 430, y: 360, r: 17, kind: 'tree' },
-      { x: 1510, y: 930, r: 16, kind: 'tree' },
-      { x: 400, y: 690, r: 18, kind: 'tree' },
-      { x: 310, y: 570, r: 15, kind: 'tree' },
-      { x: 1390, y: 690, r: 16, kind: 'tree' },
-      { x: 730, y: 390, r: 17, kind: 'tree' },
-      { x: 640, y: 720, r: 15, kind: 'tree' },
-      { x: 1300, y: 120, r: 14, kind: 'tree' },
-      { x: 970, y: 390, r: 16, kind: 'tree' },
-    ],
-    // After the S/F line (x≈420), outside the racing line (smaller y).
-    ...pitComplex(500),
-  },
-  harbor: {
-    id: 'harbor',
-    name: 'Harbor Bridge',
-    width: 1600,
-    height: 1050,
-    halfWidth: 54,
-    checkpointCount: 8,
-    // Clockwise, but the south side folds up into the infield: a left-hand
-    // hairpin between two right-handers.
-    controlPoints: [
-      { x: 400, y: 210 },
-      { x: 620, y: 196 },
-      { x: 840, y: 190 },
-      { x: 1060, y: 205 },
-      { x: 1260, y: 250 },
-      { x: 1400, y: 330 },
-      { x: 1470, y: 450 },
-      { x: 1478, y: 580 },
-      { x: 1435, y: 710 },
-      { x: 1335, y: 810 },
-      { x: 1190, y: 870 },
-      { x: 1070, y: 840 },
-      { x: 1000, y: 760 },
-      { x: 975, y: 650 },
-      { x: 920, y: 560 },
-      { x: 830, y: 540 },
-      { x: 750, y: 590 },
-      { x: 720, y: 700 },
-      { x: 690, y: 820 },
-      { x: 600, y: 900 },
-      { x: 450, y: 930 },
-      { x: 300, y: 895 },
-      { x: 190, y: 800 },
-      { x: 150, y: 660 },
-      { x: 160, y: 520 },
-      { x: 200, y: 390 },
-      { x: 270, y: 270 },
-    ],
-    // Enters from the east, winds through the infield, leaves to the west.
-    rivers: [
-      {
-        halfWidth: 30,
-        points: [
-          { x: 1760, y: 560 },
-          { x: 1600, y: 535 },
-          { x: 1470, y: 515 },
-          { x: 1320, y: 470 },
-          { x: 1160, y: 405 },
-          { x: 1000, y: 372 },
-          { x: 850, y: 380 },
-          { x: 700, y: 420 },
-          { x: 560, y: 485 },
-          { x: 420, y: 560 },
-          { x: 290, y: 600 },
-          { x: 150, y: 605 },
-          { x: 0, y: 595 },
-          { x: -160, y: 590 },
-        ],
-      },
-    ],
-    terrain: {
-      base: 12,
-      hills: [
-        { x: 1215, y: 665, r: 135, h: 115 },
-        { x: 470, y: 745, r: 160, h: 105 },
-        { x: 860, y: 900, r: 125, h: 95 },
-        { x: 1200, y: 320, r: 110, h: 40 },
-        { x: 600, y: 330, r: 95, h: 32 },
-        { x: 1600, y: 760, r: 170, h: 65 },
-        { x: 1580, y: 40, r: 210, h: 90 },
-        { x: 1600, y: 1050, r: 270, h: 130 },
-        { x: 0, y: 1050, r: 250, h: 120 },
-        { x: 0, y: 0, r: 210, h: 85 },
-      ],
-    },
-    bridges: [
-      { x: 1385, y: 438, w: 180, h: 160, height: 40 },
-      { x: 64, y: 528, w: 176, h: 160, height: 28 },
-    ],
-    patches: [
-      rectPatch('sand', { x: 1440, y: 190, w: 150, h: 150 }),
-      rectPatch('sand', { x: 795, y: 610, w: 120, h: 90 }),
-      rectPatch('sand', { x: 50, y: 760, w: 110, h: 190 }),
-    ],
-    obstacles: [
-      { x: 1545, y: 300, r: 16, kind: 'tyres' },
-      { x: 880, y: 440, r: 16, kind: 'tyres' },
-      { x: 60, y: 820, r: 16, kind: 'tyres' },
-      { x: 1230, y: 690, r: 17, kind: 'tree' },
-      { x: 1290, y: 640, r: 15, kind: 'tree' },
-      { x: 470, y: 745, r: 17, kind: 'tree' },
-      { x: 410, y: 700, r: 15, kind: 'tree' },
-      { x: 860, y: 930, r: 16, kind: 'tree' },
-      { x: 1520, y: 980, r: 16, kind: 'tree' },
-      { x: 90, y: 990, r: 18, kind: 'tree' },
-      { x: 1540, y: 70, r: 16, kind: 'tree' },
-      { x: 80, y: 90, r: 15, kind: 'tree' },
-      { x: 1225, y: 345, r: 14, kind: 'tree' },
-      { x: 430, y: 360, r: 15, kind: 'tree' },
-    ],
-    ...pitComplex(480),
-  },
-  alpine: {
-    id: 'alpine',
-    name: 'Alpine Pass',
-    // The big map: a long right-hand sweep, an icy kink, then a left into a tight right.
-    width: 2200,
-    height: 1450,
-    halfWidth: 54,
-    checkpointCount: 8,
-    controlPoints: [
-      { x: 380, y: 210 },
-      { x: 730, y: 200 },
-      { x: 1090, y: 205 },
-      { x: 1420, y: 232 },
-      { x: 1720, y: 313 },
-      { x: 1930, y: 461 },
-      { x: 1990, y: 668 },
-      { x: 1900, y: 845 },
-      { x: 1690, y: 919 },
-      { x: 1465, y: 874 },
-      { x: 1270, y: 800 },
-      { x: 1075, y: 815 },
-      { x: 940, y: 933 },
-      { x: 895, y: 1110 },
-      { x: 730, y: 1214 },
-      { x: 460, y: 1258 },
-      { x: 270, y: 1199 },
-      { x: 165, y: 1022 },
-      { x: 150, y: 771 },
-      { x: 190, y: 520 },
-      { x: 270, y: 313 },
-    ],
-    ground: 'snow',
-    terrain: {
-      base: 10,
-      hills: [
-        { x: 1600, y: 535, r: 253, h: 70 },
-        { x: 1525, y: 1170, r: 283, h: 100 },
-        { x: 380, y: 815, r: 283, h: 90 },
-        { x: 2200, y: 0, r: 298, h: 60 },
-        { x: 0, y: 1450, r: 327, h: 80 },
-        { x: 2200, y: 1450, r: 342, h: 90 },
-        { x: 0, y: 0, r: 268, h: 50 },
-      ],
-    },
-    patches: [
-      // Frozen pond in the infield.
-      {
-        surface: 'ice',
-        points: [
-          { x: 730, y: 387 },
-          { x: 1000, y: 343 },
-          { x: 1240, y: 417 },
-          { x: 1285, y: 550 },
-          { x: 1150, y: 653 },
-          { x: 880, y: 668 },
-          { x: 715, y: 579 },
-        ],
-      },
-      // Black ice across the road at the kink.
-      {
-        surface: 'ice',
-        overRoad: true,
-        points: [
-          { x: 1464, y: 942 },
-          { x: 1388, y: 916 },
-          { x: 1323, y: 886 },
-          { x: 1271, y: 867 },
-          { x: 1217, y: 861 },
-          { x: 1223, y: 729 },
-          { x: 1301, y: 739 },
-          { x: 1377, y: 766 },
-          { x: 1440, y: 795 },
-          { x: 1501, y: 816 },
-        ],
-      },
-      // Gravel traps on the outside of the big corners.
-      {
-        surface: 'gravel',
-        points: [
-          { x: 1932, y: 372 },
-          { x: 1993, y: 443 },
-          { x: 2032, y: 525 },
-          { x: 2051, y: 610 },
-          { x: 2049, y: 693 },
-          { x: 2026, y: 774 },
-          { x: 1984, y: 846 },
-          { x: 1922, y: 906 },
-          { x: 1964, y: 965 },
-          { x: 2041, y: 890 },
-          { x: 2092, y: 802 },
-          { x: 2121, y: 704 },
-          { x: 2122, y: 603 },
-          { x: 2100, y: 502 },
-          { x: 2053, y: 403 },
-          { x: 1980, y: 319 },
-        ],
-      },
-      {
-        surface: 'gravel',
-        points: [
-          { x: 984, y: 999 },
-          { x: 979, y: 1046 },
-          { x: 967, y: 1104 },
-          { x: 933, y: 1162 },
-          { x: 891, y: 1201 },
-          { x: 842, y: 1233 },
-          { x: 788, y: 1258 },
-          { x: 812, y: 1316 },
-          { x: 872, y: 1287 },
-          { x: 929, y: 1250 },
-          { x: 979, y: 1203 },
-          { x: 1025, y: 1125 },
-          { x: 1041, y: 1053 },
-          { x: 1046, y: 1007 },
-        ],
-      },
-      {
-        surface: 'gravel',
-        points: [
-          { x: 282, y: 1280 },
-          { x: 223, y: 1241 },
-          { x: 175, y: 1188 },
-          { x: 138, y: 1126 },
-          { x: 111, y: 1059 },
-          { x: 94, y: 984 },
-          { x: 86, y: 904 },
-          { x: 5, y: 907 },
-          { x: 5, y: 998 },
-          { x: 24, y: 1087 },
-          { x: 56, y: 1167 },
-          { x: 101, y: 1242 },
-          { x: 163, y: 1310 },
-          { x: 240, y: 1362 },
-        ],
-      },
-    ],
-    barriers: [
-      { a: { x: 1984, y: 314 }, b: { x: 2086, y: 449 } },
-      { a: { x: 2086, y: 449 }, b: { x: 2128, y: 602 } },
-      { a: { x: 2128, y: 602 }, b: { x: 2115, y: 756 } },
-      { a: { x: 2115, y: 756 }, b: { x: 2046, y: 894 } },
-      { a: { x: 2046, y: 894 }, b: { x: 1921, y: 998 } },
-      { a: { x: 1052, y: 1007 }, b: { x: 1039, y: 1099 } },
-      { a: { x: 1039, y: 1099 }, b: { x: 968, y: 1224 } },
-      { a: { x: 968, y: 1224 }, b: { x: 875, y: 1292 } },
-      { a: { x: 875, y: 1292 }, b: { x: 772, y: 1337 } },
-    ],
-    obstacles: [
-      // Apex cones: clip them and they go flying.
-      { x: 1063, y: 880, r: 6, kind: 'cone' },
-      { x: 1006, y: 930, r: 6, kind: 'cone' },
-      { x: 976, y: 985, r: 6, kind: 'cone' },
-      { x: 862, y: 1058, r: 6, kind: 'cone' },
-      { x: 850, y: 1083, r: 6, kind: 'cone' },
-      { x: 821, y: 1111, r: 6, kind: 'cone' },
-      { x: 1600, y: 520, r: 16, kind: 'tree' },
-      { x: 1690, y: 594, r: 14, kind: 'tree' },
-      { x: 475, y: 786, r: 17, kind: 'tree' },
-      { x: 400, y: 904, r: 15, kind: 'tree' },
-      { x: 580, y: 727, r: 14, kind: 'tree' },
-      { x: 1525, y: 1273, r: 18, kind: 'tree' },
-      { x: 1675, y: 1170, r: 15, kind: 'tree' },
-      { x: 1360, y: 1317, r: 16, kind: 'tree' },
-      { x: 2110, y: 90, r: 16, kind: 'tree' },
-      { x: 80, y: 90, r: 15, kind: 'tree' },
-      { x: 2080, y: 1317, r: 17, kind: 'tree' },
-      { x: 1435, y: 387, r: 15, kind: 'tree' },
-      { x: 1900, y: 300, r: 16, kind: 'tree' },
-      { x: 1700, y: 1250, r: 16, kind: 'tree' },
-      { x: 1250, y: 1300, r: 16, kind: 'tree' },
-      { x: 2050, y: 900, r: 16, kind: 'tree' },
-      { x: 900, y: 450, r: 16, kind: 'tree' },
-    ],
-    ...pitComplex(480),
-  },
+  meadow: withPits(MEADOW),
+  harbor: withPits(HARBOR),
+  alpine: withPits(ALPINE),
+  oldtown: withPits(OLD_TOWN),
+  canyon: withPits(RED_CANYON),
+  jungle: withPits(JUNGLE),
+  harvest: withPits(HARVEST_RALLY),
+  grandprix: withPits(GRAND_PRIX),
 };
+
+/** A design with its pit complex laid out beside the start line. */
+function withPits(d: MapDesign): TrackDef {
+  const { pits, ...def } = d;
+  return { ...def, pitSide: pits.side, ...pitComplexAt(def.controlPoints[0], pits.heading, pits.side) };
+}
 
 const cache = new Map<string, Track>();
 /** Tracks added at runtime (editor, online rooms), by id. */

@@ -1,3 +1,4 @@
+import type { TrackDef } from './track';
 import { toCarKind, type CarKind, type FastestLap, type GameState } from './types';
 
 export type { FastestLap };
@@ -55,4 +56,18 @@ export function copyFastestLaps(list?: readonly FastestLap[]): FastestLap[] {
   let out: FastestLap[] = [];
   for (const entry of list) out = insertFastestLap(out, entry);
   return out;
+}
+
+/**
+ * A short fingerprint of a track's layout. Lap times only compare on the same
+ * road, so saved records are dropped when this changes.
+ */
+export function layoutKey(def: Pick<TrackDef, 'width' | 'height' | 'halfWidth' | 'controlPoints'>): string {
+  const text = JSON.stringify([def.width, def.height, def.halfWidth, def.controlPoints.map((p) => [Math.round(p.x), Math.round(p.y)])]);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
 }
