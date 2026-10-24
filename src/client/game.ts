@@ -2,6 +2,7 @@ import {
   createRace,
   DEFAULT_CAR_MODE,
   DT,
+  lapsDone,
   parseCarMode,
   spawnAiKind,
   spawnKind,
@@ -16,7 +17,7 @@ import {
   type TickInputs,
 } from '../sim';
 import { AI_NAMES, CAR_COLORS, MAX_PLAYERS, clampAiCount } from '../net/protocol';
-import { loadFastestLaps, saveFastestLaps } from './fastestStore';
+import { loadFastestLaps, persistFastestLaps } from './fastestStore';
 import { BINDINGS_P1, BINDINGS_P2, BINDINGS_SOLO, Keyboard, mergeInputs, NO_PLAYER_INPUT } from './input';
 import type { Renderer3D } from './renderer3d';
 
@@ -139,7 +140,7 @@ export class Game {
       cars,
       countdownSeconds: this.options.countdownSeconds,
       rules: this.options.rules,
-      fastestLaps: this.options.persistFastest === false ? [] : loadFastestLaps(trackId),
+      trackRecord: this.options.persistFastest === false ? null : (loadFastestLaps(trackId)[0] ?? null),
     });
     this.options.setup?.(this.curr);
     this.prev = this.curr;
@@ -167,8 +168,8 @@ export class Game {
         this.inputLog.push(inputs);
         this.prev = this.curr;
         this.curr = step(this.curr, inputs);
-        if (this.options.persistFastest !== false && this.curr.fastestLaps !== this.prev.fastestLaps) {
-          saveFastestLaps(this.curr.trackId, this.curr.fastestLaps);
+        if (this.options.persistFastest !== false && lapsDone(this.curr) !== lapsDone(this.prev)) {
+          persistFastestLaps(this.curr.trackId, this.curr.fastestLaps);
         }
         this.renderer.onTick(this.curr);
         if (this.prev.phase !== 'finished' && this.curr.phase === 'finished') this.options.onFinish?.(this.curr);

@@ -21,7 +21,7 @@ npm start          # production: serves dist/ + websocket on $PORT (default 4731
 
 ## Online multiplayer
 
-Open `/room` (or `/room?id=anything` for a separate room) in up to 8 browsers. Each player types a name, picks a car plus one of 8 car colors (a color can only be used once per room; repeated car types are fine) and joins. In the lobby each player can change their own car setup. The host (first player in the room) picks the number of AI cars (humans + AI ≤ 8), the AI level, the lap count (1–99), the track, the grid (mixed or one-make) and the race options. Each finished lap (human or AI) can land on a per-track top-3 fastest board, shown in the race HUD and again in the lobby. Local play stores that list in `localStorage`; an online room keeps it in server memory for the session and each client also writes it locally so a refresh does not wipe it. When every human has clicked **Ready**, the race starts with a 5 second countdown on the grid. The start snapshot includes the track id so every client loads the same map. A few seconds after the race ends, everyone goes back to the room. People who join during a race watch it and take part in the next one.
+Open `/room` (or `/room?id=anything` for a separate room) in up to 8 browsers. Each player types a name, picks a car plus one of 8 car colors (a color can only be used once per room; repeated car types are fine) and joins. In the lobby each player can change their own car setup. The host (first player in the room) picks the number of AI cars (humans + AI ≤ 8), the AI level, the lap count (1–99), the track, the grid (mixed or one-make) and the race options. Fastest laps are kept two ways. The race HUD shows **this race's** top 3 (every race starts empty) with the **track record** under it: the best lap ever on that map, flagged **NEW RECORD** when someone beats it mid-race. The menu and lobby show each track's all-time top 3 (**Fastest laps ever**). Local play stores the all-time list in `localStorage`; an online room keeps it in server memory for the session and each client also writes it locally so a refresh does not wipe it. The results screen after a single race names the race's fastest lap and the track record, or says it was broken. When every human has clicked **Ready**, the race starts with a 5 second countdown on the grid. The start snapshot includes the track id so every client loads the same map. A few seconds after the race ends, everyone goes back to the room. People who join during a race watch it and take part in the next one.
 
 The server is authoritative. It runs the same `step()` as local play at 60 ticks/s and broadcasts a compact, quantized snapshot 20 times a second. Each client input is tagged with a `seq`/`tick`; the snapshot acks the last seq the server applied. Your own car is predicted locally with `stepOwnCar()` (same physics as `step`), then reconciled on every snapshot by rewinding to the server pose and replaying unacked inputs. Small corrections are blended, not snapped. Other cars render about 100 ms behind the newest snapshot, interpolating between them and briefly extrapolating if a snapshot is late. TCP Nagle is off on the websocket.
 
@@ -75,7 +75,7 @@ The sim is pure and deterministic, so the online server runs exactly the same co
 ```
 src/sim/      pure, DOM-free simulation (can run on a server as-is)
   types.ts    GameState, CarState, PlayerInput, TickInputs, FastestLap (plain JSON data)
-  fastestLaps.ts  insert/sort/cap the top 3 completed laps (ties keep the earlier time)
+  fastestLaps.ts  insert/sort/cap the top 3 completed laps (ties keep the earlier time); new-record check
   sim.ts      createRace(), step(state, inputs) -> new state, standings(), hashState()
   physics.ts  car model (grip, slip, drift, tyre wear, fuel, crash damage), collisions
   pits.ts     pit-box service: stopped-in-box check, incremental fuel + tyre + body refill
@@ -88,7 +88,7 @@ src/client/   browser-only code
   renderer3d.ts  Three.js scene: orthographic isometric camera, lights/shadows, car meshes
   trackTexture.ts  paints the grass/asphalt/curb ground texture and the skid-mark layer
   audio.ts    Web Audio synth: engines, squeal, rumble, one-shots; soundEvents.ts turns state changes into one-shots
-  hud.ts      2D canvas overlay: lap times, standings, fastest-laps board, tyre wear, fuel, damage, countdown
+  hud.ts      2D canvas overlay: lap times, standings, this race's fastest laps plus the track record, tyre wear, fuel, damage, countdown
   game.ts     fixed-timestep loop, input sampling, input log
   championship.ts  season rounds, points table with countback, save/resume
 tests/        vitest tests for the simulation

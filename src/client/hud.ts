@@ -1,4 +1,4 @@
-import { CAR_KIND_SHORT, DEFAULT_RULES, standings, ticksToTime, TICK_RATE, toCarKind, type CarState, type GameState } from '../sim';
+import { CAR_KIND_SHORT, DEFAULT_RULES, newTrackRecord, standings, ticksToTime, TICK_RATE, toCarKind, type CarState, type GameState } from '../sim';
 import { cameraHudHint } from './touchMap';
 
 export interface Label {
@@ -115,7 +115,7 @@ export function drawHud(
 function drawFastestBoard(ctx: CanvasRenderingContext2D, state: GameState, x: number, y: number) {
   const laps = state.fastestLaps ?? [];
   const rowH = 18;
-  const h = 30 + 3 * rowH;
+  const h = 30 + 3 * rowH + 26;
   ctx.fillStyle = 'rgba(10,14,20,0.6)';
   ctx.beginPath();
   ctx.roundRect(x, y, 248, h, 10);
@@ -123,7 +123,7 @@ function drawFastestBoard(ctx: CanvasRenderingContext2D, state: GameState, x: nu
   ctx.font = '600 12px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.6)';
   ctx.textAlign = 'left';
-  ctx.fillText('FASTEST', x + 12, y + 20);
+  ctx.fillText('FASTEST THIS RACE', x + 12, y + 20);
   for (let i = 0; i < 3; i++) {
     const e = laps[i];
     const rowY = y + 38 + i * rowH;
@@ -143,7 +143,29 @@ function drawFastestBoard(ctx: CanvasRenderingContext2D, state: GameState, x: nu
     ctx.fillText(ticksToTime(e.ticks), x + 236, rowY);
     ctx.textAlign = 'left';
   }
+
+  // All-time track record under the race's own times.
+  const ry = y + 38 + 3 * rowH + 8;
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.fillRect(x + 12, ry - 17, 224, 1);
+  const fresh = newTrackRecord(state);
+  const rec = fresh ?? state.trackRecord;
+  ctx.fillStyle = fresh ? '#ffd54a' : RECORD_COLOR;
+  ctx.fillText(fresh ? 'NEW RECORD' : 'RECORD', x + 12, ry);
+  if (rec) {
+    ctx.fillStyle = '#fff';
+    ctx.fillText(fit(ctx, rec.name, 72), x + 100, ry);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = fresh ? '#ffd54a' : RECORD_COLOR;
+    ctx.fillText(ticksToTime(rec.ticks), x + 236, ry);
+    ctx.textAlign = 'left';
+  } else {
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillText('–', x + 100, ry);
+  }
 }
+
+const RECORD_COLOR = '#c9a0ff';
 
 /** Pointer from the car label toward the checkpoint it skipped. */
 function drawMissedGate(ctx: CanvasRenderingContext2D, l: Label) {
@@ -286,7 +308,7 @@ function drawCompact(
   const bx = humanIds.length > 1 ? cw / 2 - bw / 2 : cw - bw - 8;
   ctx.fillStyle = 'rgba(10,14,20,0.55)';
   ctx.beginPath();
-  ctx.roundRect(bx, 8, bw, 8 + order.length * row, 8);
+  ctx.roundRect(bx, 8, bw, 8 + (order.length + 2) * row + 4, 8);
   ctx.fill();
   ctx.font = '600 11px system-ui, sans-serif';
   order.forEach((c, i) => {
@@ -298,6 +320,29 @@ function drawCompact(
     ctx.textAlign = 'right';
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
     ctx.fillText(c.finishTick !== null ? 'FIN' : `L${Math.min(c.lapsCompleted + 1, state.totalLaps)}`, bx + bw - 8, ry + 11);
+    ctx.textAlign = 'left';
+  });
+
+  // Race fastest lap and the all-time record.
+  const best = state.fastestLaps?.[0];
+  const fresh = newTrackRecord(state);
+  const rec = fresh ?? state.trackRecord;
+  const lines: [string, string, string][] = [
+    ['FL', best ? `${best.name}` : '–', best ? ticksToTime(best.ticks) : ''],
+    [fresh ? 'NEW' : 'REC', rec ? rec.name : '–', rec ? ticksToTime(rec.ticks) : ''],
+  ];
+  lines.forEach(([tag, name, time], i) => {
+    const ry = 8 + 8 + (order.length + i) * row;
+    const color = i === 0 ? '#ffd54a' : fresh ? '#ffd54a' : RECORD_COLOR;
+    ctx.font = '700 9px system-ui, sans-serif';
+    ctx.fillStyle = color;
+    ctx.fillText(tag, bx + 8, ry + 11);
+    ctx.font = '600 11px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillText(fit(ctx, name, bw - 96), bx + 32, ry + 11);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = color;
+    ctx.fillText(time, bx + bw - 8, ry + 11);
     ctx.textAlign = 'left';
   });
 }

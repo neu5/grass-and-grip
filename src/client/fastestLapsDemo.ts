@@ -20,6 +20,7 @@ export function fastestLapsDemoOptions(renderer: Renderer3D): GameOptions {
         { name: 'Viktor', ticks: 2531, trackId: 'meadow', car: 'rally', color: '#f2c230' },
         { name: 'Kenji', ticks: 2610, trackId: 'meadow', car: 'f1', color: '#3fbf5f' },
       ];
+      state.trackRecord = { name: 'Mina', ticks: 2390, trackId: 'meadow', car: 'kart', color: '#9b5de5' };
     },
   };
 }
