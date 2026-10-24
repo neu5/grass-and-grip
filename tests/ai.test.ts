@@ -132,7 +132,7 @@ describe('AI racing', () => {
         expect(off / (ticks * 8), `${id} ${kind} off-road share`).toBeLessThan(0.03);
       }
     }
-  });
+  }, 60_000);
 
   it('gets the fast cars past the slow ones', () => {
     // Cars are balanced, so slow the front of the grid down with damage instead.

@@ -192,7 +192,8 @@ describe('room input seq', () => {
     room.setInput('p0', NO_INPUT, 1);
     expect(room.ackOf('p0')).toBe(2);
     for (let i = 0; i < COUNTDOWN_SECONDS * TICK_RATE + 8; i++) room.tick();
-    expect(room.race!.cars[0].vx * room.race!.cars[0].vx + room.race!.cars[0].vy * room.race!.cars[0].vy).toBeGreaterThan(0);
+    const mine = room.race!.cars[room.carOf.get('p0')!];
+    expect(Math.hypot(mine.vx, mine.vy)).toBeGreaterThan(0);
   });
 });
 
