@@ -9,7 +9,7 @@ export const ALPINE: MapDesign = {
   name: 'Alpine Pass',
   width: 2200,
   height: 1450,
-  halfWidth: 56,
+  halfWidth: 76,
   checkpointCount: 8,
   ground: 'snow',
   // Start heading south down the east side; pits on the infield, under the mountain.
@@ -193,10 +193,11 @@ export const ALPINE: MapDesign = {
     { a: { x: 1925, y: 1320 }, b: { x: 2050, y: 1235 } },
   ],
   obstacles: [
+    // Cones on the inside of the lake bends.
+    { x: 1371, y: 1154, r: 6, kind: 'cone' },
+    { x: 1098, y: 1132, r: 6, kind: 'cone' },
+    { x: 399, y: 1143, r: 6, kind: 'cone' },
     // Cones on the inside of the hairpins.
-    { x: 758, y: 585, r: 6, kind: 'cone' },
-    { x: 929, y: 598, r: 6, kind: 'cone' },
-    { x: 1386, y: 1173, r: 6, kind: 'cone' },
     { x: 244, y: 290, r: 16, kind: 'tyres' },
     { x: 1115, y: 140, r: 16, kind: 'tyres' },
     { x: 1340, y: 720, r: 26, kind: 'rock' },
@@ -239,10 +240,8 @@ export const ALPINE: MapDesign = {
     { x: 200, y: 415, r: 14, kind: 'tree' },
     { x: 1066, y: 1303, r: 13, kind: 'tree' },
     { x: 1956, y: 144, r: 16, kind: 'tree' },
-    { x: 2035, y: 1149, r: 14, kind: 'tree' },
     { x: 1992, y: 1369, r: 18, kind: 'tree' },
     { x: 45, y: 1077, r: 14, kind: 'tree' },
-    { x: 1525, y: 1319, r: 17, kind: 'tree' },
     { x: 709, y: 1059, r: 13, kind: 'tree' },
     { x: 97, y: 1364, r: 16, kind: 'tree' },
     { x: 2043, y: 249, r: 13, kind: 'tree' },
@@ -250,7 +249,6 @@ export const ALPINE: MapDesign = {
     { x: 2120, y: 842, r: 18, kind: 'tree' },
     { x: 2149, y: 1275, r: 17, kind: 'tree' },
     { x: 2009, y: 47, r: 18, kind: 'tree' },
-    { x: 1846, y: 179, r: 16, kind: 'tree' },
     { x: 290, y: 50, r: 13, kind: 'tree' },
     { x: 31, y: 47, r: 13, kind: 'tree' },
     { x: 881, y: 792, r: 14, kind: 'tree' },

@@ -6,7 +6,7 @@ export const HARVEST_RALLY: MapDesign = {
   name: 'Harvest Rally',
   width: 1600,
   height: 1050,
-  halfWidth: 48,
+  halfWidth: 66,
   checkpointCount: 8,
   // Anticlockwise: start eastbound along the bottom, pits on the infield side.
   pits: { heading: 'east', side: 'left' },
@@ -138,9 +138,9 @@ export const HARVEST_RALLY: MapDesign = {
   ],
   // Wooden fences round the farmyard and along the west lane.
   barriers: [
-    { a: { x: 515, y: 40 }, b: { x: 515, y: 360 } },
-    { a: { x: 515, y: 360 }, b: { x: 35, y: 360 } },
-    { a: { x: 35, y: 360 }, b: { x: 35, y: 40 } },
+    { a: { x: 470, y: 40 }, b: { x: 470, y: 320 } },
+    { a: { x: 470, y: 320 }, b: { x: 35, y: 320 } },
+    { a: { x: 35, y: 320 }, b: { x: 35, y: 40 } },
     { a: { x: 1490, y: 790 }, b: { x: 1490, y: 450 } },
   ],
   decor: [
@@ -193,6 +193,5 @@ export const HARVEST_RALLY: MapDesign = {
     { x: 1175, y: 308, r: 17, kind: 'tree' },
     { x: 498, y: 981, r: 14, kind: 'tree' },
     { x: 1434, y: 249, r: 15, kind: 'tree' },
-    { x: 1295, y: 935, r: 15, kind: 'tree' },
   ],
 };

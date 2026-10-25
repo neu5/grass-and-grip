@@ -257,7 +257,7 @@ describe('surfaces', () => {
 
   it('keeps meadow off-track as grass, with a pond to avoid and sand traps', () => {
     expect(surfaceAt(meadow, 30, 30)).toBe('grass');
-    expect(surfaceAt(meadow, 1178, 600)).toBe('sand');
+    expect(surfaceAt(meadow, 1180, 705)).toBe('sand');
     expect(surfaceAt(meadow, 560, 350)).toBe('water');
     expect(meadow.def.patches?.every((p) => p.surface === 'sand')).toBe(true);
     // The road never needs a bridge: the pond sits in the infield.

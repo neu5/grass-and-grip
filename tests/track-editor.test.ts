@@ -10,6 +10,7 @@ import {
   inBridge,
   inWater,
   MAP_SIZES,
+  MAX_HALF_WIDTH,
   mapSizeOf,
   parseTrackDef,
   pitComplex,
@@ -129,7 +130,7 @@ describe('parsing untrusted tracks', () => {
       obstacles: [{ x: 'a', y: 50, r: 500, kind: 'rocket' }],
     };
     const def = parseTrackDef(raw)!;
-    expect(def.halfWidth).toBe(70);
+    expect(def.halfWidth).toBe(MAX_HALF_WIDTH);
     expect(def.name.length).toBeLessThanOrEqual(24);
     expect(def.pitBoxes).toEqual(pitComplex(480).pitBoxes);
     expect(def.bridges).toHaveLength(2);

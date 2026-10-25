@@ -6,7 +6,7 @@ export const JUNGLE: MapDesign = {
   name: 'Jungle Temple',
   width: 1600,
   height: 1050,
-  halfWidth: 48,
+  halfWidth: 66,
   checkpointCount: 8,
   pits: { heading: 'west', side: 'right' },
   theme: 'jungle',
@@ -33,7 +33,7 @@ export const JUNGLE: MapDesign = {
     { x: 1360, y: 250 },
   ],
   bridges: [
-    { x: 690, y: 806, w: 290, h: 192, height: 22 },
+    { x: 672, y: 788, w: 326, h: 228, height: 22 },
   ],
   rivers: [
     {
@@ -122,7 +122,6 @@ export const JUNGLE: MapDesign = {
   ],
   barriers: [
     { a: { x: 1355, y: 680 }, b: { x: 1350, y: 800 } },
-    { a: { x: 35, y: 400 }, b: { x: 0, y: 520 } },
   ],
   decor: [
     { kind: 'ruin', x: 900, y: 330, w: 110, d: 90 },

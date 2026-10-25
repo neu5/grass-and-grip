@@ -6,7 +6,7 @@ export const MEADOW: MapDesign = {
   name: 'Meadow Ring',
   width: 1200,
   height: 800,
-  halfWidth: 54,
+  halfWidth: 72,
   checkpointCount: 8,
   // Start heading south down the west side; pits on the west.
   pits: { heading: 'south', side: 'right' },
@@ -16,11 +16,11 @@ export const MEADOW: MapDesign = {
     { x: 250, y: 500 },
     { x: 262, y: 625 },
     { x: 330, y: 710 },
-    { x: 470, y: 735 },
+    { x: 470, y: 712 },
     { x: 620, y: 700 },
     { x: 730, y: 620 },
     { x: 860, y: 640 },
-    { x: 990, y: 720 },
+    { x: 990, y: 708 },
     { x: 1110, y: 640 },
     { x: 1105, y: 510 },
     { x: 990, y: 430 },
@@ -80,7 +80,6 @@ export const MEADOW: MapDesign = {
   obstacles: [
     // Apex cones in the S-bends.
     { x: 905, y: 600, r: 6, kind: 'cone' },
-    { x: 1150, y: 450, r: 15, kind: 'tyres' },
     { x: 1170, y: 110, r: 15, kind: 'tyres' },
     { x: 777, y: 256, r: 16, kind: 'tree' },
     { x: 566, y: 571, r: 15, kind: 'tree' },
@@ -97,10 +96,8 @@ export const MEADOW: MapDesign = {
     { x: 680, y: 237, r: 18, kind: 'tree' },
     { x: 643, y: 508, r: 16, kind: 'tree' },
     { x: 491, y: 507, r: 17, kind: 'tree' },
-    { x: 915, y: 221, r: 14, kind: 'tree' },
     { x: 1136, y: 227, r: 15, kind: 'tree' },
     { x: 538, y: 273, r: 13, kind: 'tree' },
     { x: 769, y: 719, r: 14, kind: 'tree' },
-    { x: 350, y: 223, r: 13, kind: 'tree' },
   ],
 };
