@@ -90,6 +90,18 @@ describe('pits', () => {
     expect(new Set(spots.map((s) => `${s.cell} ${s.side}`)).size).toBe(spots.length);
   });
 
+  it('keeps checkpoints clear of the pit lane, so the pits are no shortcut past one', () => {
+    for (const id of TRACK_IDS) {
+      const t = getTrack(id);
+      const l = t.def.pitLane;
+      for (const g of t.gates.slice(1)) {
+        const dx = Math.max(l.x - g.center.x, 0, g.center.x - (l.x + l.w));
+        const dy = Math.max(l.y - g.center.y, 0, g.center.y - (l.y + l.h));
+        expect(Math.hypot(dx, dy), id).toBeGreaterThan(t.def.halfWidth + 60);
+      }
+    }
+  }, 30_000);
+
   it.each(TRACK_IDS)('lets the AI find the pits and refuel on %s', (id) => {
     let s: GameState = createRace({
       trackId: id,
