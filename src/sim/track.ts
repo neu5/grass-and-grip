@@ -383,7 +383,7 @@ export function buildTrack(def: TrackDef, opts: { grid?: boolean } = {}): Track 
   }
   const gates: Gate[] = [];
   for (let g = 0; g < def.checkpointCount; g++) {
-    const idx = gateSample(g, def.checkpointCount, curvature);
+    const idx = gateSample(g, def.checkpointCount, curvature, (i) => nearPits(def, samples[i]));
     const c = samples[idx];
     const nrm = normals[idx];
     const reachA = gateReach(def, samples, segmentLengths, idx, -1);
@@ -516,20 +516,32 @@ const GATE_SPILL = 30;
 /** A gate stops this far short of any other stretch of road. */
 const GATE_CLEARANCE = 12;
 
+/** True when a gate on this centerline point would reach into the pit lane. */
+function nearPits(def: TrackDef, p: Vec2): boolean {
+  const l = def.pitLane;
+  const dx = Math.max(l.x - p.x, 0, p.x - (l.x + l.w));
+  const dy = Math.max(l.y - p.y, 0, p.y - (l.y + l.h));
+  return Math.hypot(dx, dy) < def.halfWidth + GATE_SPILL + 40;
+}
+
 /**
  * Sample for gate `g`: spread evenly round the lap, but nudged to the
- * straightest spot nearby so no gate sits on a hairpin apex. Gate 0 (the
- * finish line) stays at sample 0.
+ * straightest spot nearby so no gate sits on a hairpin apex, and kept clear
+ * of the pit lane so cars driving through the pits can't slip past it.
+ * Gate 0 (the finish line) stays at sample 0.
  */
-function gateSample(g: number, count: number, curvature: number[]): number {
+function gateSample(g: number, count: number, curvature: number[], blocked: (i: number) => boolean): number {
   const m = curvature.length;
-  const ideal = Math.floor((g * m) / count);
+  let ideal = Math.floor((g * m) / count);
   if (g === 0) return 0;
+  // Pits in the way: start the search just past them.
+  while (blocked(ideal) && ideal < Math.floor(((g + 1) * m) / count)) ideal++;
   const window = Math.floor(m / count / 3);
   let best = ideal;
   let bestScore = Infinity;
   for (let k = -window; k <= window; k++) {
     const i = (ideal + k + m) % m;
+    if (blocked(i)) continue;
     // Mostly how bent the road is; a little for drifting off the even spacing.
     const score = curvature[i] + Math.abs(k) * 0.00002;
     if (score < bestScore) {
