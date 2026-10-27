@@ -734,6 +734,7 @@ button.secondary {
 }
 
 #season,
+#pause,
 #race-over {
   position: fixed;
   inset: 0;
@@ -746,6 +747,7 @@ button.secondary {
 }
 
 #season[hidden],
+#pause[hidden],
 #race-over[hidden] {
   display: none;
 }
@@ -860,7 +862,8 @@ button.secondary {
   display: none;
 }
 
-#race-over .card {
+#race-over .card,
+#pause .card {
   width: min(420px, 100%);
 }
 
@@ -894,6 +897,10 @@ button.secondary {
 .race-over-buttons {
   display: flex;
   gap: 10px;
+}
+
+#pause .race-over-buttons {
+  flex-direction: column;
 }
 
 .race-over-buttons button {
