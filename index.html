@@ -135,7 +135,7 @@
             <div><b>Player 1</b> Arrows · handbrake Right Shift / Enter</div>
             <div><b>Player 2</b> WASD · handbrake Left Shift / Space</div>
           </div>
-          <div class="muted" data-kb-hint>C switches camera · M mutes sound · R restarts · Esc returns to this menu</div>
+          <div class="muted" data-kb-hint>C switches camera · M mutes sound · R restarts · Esc or P pauses</div>
           <div data-touch-hint hidden>
             <b>Drive</b> hold FWD / REV &nbsp;·&nbsp; <b>Brake</b> BRAKE &nbsp;·&nbsp; <b>Steer</b> right stick &nbsp;·&nbsp; <b>Camera</b> CAM
           </div>
@@ -157,6 +157,16 @@
           <button type="button" id="race-menu" class="secondary">Back to menu</button>
         </div>
         <table id="race-over-order" class="season-table"></table>
+      </div>
+    </div>
+    <div id="pause" hidden>
+      <div class="card">
+        <h2>Paused</h2>
+        <div class="race-over-buttons">
+          <button type="button" id="pause-resume">Resume</button>
+          <button type="button" id="pause-restart" class="secondary">Restart race</button>
+          <button type="button" id="pause-menu" class="secondary">Back to menu</button>
+        </div>
       </div>
     </div>
     <div id="season" hidden>

@@ -70,7 +70,7 @@ const touch = mobile
       onCamera: () => {
         if (game && menu.hidden) renderer.toggleCamera();
       },
-      onMenu: () => backToMenu(),
+      onMenu: () => (game?.solo && game.state.phase !== 'finished' ? setPaused(true) : backToMenu()),
     })
   : null;
 let game: Game | null = null;
@@ -276,8 +276,23 @@ function escapeHtml(text: string) {
   return text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
+const pauseEl = document.querySelector<HTMLDivElement>('#pause')!;
+
+/** Freeze or release a single-player race, with a Resume / Restart / Menu card. */
+function setPaused(on: boolean) {
+  if (!game || !game.solo || game.state.phase === 'finished') return;
+  game.paused = on;
+  pauseEl.hidden = !on;
+  // A championship race is scored: no restarting it.
+  document.querySelector<HTMLElement>('#pause-restart')!.hidden = !!season;
+  if (on) sound.silence();
+  touch?.setVisible(!on);
+  if (!on) canvas.focus();
+}
+
 function raceAgain() {
   if (!game) return;
+  pauseEl.hidden = true;
   raceOverEl.hidden = true;
   touch?.setVisible(true);
   game.reset();
@@ -286,6 +301,9 @@ function raceAgain() {
 
 document.querySelector('#race-again')!.addEventListener('click', raceAgain);
 document.querySelector('#race-menu')!.addEventListener('click', () => backToMenu());
+document.querySelector('#pause-resume')!.addEventListener('click', () => setPaused(false));
+document.querySelector('#pause-restart')!.addEventListener('click', raceAgain);
+document.querySelector('#pause-menu')!.addEventListener('click', () => backToMenu());
 
 function startRound() {
   if (!season || seasonOver(season)) return;
@@ -356,6 +374,7 @@ function backToMenu() {
   touch?.setVisible(false);
   seasonEl.hidden = true;
   raceOverEl.hidden = true;
+  pauseEl.hidden = true;
   menu.hidden = false;
   refreshFastestBoard();
   refreshResume();
@@ -426,6 +445,15 @@ form.addEventListener('submit', (e) => {
 
 window.addEventListener('keydown', (e) => {
   if (!game || !menu.hidden) return;
+  if (game.paused) {
+    if (e.code === 'Escape' || e.code === 'KeyP') setPaused(false);
+    if (e.code === 'KeyR' && !season) raceAgain();
+    return;
+  }
+  if ((e.code === 'Escape' || e.code === 'KeyP') && game.solo && game.state.phase !== 'finished') {
+    setPaused(true);
+    return;
+  }
   if (e.code === 'KeyR' && !season) raceAgain();
   if (e.code === 'KeyC') renderer.toggleCamera();
   if (e.code === 'KeyU') renderer.toggleCheckpointDebug();

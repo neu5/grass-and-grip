@@ -121,6 +121,7 @@ export class Game {
   private acc = 0;
   private lastTime = 0;
   private raf = 0;
+  private held = false;
   /** Car id of each player, Player 1 first (the grid order may put them anywhere). */
   private humanIds: number[] = [];
   /** Every tick's inputs, in order: enough to replay the race exactly. */
@@ -137,6 +138,21 @@ export class Game {
 
   get state(): GameState {
     return this.curr;
+  }
+
+  /** One human at the keys: pausing the race is allowed. */
+  get solo(): boolean {
+    return this.options.humans === 1;
+  }
+
+  /** Frozen: the race clock stands still until `paused` is cleared. */
+  get paused(): boolean {
+    return this.held;
+  }
+
+  set paused(on: boolean) {
+    this.held = on;
+    this.lastTime = performance.now();
   }
 
   reset() {
@@ -158,6 +174,7 @@ export class Game {
     this.humanIds = players.map((p) => cars.findIndex((c) => c.name === p.name));
     this.inputLog = [];
     this.acc = 0;
+    this.held = false;
     this.renderer.resetRace();
   }
 
@@ -172,10 +189,10 @@ export class Game {
   start() {
     this.lastTime = performance.now();
     const frame = (now: number) => {
-      this.acc += Math.min(0.25, (now - this.lastTime) / 1000);
+      this.acc += this.held ? 0 : Math.min(0.25, (now - this.lastTime) / 1000);
       this.lastTime = now;
       let steps = 0;
-      while (this.acc >= DT && steps < MAX_STEPS_PER_FRAME) {
+      while (!this.held && this.acc >= DT && steps < MAX_STEPS_PER_FRAME) {
         const inputs = this.sampleInputs();
         this.inputLog.push(inputs);
         this.prev = this.curr;
