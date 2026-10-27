@@ -192,6 +192,7 @@ export class Game {
       this.acc += this.held ? 0 : Math.min(0.25, (now - this.lastTime) / 1000);
       this.lastTime = now;
       let steps = 0;
+      const simStart = performance.now();
       while (!this.held && this.acc >= DT && steps < MAX_STEPS_PER_FRAME) {
         const inputs = this.sampleInputs();
         this.inputLog.push(inputs);
@@ -205,6 +206,7 @@ export class Game {
         this.acc -= DT;
         steps++;
       }
+      this.renderer.perf.addSim(performance.now() - simStart, steps);
       if (steps === MAX_STEPS_PER_FRAME) this.acc = 0;
       this.renderer.render(this.prev, this.curr, this.acc / DT, this.humanIds);
       this.raf = requestAnimationFrame(frame);

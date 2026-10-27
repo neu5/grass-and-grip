@@ -457,6 +457,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyR' && !season) raceAgain();
   if (e.code === 'KeyC') renderer.toggleCamera();
   if (e.code === 'KeyU') renderer.toggleCheckpointDebug();
+  if (e.code === 'KeyF') renderer.perf.toggle();
   if (e.code === 'KeyM') sound.toggleMute();
   // In a championship, R would rerun a scored race: not allowed.
   if (e.code === 'KeyR' && season) return;

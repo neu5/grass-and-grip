@@ -320,6 +320,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyC' && menu.hidden) renderer.toggleCamera();
   if (e.code === 'KeyM' && !(e.target instanceof HTMLInputElement)) sound.toggleMute();
   if (e.code === 'KeyU') renderer.toggleCheckpointDebug();
+  if (e.code === 'KeyF' && !(e.target instanceof HTMLInputElement)) renderer.perf.toggle();
   if (e.code === 'F3') {
     e.preventDefault();
     debugOn = !debugOn;

@@ -27,6 +27,7 @@ import {
 } from '../sim';
 import type { SoundEngine } from './audio';
 import { checkpointDebugPose } from './checkpointDebug';
+import { PerfMeter } from './perfMeter';
 import { soundEvents } from './soundEvents';
 import { drawHud, type Label } from './hud';
 import { buildBarriers, buildDecor, buildForest, buildHayBales, buildOutsideMesas, buildRocks, buildSkyline, type TreeSpot } from './scenery';
@@ -1123,6 +1124,9 @@ export class Renderer3D {
     this.cameraMode = this.cameraMode === 'follow' ? 'overview' : 'follow';
   }
 
+  /** FPS / frame-time meter (F key). */
+  readonly perf = new PerfMeter();
+
   toggleCheckpointDebug() {
     this.checkpointDebug.visible = !this.checkpointDebug.visible;
   }
@@ -1365,6 +1369,7 @@ export class Renderer3D {
 
   /** `frameDt` overrides wall-clock camera smoothing, e.g. for offline capture. */
   render(prev: GameState, curr: GameState, alpha: number, humanIds: number[], frameDt?: number) {
+    const started = performance.now();
     this.syncCars(curr);
     this.updateCones(prev, curr, alpha);
     const { w, h } = this.resize();
@@ -1447,6 +1452,9 @@ export class Renderer3D {
       this.finishHint,
       this.keyHints,
     );
+    this.perf.frame(started, performance.now() - started);
+    const info = this.gl.info.render;
+    this.perf.draw(this.hud, w, h, { width: this.glCanvas.width, height: this.glCanvas.height, calls: info.calls, triangles: info.triangles });
   }
 }
 
