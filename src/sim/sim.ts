@@ -164,6 +164,11 @@ function updateCheckpoints(state: GameState, car: CarState, track: Track, px: nu
       color: car.color,
     });
     car.lapStartTick = state.tick;
+    const leads = (state.lapLeadTicks ??= []);
+    leads[car.lapsCompleted - 1] ??= state.tick;
+    const gap = state.tick - leads[car.lapsCompleted - 1];
+    car.gapChangeTicks = car.gapTicks != null ? gap - car.gapTicks : null;
+    car.gapTicks = gap;
     if (car.finishTick === null && car.lapsCompleted >= state.totalLaps) car.finishTick = state.tick;
   }
   car.nextCheckpoint = (car.nextCheckpoint + 1) % track.gates.length;
