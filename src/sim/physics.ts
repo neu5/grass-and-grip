@@ -66,7 +66,7 @@ export interface CarStats {
 /**
  * Balanced so every car laps within a few percent of the others on average,
  * but each gets there its own way. Top speeds on tarmac: F1 ~620, rally ~540,
- * buggy ~500, truck ~480, kart ~425.
+ * buggy ~500, truck ~480, kart ~450.
  * Rally: the all-rounder that slides.
  * Formula 1: by far the fastest on a straight, grips hard, slow off the
  * line, fragile and hopeless off the road.
@@ -171,11 +171,11 @@ export const CARS: Record<CarKind, CarStats> = {
     length: 22,
     width: 14,
     radius: 10,
-    engineAccel: 396,
+    engineAccel: 418,
     brakeDecel: 550,
     reverseAccel: 143,
     maxReverse: 130,
-    airDrag: 0.002964,
+    airDrag: 0.002792,
     coastDrag: 0.45,
     lateralGrip: 1800,
     slideThreshold: 95,

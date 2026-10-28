@@ -4,17 +4,24 @@ import type { CarKind, CarSetup, CarState } from './types';
 
 /** How far the line stays inside the road edge (car half-width plus a little). */
 const LINE_MARGIN = 18;
-/** Relax at these neighbour spans, wide first, so long curves settle quickly. */
-const LINE_SCALES = [24, 12, 6, 3, 1];
+/**
+ * Relax at these neighbour spans (road distance), wide first: a pair of
+ * corners close together on a wide road settles into one long arc.
+ */
+const LINE_SCALES = [200, 100, 50, 25, 12, 6, 2];
 const LINE_ITERATIONS = 60;
 const LINE_STEP = 0.5;
-/** Curvature-evening passes, wide neighbours first. */
-const EVEN_SCALES = [12, 6, 3, 2, 1];
+/** Curvature-evening passes, wide neighbours first (road distance). */
+const EVEN_SCALES = [100, 50, 25, 12, 6, 4, 2];
+/** How fast the inside limit may change along the road (sideways units per unit). */
+const BOUND_SLOPE = 0.4;
 const EVEN_ITERATIONS = 60;
 const EVEN_STEP = 0.4;
 const EVEN_PROBE = 0.5;
 /** Share of a corner's radius the line may cut toward its centre. */
 const INSIDE_SHARE = 0.9;
+/** Half the stretch the line's bend is measured over: about a car length, what a car actually steers through. */
+const BEND_REACH = 12;
 
 export interface RacingLine {
   /** Lateral offset from the centerline sample, along its normal. */
@@ -60,12 +67,28 @@ export function racingLine(track: Track): RacingLine {
     if (k > 0) hi[i] = Math.min(limit, inside);
     else if (k < 0) lo[i] = Math.max(-limit, -inside);
   }
+  // Ease the limits in and out, so the line is never forced to jump sideways.
+  const seg = track.segmentLengths;
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < n; i++) {
+      const p = (i - 1 + n) % n;
+      hi[i] = Math.min(hi[i], hi[p] + BOUND_SLOPE * seg[p]);
+      lo[i] = Math.max(lo[i], lo[p] - BOUND_SLOPE * seg[p]);
+    }
+    for (let i = n - 1; i >= 0; i--) {
+      const q = (i + 1) % n;
+      hi[i] = Math.min(hi[i], hi[q] + BOUND_SLOPE * seg[i]);
+      lo[i] = Math.max(lo[i], lo[q] - BOUND_SLOPE * seg[i]);
+    }
+  }
+  const spacing = (track.segmentLengths.reduce((a, b) => a + b, 0) / n) || 1;
+  const samplesFor = (units: number) => Math.max(1, Math.round(units / spacing));
   const offset = new Array<number>(n).fill(0);
   const at = (i: number) => {
     const k = ((i % n) + n) % n;
     return { x: s[k].x + nrm[k].x * offset[k], y: s[k].y + nrm[k].y * offset[k] };
   };
-  for (const span of LINE_SCALES) {
+  for (const span of LINE_SCALES.map(samplesFor)) {
     for (let it = 0; it < LINE_ITERATIONS; it++) {
       for (let i = 0; i < n; i++) {
         const a = at(i - span);
@@ -82,7 +105,7 @@ export function racingLine(track: Track): RacingLine {
   // its curvature is the average of its neighbours'. Smoothing alone hugs the
   // inside of a long hairpin and leaves a very tight kink at its end; evening
   // out the curvature takes that kink wide instead.
-  for (const span of EVEN_SCALES) {
+  for (const span of EVEN_SCALES.map(samplesFor)) {
     for (let it = 0; it < EVEN_ITERATIONS; it++) {
       for (let i = 0; i < n; i++) {
         const prev = at(i - span);
@@ -102,13 +125,15 @@ export function racingLine(track: Track): RacingLine {
     }
   }
   const points = offset.map((_, i) => at(i));
+  const reach = samplesFor(BEND_REACH);
+  // Never tighter than the road's own centre there: where the line pinches
+  // round the inside of a hairpin, a car rounds that pinch off anyway.
   const curvature = points.map((_, i) => {
-    const a = points[(i - 3 + n) % n];
-    const p = points[i];
-    const b = points[(i + 3) % n];
-    return circleCurvature(a, p, b);
+    const line = circleCurvature(points[(i - reach + n) % n], points[i], points[(i + reach) % n]);
+    const road = circleCurvature(s[(i - reach + n) % n], s[i], s[(i + reach) % n]);
+    return Math.min(line, Math.max(road, 1e-4));
   });
-  const bend = points.map((_, i) => signedCurvature(points[(i - 3 + n) % n], points[i], points[(i + 3) % n]));
+  const bend = points.map((_, i) => signedCurvature(points[(i - reach + n) % n], points[i], points[(i + reach) % n]));
   const arc = [0];
   for (let i = 1; i < n; i++) arc.push(arc[i - 1] + track.segmentLengths[i - 1]);
   const length = arc[n - 1] + track.segmentLengths[n - 1];
