@@ -39,6 +39,8 @@ function encodeCar(car: CarState): CompactCar {
     llt: car.lastLapTicks,
     blt: car.bestLapTicks,
     ft: car.finishTick,
+    ...(car.gapTicks != null ? { gp: car.gapTicks } : {}),
+    ...(car.gapChangeTicks != null ? { gc: car.gapChangeTicks } : {}),
   };
 }
 
@@ -68,6 +70,8 @@ function decodeCar(c: CompactCar, prev?: CarState): CarState {
     lastLapTicks: c.llt,
     bestLapTicks: c.blt,
     finishTick: c.ft,
+    gapTicks: c.gp ?? null,
+    gapChangeTicks: c.gc ?? null,
     ai: prev?.ai ?? null,
   };
 }
@@ -103,9 +107,9 @@ function decodeProps(flat: number[]): Prop[] {
   return out;
 }
 
-function encodeRules(state: GameState): [number, number, number, number, number] {
+function encodeRules(state: GameState): [number, number, number, number, number, number] {
   const r = state.rules ?? DEFAULT_RULES;
-  return [r.damage, r.tyreWear, r.fuel, r.collisions ? 1 : 0, r.aiLevel];
+  return [r.damage, r.tyreWear, r.fuel, r.collisions ? 1 : 0, r.aiLevel, r.carDetails ? 1 : 0];
 }
 
 export function encodeSnapshot(state: GameState, ack = 0): CompactSnapshot {
@@ -119,6 +123,7 @@ export function encodeSnapshot(state: GameState, ack = 0): CompactSnapshot {
     c: state.cars.map(encodeCar),
     ...(state.props?.length ? { pr: encodeProps(state.props) } : {}),
     fl: (state.fastestLaps ?? []).map(encodeFastest),
+    ...(state.lapLeadTicks?.length ? { ll: state.lapLeadTicks } : {}),
     ack,
   };
 }
@@ -131,11 +136,12 @@ export function decodeSnapshot(snap: CompactSnapshot, prev?: GameState): GameSta
     startTick: snap.st,
     totalLaps: snap.tl,
     rules: snap.ru
-      ? normalizeRules({ damage: snap.ru[0], tyreWear: snap.ru[1], fuel: snap.ru[2], collisions: snap.ru[3] === 1, aiLevel: snap.ru[4] })
+      ? normalizeRules({ damage: snap.ru[0], tyreWear: snap.ru[1], fuel: snap.ru[2], collisions: snap.ru[3] === 1, aiLevel: snap.ru[4], carDetails: snap.ru[5] === 1 })
       : (prev?.rules ?? { ...DEFAULT_RULES }),
     props: snap.pr ? decodeProps(snap.pr) : (prev?.props ?? []),
     cars: snap.c.map((c) => decodeCar(c, prev?.cars.find((x) => x.id === c.i))),
     fastestLaps: copyFastestLaps(snap.fl?.map(decodeFastest) ?? prev?.fastestLaps),
+    lapLeadTicks: snap.ll ? [...snap.ll] : (prev?.lapLeadTicks ?? []),
     trackRecord: prev?.trackRecord ?? null,
   };
 }

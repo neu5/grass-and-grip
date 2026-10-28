@@ -236,7 +236,7 @@ describe('network', () => {
     expect(back.cars.map((c) => c.kind)).toEqual(['truck', 'kart']);
     expect(back.cars[0].setup).toEqual({ gearing: 1, steering: -2, grip: 2 });
     expect(back.cars[1].setup).toEqual({ gearing: 0, steering: 0, grip: 0 });
-    expect(back.rules).toEqual({ damage: 2, tyreWear: 0, fuel: 1, collisions: false, aiLevel: 35 });
+    expect(back.rules).toEqual({ damage: 2, tyreWear: 0, fuel: 1, collisions: false, aiLevel: 35, carDetails: false });
   });
 
   it('takes setup from players and rules from the host only, into the race', () => {

@@ -91,9 +91,11 @@ export interface RaceRules {
   collisions: boolean;
   /** AI driving level, 0 (gentle) .. 100 (flat out). */
   aiLevel: number;
+  /** Show every car's tyres, fuel and body in the standings, not just gaps. */
+  carDetails?: boolean;
 }
 
-export const DEFAULT_RULES: RaceRules = { damage: 1, tyreWear: 1, fuel: 1, collisions: true, aiLevel: 70 };
+export const DEFAULT_RULES: RaceRules = { damage: 1, tyreWear: 1, fuel: 1, collisions: true, aiLevel: 70, carDetails: false };
 
 function rate(v: unknown, fallback: RuleRate): RuleRate {
   const n = Number(v);
@@ -110,6 +112,7 @@ export function normalizeRules(v: unknown): RaceRules {
     fuel: rate(o.fuel, DEFAULT_RULES.fuel),
     collisions: typeof o.collisions === 'boolean' ? o.collisions : DEFAULT_RULES.collisions,
     aiLevel: Number.isFinite(level) ? Math.max(0, Math.min(100, level)) : DEFAULT_RULES.aiLevel,
+    carDetails: typeof o.carDetails === 'boolean' ? o.carDetails : DEFAULT_RULES.carDetails,
   };
 }
 
@@ -173,6 +176,10 @@ export interface CarState {
   lastLapTicks: number | null;
   bestLapTicks: number | null;
   finishTick: number | null;
+  /** Ticks behind the first car over the line, at this car's last crossing. Missing until then. */
+  gapTicks?: number | null;
+  /** How that gap changed since the lap before: negative means catching up. */
+  gapChangeTicks?: number | null;
   ai: AiMemory | null;
 }
 
@@ -202,6 +209,8 @@ export interface GameState {
   cars: CarState[];
   /** Fastest-first top 3 laps of this race. */
   fastestLaps: FastestLap[];
+  /** Tick the first car completed each lap (index 0 = lap 1), for gaps to the leader. */
+  lapLeadTicks?: number[];
   /** Best lap ever on this track before this race started (from saved laps), for display. */
   trackRecord?: FastestLap | null;
 }

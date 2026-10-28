@@ -67,7 +67,7 @@ export function drawHud(
     drawCompact(ctx, state, humanIds, order, bars, cw, tickNow);
   }
   const panelW = 230;
-  const panelH = 120 + bars.length * 17;
+  const panelH = 137 + bars.length * 17;
   if (!compact) humanIds.forEach((id, k) => {
     const car = state.cars[id];
     const pos = order.findIndex((c) => c.id === id) + 1;
@@ -93,10 +93,12 @@ export function drawHud(
       ['Time', state.phase === 'countdown' ? '0:00.000' : ticksToTime(running)],
       ['Last', car.lastLapTicks !== null ? ticksToTime(car.lastLapTicks) : '–'],
       ['Best', car.bestLapTicks !== null ? ticksToTime(car.bestLapTicks) : '–'],
+      ['Gap', ''],
     ];
     rows.forEach(([label, value], i) => {
       ctx.fillStyle = 'rgba(255,255,255,0.6)';
       ctx.fillText(label, x + 14, y + 48 + i * 17);
+      if (label === 'Gap') return drawGapRow(ctx, car, x + 70, y + 48 + i * 17);
       ctx.fillStyle = label === 'Best' || (label === 'Lap' && onFinalLap(state, car)) ? '#ffd54a' : '#fff';
       ctx.fillText(label === 'Lap' && onFinalLap(state, car) ? `${value}  FINAL` : value, x + 70, y + 48 + i * 17);
     });
@@ -104,7 +106,7 @@ export function drawHud(
     const fuelLeft = Math.min(1, Math.max(0, car.fuel ?? 1));
     const bodyLeft = 1 - Math.min(1, Math.max(0, car.damage ?? 0));
     const left = { Tyres: tyreLeft, Fuel: fuelLeft, Damage: bodyLeft };
-    bars.forEach((label, i) => drawRemainBar(ctx, label, left[label], x, y + 48 + (4 + i) * 17, panelW));
+    bars.forEach((label, i) => drawRemainBar(ctx, label, left[label], x, y + 48 + (5 + i) * 17, panelW));
   });
 
   if (!compact) drawBoards(ctx, state, humanIds, order, cw);
@@ -226,33 +228,87 @@ function drawMissedGate(ctx: CanvasRenderingContext2D, l: Label) {
   ctx.fillText('Missed checkpoint — go back', l.x, l.y + 64);
 }
 
-/** Desktop standings (with tyre, fuel and body per car) and the fastest-laps board. */
+/** Own panel: gap to the leader, then how it moved last lap. */
+function drawGapRow(ctx: CanvasRenderingContext2D, car: CarState, x: number, y: number) {
+  const gap = gapCell(car);
+  ctx.fillStyle = gap.color === LOSS_COLOR || gap.color === GAIN_COLOR ? '#fff' : gap.color;
+  ctx.fillText(gap.text, x, y);
+  const change = gapChangeCell(car);
+  if (!change) return;
+  ctx.fillStyle = change.color;
+  ctx.fillText(change.text, x + ctx.measureText(gap.text).width + 10, y);
+}
+
+const GAIN_COLOR = '#6ee07a';
+const LOSS_COLOR = '#ff6b4a';
+
+/** Seconds as "+1.23", or "+1:02.34" past a minute. */
+function gapText(ticks: number): string {
+  const s = ticks / TICK_RATE;
+  if (s < 60) return `+${s.toFixed(2)}`;
+  return `+${Math.floor(s / 60)}:${(s % 60).toFixed(2).padStart(5, '0')}`;
+}
+
+/**
+ * Gap to the car that led over the line on this car's last lap: "LEAD",
+ * "+1.23" (green when it shrank since the lap before, red when it grew), or
+ * "–" before the first lap is done.
+ */
+export function gapCell(c: CarState): { text: string; color: string } {
+  if (c.gapTicks == null) return { text: '–', color: 'rgba(255,255,255,0.5)' };
+  if (c.gapTicks === 0) return { text: 'LEAD', color: 'rgba(255,255,255,0.7)' };
+  const change = c.gapChangeTicks ?? 0;
+  return { text: gapText(c.gapTicks), color: change < 0 ? GAIN_COLOR : change > 0 ? LOSS_COLOR : '#fff' };
+}
+
+/** How the gap moved last lap: "−0.42" green when catching up, "+0.42" red when dropping back. */
+export function gapChangeCell(c: CarState): { text: string; color: string } | null {
+  if (c.gapTicks == null || c.gapChangeTicks == null || c.gapChangeTicks === 0) return null;
+  const s = Math.abs(c.gapChangeTicks / TICK_RATE).toFixed(2);
+  return c.gapChangeTicks < 0 ? { text: `−${s}`, color: GAIN_COLOR } : { text: `+${s}`, color: LOSS_COLOR };
+}
+
+/**
+ * Desktop standings (gap to the leader per car, plus tyre, fuel and body
+ * when the race shows car details) and the fastest-laps board.
+ */
 function drawBoards(ctx: CanvasRenderingContext2D, state: GameState, humanIds: number[], order: CarState[], cw: number) {
-  const boardX = humanIds.length > 1 ? cw / 2 - 124 : cw - 260;
+  const details = !!(state.rules ?? DEFAULT_RULES).carDetails;
+  const boardW = details ? 360 : 248;
+  const boardX = humanIds.length > 1 ? cw / 2 - boardW / 2 : cw - boardW - 12;
   ctx.fillStyle = 'rgba(10,14,20,0.6)';
   ctx.beginPath();
-  ctx.roundRect(boardX, 12, 248, 30 + order.length * 18, 10);
+  ctx.roundRect(boardX, 12, boardW, 30 + order.length * 18, 10);
   ctx.fill();
   ctx.font = '600 12px system-ui, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.6)';
   ctx.fillText('STANDINGS', boardX + 12, 32);
+  ctx.textAlign = 'right';
+  ctx.fillText('GAP', boardX + boardW - 44, 32);
+  ctx.textAlign = 'left';
   order.forEach((c, i) => {
+    const y = 51 + i * 18;
     ctx.fillStyle = c.color;
-    ctx.fillRect(boardX + 12, 42 + i * 18, 10, 10);
-    ctx.fillStyle = '#fff';
-    ctx.fillText(`${i + 1}. ${c.name}`, boardX + 30, 51 + i * 18);
+    ctx.fillRect(boardX + 12, y - 9, 10, 10);
+    ctx.fillStyle = humanIds.includes(c.id) ? '#ffd54a' : '#fff';
+    ctx.fillText(fit(ctx, `${i + 1}. ${c.name}`, details ? 92 : 130), boardX + 30, y);
     ctx.textAlign = 'right';
-    const wearPct = Math.round((1 - Math.min(1, Math.max(0, c.tyreWear ?? 0))) * 100);
-    const fuelPct = Math.round(Math.min(1, Math.max(0, c.fuel ?? 1)) * 100);
-    const bodyPct = Math.round((1 - Math.min(1, Math.max(0, c.damage ?? 0))) * 100);
-    ctx.fillStyle = wearPct > 60 ? '#6ee07a' : wearPct > 30 ? '#ffd54a' : '#ff6b4a';
-    ctx.fillText(`${wearPct}%`, boardX + 118, 51 + i * 18);
-    ctx.fillStyle = fuelPct > 60 ? '#6ee07a' : fuelPct > 30 ? '#ffd54a' : '#ff6b4a';
-    ctx.fillText(`${fuelPct}%`, boardX + 152, 51 + i * 18);
-    ctx.fillStyle = bodyPct > 60 ? '#6ee07a' : bodyPct > 30 ? '#ffd54a' : '#ff6b4a';
-    ctx.fillText(`${bodyPct}%`, boardX + 186, 51 + i * 18);
+    if (details) {
+      const wearPct = Math.round((1 - Math.min(1, Math.max(0, c.tyreWear ?? 0))) * 100);
+      const fuelPct = Math.round(Math.min(1, Math.max(0, c.fuel ?? 1)) * 100);
+      const bodyPct = Math.round((1 - Math.min(1, Math.max(0, c.damage ?? 0))) * 100);
+      ctx.fillStyle = wearPct > 60 ? '#6ee07a' : wearPct > 30 ? '#ffd54a' : '#ff6b4a';
+      ctx.fillText(`${wearPct}%`, boardX + 164, y);
+      ctx.fillStyle = fuelPct > 60 ? '#6ee07a' : fuelPct > 30 ? '#ffd54a' : '#ff6b4a';
+      ctx.fillText(`${fuelPct}%`, boardX + 204, y);
+      ctx.fillStyle = bodyPct > 60 ? '#6ee07a' : bodyPct > 30 ? '#ffd54a' : '#ff6b4a';
+      ctx.fillText(`${bodyPct}%`, boardX + 244, y);
+    }
+    const gap = gapCell(c);
+    ctx.fillStyle = gap.color;
+    ctx.fillText(gap.text, boardX + boardW - 44, y);
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.fillText(c.finishTick !== null ? 'FIN' : `L${Math.min(c.lapsCompleted + 1, state.totalLaps)}`, boardX + 236, 51 + i * 18);
+    ctx.fillText(c.finishTick !== null ? 'FIN' : `L${Math.min(c.lapsCompleted + 1, state.totalLaps)}`, boardX + boardW - 12, y);
     ctx.textAlign = 'left';
   });
 
@@ -269,7 +325,7 @@ function fit(ctx: CanvasRenderingContext2D, text: string, max: number): string {
 
 /**
  * Phone HUD: a small driver card (name, position, lap and time, best, thin
- * tyre/fuel/body bars) and a slim standings list with names and laps only.
+ * tyre/fuel/body bars) and a slim standings list with names, gaps and laps.
  */
 function drawCompact(
   ctx: CanvasRenderingContext2D,
@@ -335,7 +391,7 @@ function drawCompact(
     });
   });
 
-  const bw = 148;
+  const bw = 190;
   const row = 14;
   const bx = humanIds.length > 1 ? cw / 2 - bw / 2 : cw - bw - 8;
   ctx.fillStyle = 'rgba(10,14,20,0.55)';
@@ -348,8 +404,11 @@ function drawCompact(
     ctx.fillStyle = c.color;
     ctx.fillRect(bx + 8, ry + 3, 8, 8);
     ctx.fillStyle = humanIds.includes(c.id) ? '#ffd54a' : '#fff';
-    ctx.fillText(fit(ctx, `${i + 1}. ${c.name}`, bw - 56), bx + 21, ry + 11);
+    ctx.fillText(fit(ctx, `${i + 1}. ${c.name}`, bw - 100), bx + 21, ry + 11);
     ctx.textAlign = 'right';
+    const gap = gapCell(c);
+    ctx.fillStyle = gap.color;
+    ctx.fillText(gap.text, bx + bw - 34, ry + 11);
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
     ctx.fillText(c.finishTick !== null ? 'FIN' : `L${Math.min(c.lapsCompleted + 1, state.totalLaps)}`, bx + bw - 8, ry + 11);
     ctx.textAlign = 'left';

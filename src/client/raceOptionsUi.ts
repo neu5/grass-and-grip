@@ -114,6 +114,10 @@ export function mountRulesFields(
     { value: 'on', label: 'On' },
     { value: 'off', label: 'Off' },
   ]);
+  group(container, `${prefix}-details`, 'Show car details <i>tyres, fuel, body of all cars</i>', [
+    { value: 'off', label: 'Off' },
+    { value: 'on', label: 'On' },
+  ]);
   const fields: RulesFields = {
     get() {
       return normalizeRules({
@@ -122,12 +126,14 @@ export function mountRulesFields(
         fuel: pick(container, `${prefix}-fuel`),
         collisions: pick(container, `${prefix}-collisions`) !== 'off',
         aiLevel: ai.get(),
+        carDetails: pick(container, `${prefix}-details`) === 'on',
       });
     },
     set(rules) {
       const r = normalizeRules(rules);
       for (const [key] of RATE_ROWS) check(container, `${prefix}-${key}`, String(r[key]));
       check(container, `${prefix}-collisions`, r.collisions ? 'on' : 'off');
+      check(container, `${prefix}-details`, r.carDetails ? 'on' : 'off');
       ai.set(r.aiLevel);
     },
     setDisabled(disabled) {
