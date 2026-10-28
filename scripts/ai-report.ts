@@ -211,7 +211,18 @@ for (const map of maps) {
   }
 }
 
-/** Per tenth of the lap: who is quicker, the human or the AI, and the speeds. */
+/** Fill samples a car skipped with the time it reached the next one it hit. */
+function filled(at: number[], lapTicks: number): number[] {
+  const out = [...at];
+  let next = lapTicks;
+  for (let i = out.length - 1; i >= 0; i--) {
+    if (out[i] < 0) out[i] = next;
+    else next = out[i];
+  }
+  return out;
+}
+
+/** Per tenth of the lap: who is quicker, the human or the AI, and the slowest speed in it. */
 function compareHuman(track: Track, h: LapTelemetry, ai: LapTrace, ideal: { time: number[] }): string[] {
   const n = track.samples.length;
   const at = new Array<number>(n).fill(-1);
@@ -223,15 +234,23 @@ function compareHuman(track: Track, h: LapTelemetry, ai: LapTrace, ideal: { time
       speed[i] = p.v;
     }
   }
-  const rows = ['| part | human | AI | ideal | human gains |', '|---|---|---|---|---|'];
+  const hAt = filled(at, h.ticks);
+  const aAt = filled(ai.at, ai.ticks);
+  const rows = ['| part | samples | human | AI | ideal | human gains | human min speed | AI min speed |', '|---|---|---|---|---|---|---|---|'];
   for (let k = 0; k < 10; k++) {
     const a = Math.floor((k * n) / 10);
-    const b = Math.floor(((k + 1) * n) / 10) % n;
-    const span = (arr: number[], end: number) => (arr[a] >= 0 && (b === 0 ? end : arr[b]) >= 0 ? ((b === 0 ? end : arr[b]) - arr[a]) / TICK_RATE : NaN);
-    const hs = span(at, h.ticks);
-    const as = span(ai.at, ai.ticks);
-    const is = (b === 0 ? ideal.time[n - 1] : ideal.time[b]) - ideal.time[a];
-    rows.push(`| ${k + 1} | ${hs.toFixed(2)} | ${as.toFixed(2)} | ${is.toFixed(2)} | ${(as - hs).toFixed(2)} |`);
+    const b = Math.floor(((k + 1) * n) / 10);
+    const end = (arr: number[], lap: number) => (b >= n ? lap : arr[b]);
+    const hs = (end(hAt, h.ticks) - hAt[a]) / TICK_RATE;
+    const as = (end(aAt, ai.ticks) - aAt[a]) / TICK_RATE;
+    const is = (b >= n ? ideal.time[n - 1] : ideal.time[b]) - ideal.time[a];
+    let hMin = Infinity;
+    let aMin = Infinity;
+    for (let i = a; i < Math.min(b, n); i++) {
+      if (speed[i] > 0) hMin = Math.min(hMin, speed[i]);
+      aMin = Math.min(aMin, ai.minSpeed[i]);
+    }
+    rows.push(`| ${k + 1} | ${a}–${b} | ${hs.toFixed(2)} | ${as.toFixed(2)} | ${is.toFixed(2)} | ${(as - hs).toFixed(2)} | ${hMin.toFixed(0)} | ${aMin.toFixed(0)} |`);
   }
   return rows;
 }

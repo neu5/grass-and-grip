@@ -14,6 +14,11 @@ const MAX_PLAN_SPEED = 600;
 
 /** Lift off the throttle this close to the road edge. */
 const EDGE_LIFT = 8;
+/**
+ * Steering demand (1 = full lock) above which the AI lifts, and above which it
+ * brakes: a little past full lock is fine, the car still turns as speed bleeds.
+ */
+const LOCK = { lift: 1.7, brake: 2.5 };
 /** Room kept behind a car being followed, and the share of the brakes counted on to keep it. */
 const FOLLOW_GAP = 10;
 const FOLLOW_BRAKE = 0.55;
@@ -408,8 +413,8 @@ function raceDrive(car: CarState, ai: AiMemory, track: Track, cars: CarState[], 
   else if (diff > -18 || speed < 20) throttle = 0;
   else throttle = -clamp(-diff / 70, 0.35, 1);
   if (Math.abs(err) > 1.3 && speed > 120) throttle = -1;
-  // Out of steering lock: more speed only makes it run wider, so lift.
-  if (Math.abs(wanted) > 1.1 && speed > 100) throttle = Math.min(throttle, Math.abs(wanted) > 1.6 ? -0.4 : 0);
+  // Well out of steering lock: more speed only makes it run wider, so lift.
+  if (Math.abs(wanted) > LOCK.lift && speed > 100) throttle = Math.min(throttle, Math.abs(wanted) > LOCK.brake ? -0.4 : 0);
   // Running out of road (usually a wide exit): ease off so the nose tucks in.
   if (!offRoad && fromCenter > track.def.halfWidth - EDGE_LIFT && throttle > 0.3) throttle = 0.3;
 
