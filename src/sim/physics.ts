@@ -241,7 +241,7 @@ export function carStats(car: { kind?: CarKind; setup?: CarSetup }): CarStats {
 }
 
 /** Surface grip / power / rolling for one car, after its off-road ability. */
-function surfaceFor(C: CarStats, surface: Surface): SurfaceParams {
+export function surfaceFor(C: CarStats, surface: Surface): SurfaceParams {
   const s = SURFACES[surface];
   // Off-road tyres help on loose ground, not on tarmac or bare ice.
   if (surface === 'asphalt' || surface === 'ice' || C.offroad === 0) return s;
@@ -271,6 +271,8 @@ export const TYRE = {
   grass: 0.045,
   sand: 0.07,
   gravel: 0.09,
+  /** A dirt rally road: a little harder on tyres than tarmac, not like a gravel trap. */
+  dirt: 0.008,
   rolling: 0.0035,
   corner: 0.028,
   wornGrip: 0.38,
@@ -400,7 +402,8 @@ export function stepCarPhysics(
     wearRate += TYRE.slip * car.slip;
     if (surface === 'grass') wearRate += TYRE.grass * spd;
     if (surface === 'sand') wearRate += TYRE.sand * spd;
-    if (surface === 'gravel' || surface === 'dirt') wearRate += TYRE.gravel * spd;
+    if (surface === 'gravel') wearRate += TYRE.gravel * spd;
+    if (surface === 'dirt') wearRate += TYRE.dirt * spd;
     if (surface === 'mud') wearRate += TYRE.sand * spd;
   }
   car.tyreWear = clamp(wear + wearRate * rules.tyreWear * dt, 0, 1);

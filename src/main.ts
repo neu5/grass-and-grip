@@ -30,6 +30,7 @@ import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/
 import { CAR_COLORS, CAR_KIND_SHORT, COLOR_NAMES, MAX_PLAYERS, clampAiCount, clampLaps, parseCarKind, parseCarMode } from './net/protocol';
 import { isTrackId, newTrackRecord, standings, ticksToTime, TRACK_IDS, TRACKS, type FastestLap, trackName as simTrackName, type GameState } from './sim';
 import { trackLabelHtml } from './client/trackLabel';
+import { downloadTelemetry } from './client/lapRecorder';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const hud = document.querySelector<HTMLCanvasElement>('#hud')!;
@@ -304,6 +305,7 @@ document.querySelector('#race-menu')!.addEventListener('click', () => backToMenu
 document.querySelector('#pause-resume')!.addEventListener('click', () => setPaused(false));
 document.querySelector('#pause-restart')!.addEventListener('click', raceAgain);
 document.querySelector('#pause-menu')!.addEventListener('click', () => backToMenu());
+document.querySelector('#pause-laps')!.addEventListener('click', downloadTelemetry);
 
 function startRound() {
   if (!season || seasonOver(season)) return;

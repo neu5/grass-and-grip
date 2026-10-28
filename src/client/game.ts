@@ -22,6 +22,7 @@ import { AI_NAMES, CAR_COLORS, MAX_PLAYERS, clampAiCount } from '../net/protocol
 import { loadFastestLaps, persistFastestLaps } from './fastestStore';
 import { BINDINGS_P1, BINDINGS_P2, BINDINGS_SOLO, Keyboard, mergeInputs, NO_PLAYER_INPUT } from './input';
 import type { Renderer3D } from './renderer3d';
+import { LapRecorder } from './lapRecorder';
 
 export interface GameOptions {
   humans: 1 | 2;
@@ -122,6 +123,8 @@ export class Game {
   private lastTime = 0;
   private raf = 0;
   private held = false;
+  /** Human laps, best kept per track and car for the AI report. */
+  private recorder = new LapRecorder();
   /** Car id of each player, Player 1 first (the grid order may put them anywhere). */
   private humanIds: number[] = [];
   /** Every tick's inputs, in order: enough to replay the race exactly. */
@@ -173,6 +176,7 @@ export class Game {
     this.prev = this.curr;
     this.humanIds = players.map((p) => cars.findIndex((c) => c.name === p.name));
     this.inputLog = [];
+    this.recorder.reset();
     this.acc = 0;
     this.held = false;
     this.renderer.resetRace();
@@ -198,6 +202,7 @@ export class Game {
         this.inputLog.push(inputs);
         this.prev = this.curr;
         this.curr = step(this.curr, inputs);
+        this.recorder.record(this.curr, inputs, this.humanIds);
         if (this.options.persistFastest !== false && lapsDone(this.curr) !== lapsDone(this.prev)) {
           persistFastestLaps(this.curr.trackId, this.curr.fastestLaps);
         }

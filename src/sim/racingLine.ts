@@ -1,4 +1,4 @@
-import { carStats, SURFACES, type CarStats } from './physics';
+import { carStats, surfaceFor, tyreFactor, TYRE, type CarStats } from './physics';
 import { surfaceAt, type Track, type Vec2 } from './track';
 import type { CarKind, CarSetup, CarState } from './types';
 
@@ -143,38 +143,62 @@ function circleCurvature(a: Vec2, b: Vec2, c: Vec2): number {
   return d > 0 ? (2 * cross) / d : 0;
 }
 
-/** Share of the tyres' lateral grip the plan dares to use. */
-export const PLAN_GRIP = 0.9;
-/** Share of the brakes the plan counts on. */
-export const PLAN_BRAKE = 0.75;
 /**
- * Yaw the plan counts on, as a share of full steering lock. Above 1 because
- * a sliding car rotates more than its steering alone allows.
+ * How much of the car the speed plan dares to use: share of the tyres'
+ * lateral grip, of the brakes, and of the yaw (above 1 because a sliding car
+ * rotates more than its steering alone allows). AI levels up to `from` plan
+ * with the careful set; from there to level 1 they blend into the full set.
  */
-export const PLAN_STEER = 1.1;
+export const PLAN_TUNE = {
+  from: 0.7,
+  careful: { grip: 0.9, brake: 0.75, steer: 1.1 },
+  full: { grip: 1.05, brake: 1.0, steer: 1.3 },
+};
 const MAX_PLAN_SPEED = 900;
 
-/** Per track (so an edited track gets fresh plans), then per kind + setup. */
+export interface PlanMargins {
+  grip: number;
+  brake: number;
+  steer: number;
+}
+
+/** Plan margins for an AI level 0..1, in steps of 0.05 so plans can be cached. */
+export function planMargins(level = 0): PlanMargins {
+  const { from, careful, full } = PLAN_TUNE;
+  const step = Math.round(Math.min(1, Math.max(0, level)) * 20) / 20;
+  const t = step <= from ? 0 : (step - from) / (1 - from);
+  const mix = (a: number, b: number) => a + (b - a) * t;
+  return { grip: mix(careful.grip, full.grip), brake: mix(careful.brake, full.brake), steer: mix(careful.steer, full.steer) };
+}
+
+/** Per track (so an edited track gets fresh plans), then per kind + setup + margins. */
 const profiles = new WeakMap<Track, Map<string, number[]>>();
 
 /** Fastest a car may go at a sample before its yaw rate runs out. */
-function steerLimit(C: CarStats, kappa: number): number {
+function steerLimit(C: CarStats, kappa: number, yawShare: number): number {
   if (kappa <= 1e-6) return MAX_PLAN_SPEED;
   // Yaw rate at speed v (above steerFullSpeed) is steerRate / (1 + v / steerDampSpeed);
   // a corner needs v * kappa of it.
   const a = kappa / C.steerDampSpeed;
-  const v = (-kappa + Math.sqrt(kappa * kappa + 4 * a * C.steerRate * PLAN_STEER)) / (2 * a);
+  const v = (-kappa + Math.sqrt(kappa * kappa + 4 * a * C.steerRate * yawShare)) / (2 * a);
   return Math.max(30, v);
 }
 
 /**
  * Target speed at each sample for one car kind and setup on fresh tyres:
- * the corner limit (grip and steering), then a backward pass so the car can
- * brake down to every corner in time.
+ * the corner limit (grip on this car's tyres for the surface, and steering),
+ * then a backward pass so the car can brake down to every corner in time.
+ * `level` (AI level 0..1) sets how close to the limit the plan goes, and
+ * `wear` (tyre wear 0..1, in steps of 0.1) how much grip and braking the
+ * tyres have left.
  */
-export function speedProfile(track: Track, car: { kind?: CarKind; setup?: CarSetup }): number[] {
+export function speedProfile(track: Track, car: { kind?: CarKind; setup?: CarSetup }, level = 0, wear = 0): number[] {
   const C = carStats(car);
-  const key = `${car.kind}|${car.setup?.gearing ?? 0},${car.setup?.steering ?? 0},${car.setup?.grip ?? 0}`;
+  const m = planMargins(level);
+  const w = Math.round(Math.min(1, Math.max(0, wear)) * 10) / 10;
+  const gripLeft = tyreFactor(w, TYRE.wornGrip);
+  const brakeLeft = tyreFactor(w, TYRE.wornBrake);
+  const key = `${car.kind}|${car.setup?.gearing ?? 0},${car.setup?.steering ?? 0},${car.setup?.grip ?? 0}|${m.grip},${m.brake},${m.steer}|${w}`;
   let perTrack = profiles.get(track);
   if (!perTrack) {
     perTrack = new Map();
@@ -186,11 +210,11 @@ export function speedProfile(track: Track, car: { kind?: CarKind; setup?: CarSet
   const n = line.points.length;
   const v = line.points.map((p, i) => {
     const k = line.curvature[i];
-    const surface = SURFACES[surfaceAt(track, p.x, p.y)];
-    const lat = k > 1e-6 ? Math.sqrt((C.lateralGrip * surface.grip * PLAN_GRIP) / k) : MAX_PLAN_SPEED;
-    return Math.min(MAX_PLAN_SPEED, lat, steerLimit(C, k));
+    const surface = surfaceFor(C, surfaceAt(track, p.x, p.y));
+    const lat = k > 1e-6 ? Math.sqrt((C.lateralGrip * surface.grip * m.grip * gripLeft) / k) : MAX_PLAN_SPEED;
+    return Math.min(MAX_PLAN_SPEED, lat, steerLimit(C, k, m.steer));
   });
-  const brake = (C.brakeDecel / C.mass) * PLAN_BRAKE;
+  const brake = (C.brakeDecel / C.mass) * m.brake * brakeLeft;
   // Two laps backward so braking zones wrap past the start line.
   for (let pass = 0; pass < 2; pass++) {
     for (let k = n - 1; k >= 0; k--) {

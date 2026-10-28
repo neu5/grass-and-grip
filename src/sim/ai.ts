@@ -1,5 +1,5 @@
 import { clamp, datan2, dcos, dsin, normalizeAngle } from './dmath';
-import { carStats, tyreFactor, TYRE } from './physics';
+import { carStats } from './physics';
 import { carSampleIndex, distanceToCenterline, inPitLane, pitBoxIndex, startAxis, type Rect, type Track } from './track';
 import { PIT } from './pits';
 import { missedGate, pastNextGate, racingLine, speedProfile, MISSED_GATE_DISTANCE } from './racingLine';
@@ -14,6 +14,9 @@ const MAX_PLAN_SPEED = 600;
 
 /** Lift off the throttle this close to the road edge. */
 const EDGE_LIFT = 8;
+/** Room kept behind a car being followed, and the share of the brakes counted on to keep it. */
+const FOLLOW_GAP = 10;
+const FOLLOW_BRAKE = 0.55;
 /** Share of the line's bend steered in directly, before the aim-point correction. */
 const FEED_FORWARD = 0.5;
 
@@ -44,8 +47,8 @@ export function aiSkill(level: number, carIndex: number): number {
 export const AI_PIT = {
   /** Pit if remaining fuel is at or below this (near empty). */
   fuelLow: 0.1,
-  /** Pit if tyre wear is at or above this (HUD tyres near 0%). */
-  tyreWorn: 0.9,
+  /** Pit if tyre wear is at or above this (HUD tyres at 40%): later costs more in slides than the stop. */
+  tyreWorn: 0.6,
   /** Pit if damage is at or above this (very broken). */
   damageHigh: 0.75,
   /** Leave once recovered past these. */
@@ -356,7 +359,7 @@ function raceDrive(car: CarState, ai: AiMemory, track: Track, cars: CarState[], 
   const fromCenter = distanceToCenterline(track, car.x, car.y);
   const offRoad = fromCenter > track.def.halfWidth;
   // Only pull out to pass where the line is not braking for a corner.
-  const profile = speedProfile(track, car);
+  const profile = speedProfile(track, car, level, car.tyreWear ?? 0);
   const cornering = profile[(idx + 8) % n] < speed + 30;
   const lane = offRoad ? { offset: 0, speedCap: Infinity } : passLane(car, track, cars, idx, level, cornering);
   ai.passOffset = (ai.passOffset ?? 0) + (lane.offset - (ai.passOffset ?? 0)) * 0.08;
@@ -387,11 +390,10 @@ function raceDrive(car: CarState, ai: AiMemory, track: Track, cars: CarState[], 
   const wanted = feed + err * 2.2 + slipAngle * 0.9;
   const steer = clamp(wanted, -1, 1);
 
-  // Target speed: own profile, a few samples ahead, slower on worn tyres.
-  const grip = tyreFactor(car.tyreWear ?? 0, TYRE.wornGrip);
+  // Target speed: own profile for these tyres, a few samples ahead.
   let pace = AI_LEVEL.paceMin + (AI_LEVEL.paceMax - AI_LEVEL.paceMin) * level;
   const ahead = (idx + 3) % n;
-  const planned = profile[ahead] * Math.sqrt(grip);
+  const planned = profile[ahead];
   if ((ai.mistakeTicks ?? 0) > 0) {
     ai.mistakeTicks!--;
     pace += AI_LEVEL.mistakePace;
@@ -439,6 +441,7 @@ function passLane(
   const gap = AI_LEVEL.passGapMax - (AI_LEVEL.passGapMax - AI_LEVEL.passGapMin) * level;
   let ahead: CarState | null = null;
   let aheadAlong = Infinity;
+  let aheadSide = 0;
   let nudge = 0;
   for (const o of cars) {
     if (o.id === car.id) continue;
@@ -457,6 +460,7 @@ function passLane(
     if (speed - otherAlong < -5) continue;
     if (along < aheadAlong) {
       aheadAlong = along;
+      aheadSide = side;
       ahead = o;
     }
   }
@@ -471,6 +475,11 @@ function passLane(
   const roomPlus = edge - theirs;
   const roomMinus = theirs + edge;
   const otherAlong = ahead.vx * ca + ahead.vy * sa;
+  // Fastest we may close in and still stop behind it: its speed plus what
+  // our brakes can take off over the gap.
+  const reach = me.radius + carStats(ahead).radius;
+  const room = Math.max(0, aheadAlong - reach - FOLLOW_GAP);
+  const follow = Math.max(0, otherAlong) + Math.sqrt(2 * (me.brakeDecel / me.mass) * FOLLOW_BRAKE * room);
   let lane: number | null = null;
   if (roomPlus >= need && roomPlus >= roomMinus) lane = theirs + need;
   else if (roomMinus >= need) lane = theirs - need;
@@ -478,10 +487,11 @@ function passLane(
   const lineHere = line.offset[idx];
   if (lane === null || cornering) {
     // Boxed in: hang back behind it.
-    const cap = aheadAlong < 70 ? Math.max(0, otherAlong - 5) : Infinity;
-    return { offset: clamp(nudge, -edge, edge), speedCap: cap };
+    return { offset: clamp(nudge, -edge, edge), speedCap: follow };
   }
-  return { offset: clamp(lane - lineHere + nudge, -edge * 2, edge * 2), speedCap: Infinity };
+  // Pulling out: don't run into it before we are clear to the side.
+  const clear = Math.abs(aheadSide) > reach + 4;
+  return { offset: clamp(lane - lineHere + nudge, -edge * 2, edge * 2), speedCap: clear ? Infinity : follow };
 }
 
 function pitSteer(car: CarState, ai: AiMemory, track: Track, cars: CarState[]): PlayerInput | null {

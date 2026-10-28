@@ -7,7 +7,7 @@ export * from './track';
 export { CAR, CARS, SURFACES, SETUP_EFFECT, collideSegment, NO_INPUT, carStats, statsFor, TYRE, tyreFactor, FUEL, DAMAGE, applyCollisionDamage } from './physics';
 export { PIT, applyPitService, isStoppedInPit, needsPitService, carSpeed } from './pits';
 export { aiInput, AI_PIT, aiNeedsPit, aiPitReady, createAiMemory, inPitApproach } from './ai';
-export { racingLine, speedProfile, missedGate, pastNextGate, MISSED_GATE_DISTANCE } from './racingLine';
+export { racingLine, speedProfile, planMargins, PLAN_TUNE, missedGate, pastNextGate, MISSED_GATE_DISTANCE } from './racingLine';
 export { AI_LEVEL, aiSkill } from './ai';
 export { CONE, conesFromTrack } from './props';
 export * from './trackTools';
