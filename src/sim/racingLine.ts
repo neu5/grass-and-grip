@@ -190,7 +190,7 @@ export function speedProfile(track: Track, car: { kind?: CarKind; setup?: CarSet
     const lat = k > 1e-6 ? Math.sqrt((C.lateralGrip * surface.grip * PLAN_GRIP) / k) : MAX_PLAN_SPEED;
     return Math.min(MAX_PLAN_SPEED, lat, steerLimit(C, k));
   });
-  const brake = C.brakeDecel * PLAN_BRAKE;
+  const brake = (C.brakeDecel / C.mass) * PLAN_BRAKE;
   // Two laps backward so braking zones wrap past the start line.
   for (let pass = 0; pass < 2; pass++) {
     for (let k = n - 1; k >= 0; k--) {

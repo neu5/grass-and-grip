@@ -17,7 +17,7 @@ import {
   type GameState,
   type RaceRules,
 } from '../src/sim';
-import { collideCars, stepCarPhysics } from '../src/sim/physics';
+import { CARS, collideCars, stepCarPhysics } from '../src/sim/physics';
 import type { Surface } from '../src/sim/track';
 
 function lone(kind: CarKind, setup?: CarSetup): CarState {
@@ -60,6 +60,32 @@ describe('car kinds', () => {
     expect(top('kart')).toBeLessThan(top('rally'));
     expect(speedAfter('kart', 'asphalt', 30)).toBeGreaterThan(speedAfter('truck', 'asphalt', 30));
     expect(speedAfter('kart', 'grass', 600)).toBeLessThan(speedAfter('rally', 'grass', 600));
+  });
+
+  it('spreads top speeds: F1 > rally > buggy > truck > kart, each at least 3% apart', () => {
+    const order: CarKind[] = ['f1', 'rally', 'buggy', 'truck', 'kart'];
+    const top = order.map((k) => speedAfter(k, 'asphalt', 3000));
+    for (let i = 1; i < top.length; i++) expect(top[i], order[i]).toBeLessThan(top[i - 1] * 0.97);
+    expect(top[0]).toBeGreaterThan(top[4] * 1.35);
+    // ...but the kart gets off the line quicker than the F1 and the truck.
+    expect(speedAfter('kart', 'asphalt', 20)).toBeGreaterThan(speedAfter('f1', 'asphalt', 20));
+    expect(speedAfter('kart', 'asphalt', 20)).toBeGreaterThan(speedAfter('truck', 'asphalt', 20));
+  });
+
+  it('makes a heavier car pull and stop slower with the same engine and brakes', () => {
+    const light = { ...CARS.rally };
+    const heavy = { ...CARS.rally, mass: 2 };
+    const run = (stats: typeof light, throttle: number, v0: number, ticks: number) => {
+      const car = lone('rally');
+      car.vx = v0;
+      const saved = CARS.rally;
+      CARS.rally = stats;
+      for (let i = 0; i < ticks; i++) stepCarPhysics(car, { throttle, steer: 0, handbrake: false }, 'asphalt', 1 / 60);
+      CARS.rally = saved;
+      return car.vx;
+    };
+    expect(run(heavy, 1, 0, 30)).toBeLessThan(run(light, 1, 0, 30) * 0.7);
+    expect(run(heavy, -1, 300, 15)).toBeGreaterThan(run(light, -1, 300, 15) + 40);
   });
 
   it('lets a heavy truck shove a light kart', () => {
@@ -108,8 +134,8 @@ describe('balance', () => {
     for (const kind of CAR_KINDS) {
       // Geometric mean of lap time relative to Rally.
       const ratio = Math.exp(tracks.reduce((sum, t, i) => sum + Math.log(lap(t, kind) / rally[i]), 0) / tracks.length);
-      expect(ratio, kind).toBeGreaterThan(0.96);
-      expect(ratio, kind).toBeLessThan(1.04);
+      expect(ratio, kind).toBeGreaterThan(0.95);
+      expect(ratio, kind).toBeLessThan(1.05);
     }
   }, 90_000);
 

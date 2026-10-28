@@ -31,10 +31,15 @@ export interface CarStats {
   length: number;
   width: number;
   radius: number;
+  /**
+   * Engine, brake, reverse and handbrake are forces: a car's acceleration is
+   * the force divided by its `mass`, so heavy cars pull and stop slower.
+   */
   engineAccel: number;
   brakeDecel: number;
   reverseAccel: number;
   maxReverse: number;
+  /** Air drag per unit of speed squared; with `engineAccel / mass` it sets the top speed. */
   airDrag: number;
   coastDrag: number;
   lateralGrip: number;
@@ -47,7 +52,7 @@ export interface CarStats {
   steerRate: number;
   steerFullSpeed: number;
   steerDampSpeed: number;
-  /** Relative mass for car-to-car shoves. Rally is 1. */
+  /** Relative mass, for driving (see `engineAccel`) and car-to-car shoves. Rally is 1. */
   mass: number;
   /** Crash damage is divided by this. */
   toughness: number;
@@ -60,9 +65,11 @@ export interface CarStats {
 
 /**
  * Balanced so every car laps within a few percent of the others on average,
- * each with its own strengths. Rally: the all-rounder that slides.
- * Formula 1: a touch quicker on tarmac (top speed, grip) but fragile and
- * hopeless off the road.
+ * but each gets there its own way. Top speeds on tarmac: F1 ~620, rally ~540,
+ * buggy ~500, truck ~480, kart ~425.
+ * Rally: the all-rounder that slides.
+ * Formula 1: by far the fastest on a straight, grips hard, slow off the
+ * line, fragile and hopeless off the road.
  */
 export const CARS: Record<CarKind, CarStats> = {
   rally: {
@@ -73,7 +80,7 @@ export const CARS: Record<CarKind, CarStats> = {
     brakeDecel: 900,
     reverseAccel: 260,
     maxReverse: 150,
-    airDrag: 0.0012,
+    airDrag: 0.001094,
     coastDrag: 0.5,
     lateralGrip: 1150,
     slideThreshold: 70,
@@ -92,11 +99,11 @@ export const CARS: Record<CarKind, CarStats> = {
     length: 38,
     width: 20,
     radius: 14,
-    engineAccel: 540,
+    engineAccel: 520,
     brakeDecel: 950,
     reverseAccel: 280,
     maxReverse: 140,
-    airDrag: 0.00118,
+    airDrag: 0.000708,
     coastDrag: 0.38,
     lateralGrip: 1300,
     slideThreshold: 100,
@@ -116,67 +123,67 @@ export const CARS: Record<CarKind, CarStats> = {
     length: 30,
     width: 18,
     radius: 14,
-    engineAccel: 555,
-    brakeDecel: 850,
-    reverseAccel: 260,
+    engineAccel: 486,
+    brakeDecel: 765,
+    reverseAccel: 234,
     maxReverse: 150,
-    airDrag: 0.0014,
+    airDrag: 0.00136,
     coastDrag: 0.5,
     lateralGrip: 1150,
     slideThreshold: 75,
     slideGripFactor: 0.74,
     handbrakeGripFactor: 0.32,
-    handbrakeDecel: 260,
+    handbrakeDecel: 234,
     slideScrub: 0.0035,
-    steerRate: 3.4,
+    steerRate: 3.5,
     steerFullSpeed: 110,
     steerDampSpeed: 900,
-    mass: 1,
+    mass: 0.9,
     toughness: 1.25,
     offroad: 0.5,
   },
-  /** Heavy: slowest to turn and stop, hard to hurt, shoves everyone else aside. */
+  /** Heavy: big engine and brakes, but its mass makes it slow to pull, turn and stop; hard to hurt, shoves everyone else aside. */
   truck: {
     length: 44,
     width: 22,
     radius: 17,
-    engineAccel: 520,
-    brakeDecel: 880,
-    reverseAccel: 220,
+    engineAccel: 1296,
+    brakeDecel: 1920,
+    reverseAccel: 528,
     maxReverse: 120,
-    airDrag: 0.00115,
+    airDrag: 0.00151,
     coastDrag: 0.5,
-    lateralGrip: 1250,
+    lateralGrip: 1680,
     slideThreshold: 60,
     slideGripFactor: 0.76,
     handbrakeGripFactor: 0.36,
-    handbrakeDecel: 240,
+    handbrakeDecel: 576,
     slideScrub: 0.004,
-    steerRate: 3.0,
+    steerRate: 3.15,
     steerFullSpeed: 120,
     steerDampSpeed: 900,
     mass: 2.4,
     toughness: 2,
     offroad: 0.2,
   },
-  /** Tiny and twitchy: quickest off the line and in tight corners, lowest top speed, hates grass. */
+  /** Tiny, light and twitchy: quickest off the line and in tight corners, lowest top speed, hates grass. */
   kart: {
     length: 22,
     width: 14,
     radius: 10,
-    engineAccel: 565,
-    brakeDecel: 1000,
-    reverseAccel: 260,
+    engineAccel: 396,
+    brakeDecel: 550,
+    reverseAccel: 143,
     maxReverse: 130,
-    airDrag: 0.00165,
+    airDrag: 0.002964,
     coastDrag: 0.45,
-    lateralGrip: 1600,
+    lateralGrip: 1800,
     slideThreshold: 95,
     slideGripFactor: 0.82,
     handbrakeGripFactor: 0.4,
-    handbrakeDecel: 280,
+    handbrakeDecel: 154,
     slideScrub: 0.0025,
-    steerRate: 3.9,
+    steerRate: 4.1,
     steerFullSpeed: 90,
     steerDampSpeed: 1000,
     mass: 0.55,
@@ -341,19 +348,20 @@ export function stepCarPhysics(
   const braking = throttle < 0 && vF > 5;
   const brakeAmt = braking ? -throttle : 0;
 
+  const perMass = 1 / C.mass;
   if (throttle > 0) {
-    vF += C.engineAccel * s.engine * throttle * powerMul * dt;
+    vF += C.engineAccel * perMass * s.engine * throttle * powerMul * dt;
   } else if (throttle < 0) {
     if (vF > 5) {
-      vF = Math.max(0, vF + C.brakeDecel * brakeMul * throttle * dt);
+      vF = Math.max(0, vF + C.brakeDecel * perMass * brakeMul * throttle * dt);
     } else {
-      vF = Math.max(-C.maxReverse, vF + C.reverseAccel * s.engine * throttle * powerMul * dt);
+      vF = Math.max(-C.maxReverse, vF + C.reverseAccel * perMass * s.engine * throttle * powerMul * dt);
     }
   } else {
     vF -= vF * C.coastDrag * dt;
   }
   if (hb) {
-    const d = C.handbrakeDecel * dt;
+    const d = C.handbrakeDecel * perMass * dt;
     vF = vF > d ? vF - d : vF < -d ? vF + d : 0;
   }
 
