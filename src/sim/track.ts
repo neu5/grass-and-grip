@@ -1115,28 +1115,57 @@ export function terrainHeightAt(track: Track, x: number, y: number): number {
   return fieldHeight(track, x, y);
 }
 
-/** Pitch (nose) and roll from the height field. Continuous — no per-tile snaps. */
-export function slopeAttitude(
-  track: Track,
-  x: number,
-  y: number,
-  angle: number,
-  onDeck?: boolean,
-): { pitch: number; roll: number } {
-  if (surfaceAt(track, x, y) === 'water' && !onDeck) return { pitch: 0, roll: 0 };
-  const driveHeight = (px: number, py: number) => carHeightAt(track, px, py, onDeck);
+/** Where a car's wheels touch the ground, in its own frame (units from its centre). */
+export interface WheelBase {
+  /** Front and rear axle, ahead of / behind the centre (both positive). */
+  front: number;
+  rear: number;
+  /** Half the distance between left and right wheels. */
+  half: number;
+  radius: number;
+}
+
+export interface CarPose {
+  /** Ground height under the car's centre, on the plane through its wheels. */
+  height: number;
+  /** Nose up is positive. */
+  pitch: number;
+  /** Positive when the right side (+90° from the heading) is higher. */
+  roll: number;
+}
+
+const MAX_POSE_PITCH = 0.3;
+const MAX_POSE_ROLL = 0.2;
+
+/**
+ * Body pose from the ground under each of the four wheels. A wheel far off
+ * the others (hanging over a kerb, a wall or an embankment edge) is ignored,
+ * so one wheel cannot tip the car over.
+ */
+export function carPose(track: Track, x: number, y: number, angle: number, onDeck: boolean | undefined, w: WheelBase): CarPose {
+  if (surfaceAt(track, x, y) === 'water' && !onDeck) return { height: carHeightAt(track, x, y, onDeck), pitch: 0, roll: 0 };
   const ca = Math.cos(angle);
   const sa = Math.sin(angle);
-  const along = 18;
-  const across = 14;
-  const hF = driveHeight(x + along * ca, y + along * sa);
-  const hB = driveHeight(x - along * ca, y - along * sa);
-  const hL = driveHeight(x - across * sa, y + across * ca);
-  const hR = driveHeight(x + across * sa, y - across * ca);
-  return {
-    pitch: Math.max(-0.38, Math.min(0.38, Math.atan2(hB - hF, along * 2))),
-    roll: Math.max(-0.28, Math.min(0.28, Math.atan2(hL - hR, across * 2))),
-  };
+  // Right of travel is (-sa, ca) with y pointing down the map.
+  const at = (along: number, side: number) => carHeightAt(track, x + along * ca - side * sa, y + along * sa + side * ca, onDeck);
+  const h = [at(w.front, -w.half), at(w.front, w.half), at(-w.rear, -w.half), at(-w.rear, w.half)];
+  const sorted = [...h].sort((a, b) => a - b);
+  const mid = (sorted[1] + sorted[2]) / 2;
+  const limit = Math.max(3, w.radius * 1.2);
+  for (let i = 0; i < 4; i++) if (Math.abs(h[i] - mid) > limit) h[i] = mid;
+  const [fl, fr, rl, rr] = h;
+  const frontH = (fl + fr) / 2;
+  const rearH = (rl + rr) / 2;
+  const base = w.front + w.rear;
+  const pitch = clampPose(Math.atan2(frontH - rearH, base), MAX_POSE_PITCH);
+  const roll = clampPose(Math.atan2((fr + rr) / 2 - (fl + rl) / 2, w.half * 2), MAX_POSE_ROLL);
+  // The plane through the axles, at the centre.
+  const height = rearH + (frontH - rearH) * (w.rear / base);
+  return { height, pitch, roll };
+}
+
+function clampPose(v: number, max: number): number {
+  return v > max ? max : v < -max ? -max : v;
 }
 
 /** Cars this far apart in height do not collide (bridge vs water). */

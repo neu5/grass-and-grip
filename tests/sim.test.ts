@@ -145,7 +145,7 @@ describe('simulation', () => {
     }
   });
 
-  it('gives Formula 1 a little more acceleration and top speed than Rally', () => {
+  it('gives Formula 1 a clearly higher top speed than Rally', () => {
     const track = getTrack('meadow');
     const p = track.samples[0];
     const speedAfter = (kind: 'rally' | 'f1', ticks: number) => {
@@ -164,10 +164,9 @@ describe('simulation', () => {
       const c = s.cars[0];
       return Math.hypot(c.vx, c.vy);
     };
-    // Balanced: an edge on tarmac, not a different class.
-    expect(speedAfter('f1', 90)).toBeGreaterThan(speedAfter('rally', 90));
-    expect(speedAfter('f1', 600)).toBeGreaterThan(speedAfter('rally', 600));
-    expect(speedAfter('f1', 600)).toBeLessThan(speedAfter('rally', 600) * 1.08);
+    // About level off the line, well clear at the end of a long straight.
+    expect(speedAfter('f1', 90)).toBeGreaterThan(speedAfter('rally', 90) * 0.97);
+    expect(speedAfter('f1', 600)).toBeGreaterThan(speedAfter('rally', 600) * 1.1);
   });
 
   it('gives Formula 1 more grip and less slide than Rally', () => {

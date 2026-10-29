@@ -3,12 +3,11 @@ import {
   CARS,
   getTrack,
   heightAt,
-  carHeightAt,
   carSampleIndex,
   isStoppedInPit,
   needsPitService,
   pitBoxIndex,
-  slopeAttitude,
+  carPose,
   terrainHeightAt,
   themeOf,
   toCarKind,
@@ -19,11 +18,13 @@ import {
   inWater,
   WATER_BED,
   WATER_SURFACE,
+  TICK_RATE,
   type Bridge,
   type CarKind,
   type CarState,
   type GameState,
   type Track,
+  type WheelBase,
 } from '../sim';
 import type { SoundEngine } from './audio';
 import { checkpointDebugPose } from './checkpointDebug';
@@ -45,6 +46,11 @@ function surfaceRes(track: Track): number {
   return Math.min(2, 4096 / Math.max(track.def.width, track.def.height));
 }
 const CAR_FALL_GRAVITY = 900;
+/** A drop bigger than this in one frame (off a deck, into the lake) is a fall; less just follows the slope. */
+const CAR_FALL_START = 6;
+/** Most the body leans in a corner and dips under braking, on its springs. */
+const BODY_LEAN = 0.08;
+const BODY_DIVE = 0.05;
 
 function lerpAngle(a: number, b: number, t: number): number {
   let d = b - a;
@@ -79,9 +85,31 @@ const CAR_BUILDERS: Record<CarKind, (color: string) => THREE.Group> = {
   kart: buildKartMesh,
 };
 
+/**
+ * A car: wheels straight in the root, which takes the ground pose, and
+ * everything else in a `body` group that leans and dips on its springs.
+ * `userData.wheelBase` says where the wheels touch the ground.
+ */
 function buildCarMesh(color: string, kind: CarKind = 'rally'): THREE.Group {
   const g = (CAR_BUILDERS[kind] ?? buildRallyMesh)(color);
   attachDamageFx(g, kind);
+  const body = new THREE.Group();
+  body.name = 'body';
+  const wheels: THREE.Mesh[] = [];
+  for (const c of [...g.children]) {
+    if (c instanceof THREE.Mesh && c.material === wheelMat) wheels.push(c);
+    else body.add(c);
+  }
+  g.add(body);
+  const xs = wheels.map((w) => w.position.x);
+  const wheelBase: WheelBase = {
+    front: Math.max(...xs),
+    rear: -Math.min(...xs),
+    half: Math.max(...wheels.map((w) => Math.abs(w.position.z))),
+    radius: (wheels[0].geometry as THREE.CylinderGeometry).parameters.radiusTop,
+  };
+  g.userData.wheelBase = wheelBase;
+  g.userData.body = body;
   return g;
 }
 
@@ -146,13 +174,15 @@ function buildTruckMesh(color: string): THREE.Group {
   for (const z of [-W / 2, W / 2]) box(g, paint, [L * 0.6, 5, 1], [-L * 0.18, 11, z]);
   box(g, paint, [1, 5, W], [-L * 0.48, 11, 0]);
   box(g, std('#ffd54a', { roughness: 0.4 }), [L * 0.12, 1.2, W * 0.5], [L * 0.32, 19.6, 0]);
+  // Outside the body, so the bed does not swallow them.
+  const tw = W / 2 + 1.2;
   addWheels(g, truckWheelGeo, 5.4, [
-    [-L * 0.36, -W / 2],
-    [-L * 0.36, W / 2],
-    [-L * 0.18, -W / 2],
-    [-L * 0.18, W / 2],
-    [L * 0.3, -W / 2],
-    [L * 0.3, W / 2],
+    [-L * 0.36, -tw],
+    [-L * 0.36, tw],
+    [-L * 0.18, -tw],
+    [-L * 0.18, tw],
+    [L * 0.3, -tw],
+    [L * 0.3, tw],
   ]);
   return shadowed(g);
 }
@@ -933,6 +963,8 @@ export class Renderer3D {
   private carRoll: number[] = [];
   /** Shown car height and fall speed, so drops off the deck are not a snap. */
   private carY: number[] = [];
+  private carLean: number[] = [];
+  private carDive: number[] = [];
   private coneMeshes: THREE.Group[] = [];
   private carVy: number[] = [];
   private crew: CrewActor[] = [];
@@ -1106,6 +1138,8 @@ export class Renderer3D {
     this.carRoll = this.carRoll.map(() => 0);
     this.carY = [];
     this.carVy = [];
+    this.carLean = [];
+    this.carDive = [];
     for (const p of this.smokePuffs) {
       p.age = p.life;
       p.mesh.visible = false;
@@ -1215,6 +1249,8 @@ export class Renderer3D {
     this.carRoll = this.carMeshes.map(() => 0);
     this.carY = [];
     this.carVy = [];
+    this.carLean = [];
+    this.carDive = [];
   }
 
   private resize(): { w: number; h: number } {
@@ -1382,32 +1418,45 @@ export class Renderer3D {
       const x = a.x + (b.x - a.x) * alpha;
       const y = a.y + (b.y - a.y) * alpha;
       const angle = lerpAngle(a.angle, b.angle, alpha);
-      const h = carHeightAt(this.track, x, y, b.onDeck);
       const mesh = this.carMeshes[i];
-      const slope = slopeAttitude(this.track, x, y, angle, b.onDeck);
+      const pose = carPose(this.track, x, y, angle, b.onDeck, mesh.userData.wheelBase as WheelBase);
+      const h = pose.height;
       const follow = 1 - Math.exp(-dt * 12);
-      const targetRoll = slope.roll + bodyRoll(b);
+      const lean = bodyRoll(b);
+      const dive = bodyDive(a, b);
       if (this.carPitch[i] == null) {
-        this.carPitch[i] = slope.pitch;
-        this.carRoll[i] = targetRoll;
+        this.carPitch[i] = pose.pitch;
+        this.carRoll[i] = pose.roll;
+        this.carLean[i] = lean;
+        this.carDive[i] = dive;
       } else {
-        this.carPitch[i] += (slope.pitch - this.carPitch[i]) * follow;
-        this.carRoll[i] += (targetRoll - this.carRoll[i]) * follow;
+        this.carPitch[i] += (pose.pitch - this.carPitch[i]) * follow;
+        this.carRoll[i] += (pose.roll - this.carRoll[i]) * follow;
+        const leanNow = this.carLean[i] ?? lean;
+        const diveNow = this.carDive[i] ?? dive;
+        this.carLean[i] = leanNow + (lean - leanNow) * follow;
+        this.carDive[i] = diveNow + (dive - diveNow) * follow * 0.5;
       }
-      // Drop under gravity (off the deck, into the lake); climb straight away.
+      // Fall under gravity off a deck or into the lake; otherwise follow the ground.
       const lastY = this.carY[i];
-      if (lastY == null || h >= lastY) {
+      const falling = (this.carVy[i] ?? 0) > 0;
+      if (lastY == null || h >= lastY || (!falling && lastY - h < CAR_FALL_START)) {
         this.carY[i] = h;
         this.carVy[i] = 0;
       } else {
         this.carVy[i] = (this.carVy[i] ?? 0) + CAR_FALL_GRAVITY * dt;
         this.carY[i] = Math.max(h, lastY - this.carVy[i] * dt);
+        if (this.carY[i] === h) this.carVy[i] = 0;
       }
       const carY = this.carY[i];
       mesh.position.set(x, carY, y);
       mesh.rotation.y = -angle;
-      mesh.rotation.x = this.carRoll[i];
+      // Rotating about x lowers the +z (right) side, so the sign flips.
+      mesh.rotation.x = -this.carRoll[i];
       mesh.rotation.z = this.carPitch[i];
+      const body = mesh.userData.body as THREE.Group;
+      body.rotation.x = this.carLean[i];
+      body.rotation.z = this.carDive[i];
       const dmg = (a.damage ?? 0) + ((b.damage ?? 0) - (a.damage ?? 0)) * alpha;
       updateFireFx(mesh, dmg, performance.now() / 1000);
       positions.push(new THREE.Vector3(x, carY, y));
@@ -1458,7 +1507,15 @@ export class Renderer3D {
   }
 }
 
+/** Body lean on the springs from sideways speed. */
 function bodyRoll(car: CarState): number {
   const lateral = -car.vx * Math.sin(car.angle) + car.vy * Math.cos(car.angle);
-  return Math.max(-0.14, Math.min(0.14, lateral / 1800));
+  return Math.max(-BODY_LEAN, Math.min(BODY_LEAN, lateral / 2500));
+}
+
+/** Nose dips under braking and lifts a little under power: from the speed change over one tick. */
+function bodyDive(prev: CarState, curr: CarState): number {
+  const fwd = (c: CarState) => c.vx * Math.cos(curr.angle) + c.vy * Math.sin(curr.angle);
+  const accel = (fwd(curr) - fwd(prev)) * TICK_RATE;
+  return Math.max(-BODY_DIVE, Math.min(BODY_DIVE, accel / 12000));
 }

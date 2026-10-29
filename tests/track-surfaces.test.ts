@@ -13,7 +13,7 @@ import {
   inBridge,
   inWater,
   pointInRect,
-  slopeAttitude,
+  carPose,
   step,
   terrainHeightAt,
   surfaceAt,
@@ -188,10 +188,11 @@ describe('harbor layout', () => {
 
   it('keeps car pitch continuous along the ramp', () => {
     let maxDPitch = 0;
-    let prev = slopeAttitude(track, track.samples[0].x, track.samples[0].y, track.tangentAngles[0]).pitch;
+    const wheels = { front: 12, rear: 12, half: 9, radius: 4.6 };
+    let prev = carPose(track, track.samples[0].x, track.samples[0].y, track.tangentAngles[0], false, wheels).pitch;
     for (let i = 1; i < track.samples.length; i++) {
       const p = track.samples[i];
-      const pitch = slopeAttitude(track, p.x, p.y, track.tangentAngles[i]).pitch;
+      const pitch = carPose(track, p.x, p.y, track.tangentAngles[i], false, wheels).pitch;
       const dp = Math.abs(pitch - prev);
       if (dp > maxDPitch) maxDPitch = dp;
       prev = pitch;
