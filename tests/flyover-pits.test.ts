@@ -5,6 +5,7 @@ import {
   createRace,
   getTrack,
   pitBoxIndex,
+  segmentsIntersect,
   step,
   TRACK_IDS,
   TRACKS,
@@ -102,6 +103,36 @@ describe('pits', () => {
       }
     }
   }, 30_000);
+
+  it('stretches the finish line over the pit lane, so a car moving over for the pits still crosses it', () => {
+    for (const id of TRACK_IDS) {
+      const t = getTrack(id);
+      const g = t.gates[0];
+      const l = t.def.pitLane;
+      // From the road centre straight across to the lane's middle: that path must cut the line.
+      const lane = { x: l.x + l.w / 2, y: l.y + l.h / 2 };
+      const u = { x: g.tx, y: g.ty };
+      const across = (lane.x - g.center.x) * -u.y + (lane.y - g.center.y) * u.x;
+      const far = { x: g.center.x - u.y * across * 1.4, y: g.center.y + u.x * across * 1.4 };
+      const before = { x: far.x - u.x * 20, y: far.y - u.y * 20 };
+      const after = { x: far.x + u.x * 20, y: far.y + u.y * 20 };
+      expect(segmentsIntersect(before, after, g.a, g.b), id).toBe(true);
+    }
+  });
+
+  it('does not stop on the last lap when the tyres and fuel will reach the flag', () => {
+    const s = createRace({ trackId: 'meadow', totalLaps: 5, cars: [{ name: 'A', color: '#fff', controller: 'ai' }] });
+    const car = s.cars[0];
+    car.tyreWear = 0.7;
+    car.ai!.lapWear = 0.2;
+    expect(aiNeedsPit(car)).toBe(true);
+    expect(aiNeedsPit(car, 1)).toBe(false);
+    // Half a lap to go needs half a lap of tyre.
+    car.tyreWear = 0.8;
+    expect(aiNeedsPit(car, 0.5)).toBe(false);
+    car.ai!.lapWear = 0.4;
+    expect(aiNeedsPit(car, 1)).toBe(true);
+  });
 
   it('gives the long Grand Prix straight six stalls, the rest four', () => {
     expect(TRACKS.grandprix.pitBoxes).toHaveLength(6);

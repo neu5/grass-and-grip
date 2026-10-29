@@ -40,14 +40,19 @@ export function paintTrackSurface(track: Track, res: number): HTMLCanvasElement 
   const g = track.gates[0];
   const steps = 10;
   const sq = 7;
+  // Checkers across the road only: the gate itself also reaches over the pit side.
+  const half = track.def.halfWidth + 5;
+  const gl = Math.hypot(g.b.x - g.a.x, g.b.y - g.a.y) || 1;
+  const ux = (g.b.x - g.a.x) / gl;
+  const uy = (g.b.y - g.a.y) / gl;
   for (let i = 0; i < steps; i++) {
     for (let r = 0; r < 2; r++) {
-      const t0 = 0.12 + (i / steps) * 0.76;
-      const t1 = 0.12 + ((i + 1) / steps) * 0.76;
-      const ax = g.a.x + (g.b.x - g.a.x) * t0 + g.tx * sq * (r - 1);
-      const ay = g.a.y + (g.b.y - g.a.y) * t0 + g.ty * sq * (r - 1);
-      const bx = g.a.x + (g.b.x - g.a.x) * t1 + g.tx * sq * (r - 1);
-      const by = g.a.y + (g.b.y - g.a.y) * t1 + g.ty * sq * (r - 1);
+      const t0 = -half + (i / steps) * half * 2;
+      const t1 = -half + ((i + 1) / steps) * half * 2;
+      const ax = g.center.x + ux * t0 + g.tx * sq * (r - 1);
+      const ay = g.center.y + uy * t0 + g.ty * sq * (r - 1);
+      const bx = g.center.x + ux * t1 + g.tx * sq * (r - 1);
+      const by = g.center.y + uy * t1 + g.ty * sq * (r - 1);
       ctx.fillStyle = (i + r) % 2 === 0 ? '#fff' : '#111';
       ctx.beginPath();
       ctx.moveTo(ax, ay);

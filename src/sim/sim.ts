@@ -192,7 +192,7 @@ export function step(prev: GameState, inputs: TickInputs): GameState {
   // move, including any shove from a collision below.
   const start = state.cars.map((c) => ({ x: c.x, y: c.y }));
   for (const car of state.cars) {
-    const input = car.controller === 'ai' ? aiInput(car, track, canDrive, state.cars, state.tick) : canDrive ? sanitize(inputs[car.id]) : NO_INPUT;
+    const input = car.controller === 'ai' ? aiInput(car, track, canDrive, state.cars, state.tick, state.totalLaps) : canDrive ? sanitize(inputs[car.id]) : NO_INPUT;
     stepCarPhysics(car, input, surfaceAt(track, car.x, car.y), DT, rules);
     if (canDrive) applyPitService(car, track, DT);
   }

@@ -386,8 +386,13 @@ export function buildTrack(def: TrackDef, opts: { grid?: boolean } = {}): Track 
     const idx = gateSample(g, def.checkpointCount, curvature, (i) => nearPits(def, samples[i]));
     const c = samples[idx];
     const nrm = normals[idx];
-    const reachA = gateReach(def, samples, segmentLengths, idx, -1);
-    const reachB = gateReach(def, samples, segmentLengths, idx, 1);
+    let reachA = gateReach(def, samples, segmentLengths, idx, -1);
+    let reachB = gateReach(def, samples, segmentLengths, idx, 1);
+    if (g === 0) {
+      // The finish line also spans the pit side, so a car moving over for the pits still crosses it.
+      reachA = Math.max(reachA, pitReach(def, c, nrm, -1));
+      reachB = Math.max(reachB, pitReach(def, c, nrm, 1));
+    }
     gates.push({
       a: { x: c.x - nrm.x * reachA, y: c.y - nrm.y * reachA },
       b: { x: c.x + nrm.x * reachB, y: c.y + nrm.y * reachB },
@@ -550,6 +555,22 @@ function gateSample(g: number, count: number, curvature: number[], blocked: (i: 
     }
   }
   return best;
+}
+
+/** How far out on one side the finish line must reach to cover the pit lane beside it (0 if the lane is the other side). */
+function pitReach(def: TrackDef, c: Vec2, nrm: Vec2, side: number): number {
+  const l = def.pitLane;
+  if (l.w <= 0 || l.h <= 0) return 0;
+  let far = 0;
+  for (const [x, y] of [
+    [l.x, l.y],
+    [l.x + l.w, l.y],
+    [l.x, l.y + l.h],
+    [l.x + l.w, l.y + l.h],
+  ]) {
+    far = Math.max(far, ((x - c.x) * nrm.x + (y - c.y) * nrm.y) * side);
+  }
+  return far > def.halfWidth ? far + GATE_CLEARANCE : 0;
 }
 
 /**

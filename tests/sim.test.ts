@@ -785,7 +785,7 @@ describe('AI pit stops', () => {
     expect(pitBoxIndex(track, s.cars[0].x, s.cars[0].y)).toBe(3);
   });
 
-  it('skips the pits when every stall is busy instead of blocking the racing line', () => {
+  it('queues in the lane beside the stalls when every stall is busy, off the racing line', () => {
     const track = getTrack('meadow');
     let s = createRace({
       trackId: 'meadow',
@@ -822,9 +822,9 @@ describe('AI pit stops', () => {
       const onLine = Math.abs(ai.y - racingY) < 40 && pitBoxIndex(track, ai.x, ai.y) < 0;
       if (onLine && speed < 12 && i > 90) stoppedOnLine++;
     }
+    expect(s.cars[0].ai!.pitPhase).toBe('hold');
     expect(pitBoxIndex(track, s.cars[0].x, s.cars[0].y)).toBe(-1);
-    const lastBox = track.def.pitBoxes[track.def.pitBoxes.length - 1];
-    expect(s.cars[0].x).toBeGreaterThan(lastBox.x + lastBox.w - 80);
+    expect(inPitLane(track, s.cars[0].x, s.cars[0].y)).toBe(true);
     expect(stoppedOnLine).toBeLessThan(45);
   });
 
