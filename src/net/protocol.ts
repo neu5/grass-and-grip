@@ -159,9 +159,9 @@ export interface CompactCar {
   llt: number | null;
   blt: number | null;
   ft: number | null;
-  /** Gap to the leader at the last crossing, and its change, in ticks. */
+  /** Gap to the leader at the last checkpoint, and the tick of each checkpoint's last crossing. */
   gp?: number;
-  gc?: number;
+  gt?: number[];
 }
 
 export interface CompactFastestLap {
@@ -181,8 +181,8 @@ export interface CompactSnapshot {
   /** Rules as [damage, tyreWear, fuel, collisions 0/1, aiLevel]; missing means defaults. */
   /** damage, tyreWear, fuel, collisions, aiLevel, carDetails (older servers send 5). */
   ru?: [number, number, number, number, number] | [number, number, number, number, number, number];
-  /** Tick the first car completed each lap. */
-  ll?: number[];
+  /** Race-progress base, then the tick the first car reached each progress from there. */
+  gl?: number[];
   c: CompactCar[];
   /** Cones as flat [x, y (tenths), angle (hundredths), down 0/1] per cone. */
   pr?: number[];

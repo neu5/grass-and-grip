@@ -176,10 +176,10 @@ export interface CarState {
   lastLapTicks: number | null;
   bestLapTicks: number | null;
   finishTick: number | null;
-  /** Ticks behind the first car over the line, at this car's last crossing. Missing until then. */
+  /** Ticks behind the first car to reach the checkpoint this car last crossed. Missing until then. */
   gapTicks?: number | null;
-  /** How that gap changed since the lap before: negative means catching up. */
-  gapChangeTicks?: number | null;
+  /** Tick this car last crossed each checkpoint (-1 = not yet), for intervals to the cars around it. */
+  gateTicks?: number[];
   ai: AiMemory | null;
 }
 
@@ -209,8 +209,11 @@ export interface GameState {
   cars: CarState[];
   /** Fastest-first top 3 laps of this race. */
   fastestLaps: FastestLap[];
-  /** Tick the first car completed each lap (index 0 = lap 1), for gaps to the leader. */
-  lapLeadTicks?: number[];
+  /**
+   * Tick the first car reached each race progress (checkpoints crossed since
+   * the start), from `base` on; older entries are dropped once every car is past them.
+   */
+  gateLeadTicks?: { base: number; ticks: number[] };
   /** Best lap ever on this track before this race started (from saved laps), for display. */
   trackRecord?: FastestLap | null;
 }

@@ -164,14 +164,37 @@ function updateCheckpoints(state: GameState, car: CarState, track: Track, px: nu
       color: car.color,
     });
     car.lapStartTick = state.tick;
-    const leads = (state.lapLeadTicks ??= []);
-    leads[car.lapsCompleted - 1] ??= state.tick;
-    const gap = state.tick - leads[car.lapsCompleted - 1];
-    car.gapChangeTicks = car.gapTicks != null ? gap - car.gapTicks : null;
-    car.gapTicks = gap;
     if (car.finishTick === null && car.lapsCompleted >= state.totalLaps) car.finishTick = state.tick;
   }
+  timeCheckpoint(state, car, track.gates.length);
   car.nextCheckpoint = (car.nextCheckpoint + 1) % track.gates.length;
+}
+
+/** Checkpoints a car has crossed since the start (the grid counts as the line). */
+export function raceProgress(car: CarState, gateCount: number): number {
+  return car.lapsCompleted * gateCount + ((car.nextCheckpoint - 1 + gateCount) % gateCount);
+}
+
+/** Timing at a checkpoint the car just crossed (`car.nextCheckpoint`): gap to the leader, and its own crossing tick. */
+function timeCheckpoint(state: GameState, car: CarState, gateCount: number): void {
+  const gate = car.nextCheckpoint;
+  const progress = car.lapsCompleted * gateCount + gate;
+  const lead = (state.gateLeadTicks ??= { base: progress, ticks: [] });
+  const at = progress - lead.base;
+  if (at >= 0) {
+    while (lead.ticks.length <= at) lead.ticks.push(state.tick);
+    car.gapTicks = state.tick - lead.ticks[at];
+  }
+  const ticks = (car.gateTicks ??= new Array<number>(gateCount).fill(-1));
+  ticks[gate] = state.tick;
+  // Drop what every car is already past.
+  let slowest = Infinity;
+  for (const c of state.cars) slowest = Math.min(slowest, raceProgress(c, gateCount));
+  const drop = Math.min(lead.ticks.length, slowest - lead.base);
+  if (drop > 0) {
+    lead.ticks.splice(0, drop);
+    lead.base += drop;
+  }
 }
 
 /**
@@ -301,11 +324,10 @@ export function standings(state: GameState): CarState[] {
   const track = getTrack(state.trackId);
   const g = track.gates.length;
   const progress = (c: CarState) => {
-    const passed = (c.nextCheckpoint - 1 + g) % g;
     const gate = track.gates[c.nextCheckpoint];
     const dx = gate.center.x - c.x;
     const dy = gate.center.y - c.y;
-    return { score: c.lapsCompleted * g + passed, dist: dx * dx + dy * dy };
+    return { score: raceProgress(c, g), dist: dx * dx + dy * dy };
   };
   return [...state.cars].sort((a, b) => {
     if (a.finishTick !== null || b.finishTick !== null) {
