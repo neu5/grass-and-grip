@@ -47,7 +47,7 @@ export interface Decor {
 export const TRACK_IDS = ['oldtown', 'canyon', 'meadow', 'harbor', 'jungle', 'harvest', 'alpine', 'grandprix'] as const;
 export type TrackId = (typeof TRACK_IDS)[number];
 
-/** Marked stalls on tracks that have a pit lane. */
+/** Marked stalls on tracks that have a pit lane, unless a map asks for more. */
 export const PIT_STALLS = 4;
 const PIT_BOX_W = 90;
 const PIT_BOX_H = 54;
@@ -71,7 +71,7 @@ const PIT_LANE_FAR = 198;
  * cars drive over the line (an axis, so stalls stay plain rectangles) and
  * `side` which side of the road the pits are on.
  */
-export function pitComplexAt(start: Vec2, heading: Heading, side: 'left' | 'right'): { pitLane: Rect; pitBoxes: Rect[] } {
+export function pitComplexAt(start: Vec2, heading: Heading, side: 'left' | 'right', stalls = PIT_STALLS): { pitLane: Rect; pitBoxes: Rect[] } {
   const u = HEADING_VEC[heading];
   // Left of travel with y pointing down the screen.
   const l = side === 'left' ? { x: u.y, y: -u.x } : { x: -u.y, y: u.x };
@@ -83,11 +83,11 @@ export function pitComplexAt(start: Vec2, heading: Heading, side: 'left' | 'righ
     return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
   };
   const pitBoxes: Rect[] = [];
-  for (let i = 0; i < PIT_STALLS; i++) {
+  for (let i = 0; i < stalls; i++) {
     const a = PIT_FIRST_ALONG + i * (PIT_BOX_W + PIT_BOX_GAP);
     pitBoxes.push(rect(a, a + PIT_BOX_W, PIT_BOX_NEAR, PIT_BOX_NEAR + PIT_BOX_H));
   }
-  const end = PIT_FIRST_ALONG + PIT_STALLS * (PIT_BOX_W + PIT_BOX_GAP) - PIT_BOX_GAP;
+  const end = PIT_FIRST_ALONG + stalls * (PIT_BOX_W + PIT_BOX_GAP) - PIT_BOX_GAP;
   return { pitLane: rect(PIT_FIRST_ALONG - PIT_LANE_PAD, end + PIT_LANE_PAD, PIT_LANE_NEAR, PIT_LANE_FAR), pitBoxes };
 }
 
@@ -1216,7 +1216,7 @@ export const TRACKS: Record<string, TrackDef> = {
 /** A design with its pit complex laid out beside the start line. */
 function withPits(d: MapDesign): TrackDef {
   const { pits, ...def } = d;
-  return { ...def, pitSide: pits.side, ...pitComplexAt(def.controlPoints[0], pits.heading, pits.side) };
+  return { ...def, pitSide: pits.side, ...pitComplexAt(def.controlPoints[0], pits.heading, pits.side, pits.stalls) };
 }
 
 const cache = new Map<string, Track>();

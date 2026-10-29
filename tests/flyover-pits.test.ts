@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  aiNeedsPit,
   carHeightAt,
   createRace,
   getTrack,
@@ -101,6 +102,44 @@ describe('pits', () => {
       }
     }
   }, 30_000);
+
+  it('gives the long Grand Prix straight six stalls, the rest four', () => {
+    expect(TRACKS.grandprix.pitBoxes).toHaveLength(6);
+    expect(TRACKS.meadow.pitBoxes).toHaveLength(4);
+    expect(validateTrack(TRACKS.grandprix)).toEqual([]);
+  });
+
+  it('pits a lap early when the tyres would not last another lap', () => {
+    const s = createRace({ trackId: 'meadow', totalLaps: 5, cars: [{ name: 'A', color: '#fff', controller: 'ai' }] });
+    const car = s.cars[0];
+    car.tyreWear = 0.55;
+    expect(aiNeedsPit(car)).toBe(false);
+    car.ai!.lapWear = 0.3;
+    expect(aiNeedsPit(car)).toBe(true);
+    car.tyreWear = 0.1;
+    car.fuel = 0.2;
+    car.ai!.lapFuel = 0.12;
+    expect(aiNeedsPit(car)).toBe(true);
+  });
+
+  it('gets every car into the pits and on fresh tyres in a full Grand Prix race', () => {
+    let s: GameState = createRace({
+      trackId: 'grandprix',
+      totalLaps: 8,
+      countdownSeconds: 0,
+      cars: (['f1', 'rally', 'f1', 'buggy', 'kart', 'f1', 'truck', 'rally'] as const).map((kind, i) => ({ name: `c${i}`, color: '#fff', controller: 'ai', kind })),
+      rules: { damage: 1, tyreWear: 1, fuel: 1, collisions: true, aiLevel: 100 },
+    });
+    s.phase = 'racing';
+    let wornRacing = 0;
+    for (let i = 0; i < 60 * 60 * 4 && s.phase !== 'finished'; i++) {
+      s = step(s, {});
+      for (const c of s.cars) if (c.finishTick === null && c.ai?.pitPhase === 'race' && c.tyreWear > 0.9) wornRacing++;
+    }
+    expect(s.phase).toBe('finished');
+    // Car-ticks on nearly bald tyres outside the pits, across all eight cars.
+    expect(wornRacing).toBeLessThan(60 * 5);
+  }, 120_000);
 
   it.each(TRACK_IDS)('lets the AI find the pits and refuel on %s', (id) => {
     let s: GameState = createRace({

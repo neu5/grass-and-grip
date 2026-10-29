@@ -143,6 +143,10 @@ export interface AiMemory {
   reverseSteer?: number;
   /** Times stuck in a row; each reverse lasts longer. */
   stuckCount?: number;
+  /** Tyre wear and fuel at the last line crossing, and what the lap before that used. */
+  lapMark?: { laps: number; wear: number; fuel: number };
+  lapWear?: number;
+  lapFuel?: number;
 }
 
 export interface CarState {

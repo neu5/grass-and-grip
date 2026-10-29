@@ -50,10 +50,10 @@ export function aiSkill(level: number, carIndex: number): number {
 
 /** When the AI peels off, and when it leaves the stall. Hysteresis so it does not pit every lap. */
 export const AI_PIT = {
-  /** Pit if remaining fuel is at or below this (near empty). */
+  /** Pit if fuel would be at or below this after another lap. */
   fuelLow: 0.1,
-  /** Pit if tyre wear is at or above this (HUD tyres at 40%): later costs more in slides than the stop. */
-  tyreWorn: 0.6,
+  /** Pit if tyre wear would reach this after another lap: later costs more in slides than the stop. */
+  tyreWorn: 0.8,
   /** Pit if damage is at or above this (very broken). */
   damageHigh: 0.75,
   /** Leave once recovered past these. */
@@ -77,8 +77,29 @@ export function createAiMemory(laneOffset: number, skill: number): AiMemory {
   };
 }
 
+/**
+ * Pit now if the car is low already, or would be by the next time round:
+ * tyres past `tyreWorn` or fuel under `fuelLow` after another lap like the last.
+ */
 export function aiNeedsPit(car: CarState): boolean {
-  return (car.fuel ?? 1) <= AI_PIT.fuelLow || (car.tyreWear ?? 0) >= AI_PIT.tyreWorn || (car.damage ?? 0) >= AI_PIT.damageHigh;
+  const wear = car.tyreWear ?? 0;
+  const fuel = car.fuel ?? 1;
+  const lapWear = car.ai?.lapWear ?? 0;
+  const lapFuel = car.ai?.lapFuel ?? 0;
+  return fuel - lapFuel <= AI_PIT.fuelLow || wear + lapWear >= AI_PIT.tyreWorn || (car.damage ?? 0) >= AI_PIT.damageHigh;
+}
+
+/** Keep how much tyre and fuel the last full lap used (laps with a stop in them don't count). */
+function trackLapUse(car: CarState, ai: AiMemory): void {
+  const wear = car.tyreWear ?? 0;
+  const fuel = car.fuel ?? 1;
+  const mark = ai.lapMark;
+  if (mark && mark.laps === car.lapsCompleted) return;
+  if (mark && car.lapsCompleted === mark.laps + 1 && wear >= mark.wear && fuel <= mark.fuel) {
+    ai.lapWear = wear - mark.wear;
+    ai.lapFuel = mark.fuel - fuel;
+  }
+  ai.lapMark = { laps: car.lapsCompleted, wear, fuel };
 }
 
 export function aiPitReady(car: CarState): boolean {
@@ -118,7 +139,21 @@ export function inPitApproach(track: Track, car: CarState): boolean {
   const n = track.samples.length;
   if (idx >= n * 0.14 && idx <= n * 0.86) return false;
   const s = along(track, car);
-  return s > alongSpan(track, track.def.pitLane)[0] - 180 && s < boxesEnd(track) + 10;
+  return s > alongSpan(track, track.def.pitLane)[0] - PIT_APPROACH && s < boxesEnd(track) + 10;
+}
+
+/** Start heading for the pits this far before the lane: room to brake from full speed and move across. */
+const PIT_APPROACH = 450;
+/** Braking the AI counts on to stop in its stall, and the slowest it creeps in at. */
+const PIT_BRAKE = 380;
+const PIT_CRAWL = 110;
+
+/** Fastest the car may go this far before its stall and still stop in it. */
+function pitEntrySpeed(track: Track, car: CarState, box: number): number {
+  const c = boxCenter(track, box);
+  if (!c) return Infinity;
+  const left = along(track, c) - along(track, car) - 30;
+  return Math.max(PIT_CRAWL, Math.sqrt(2 * PIT_BRAKE * Math.max(0, left)));
 }
 
 /** Racing-line offset that hugs the pit-lane side without leaving the asphalt. */
@@ -181,18 +216,24 @@ function boxBusy(track: Track, cars: CarState[], box: number, selfId: number): b
   return false;
 }
 
+/**
+ * A free stall, keeping one already picked. The furthest down the lane comes
+ * first: most room to brake, and it leaves the near stalls for the next car.
+ * A stall the car has already passed is no use.
+ */
 function pickFreeBox(track: Track, car: CarState, cars: CarState[]): number {
   const boxes = track.def.pitBoxes;
   let best = -1;
-  let bestD = Infinity;
+  let bestAlong = -Infinity;
   const reserved = car.ai?.pitBox ?? -1;
+  const here = along(track, car);
   for (let i = 0; i < boxes.length; i++) {
     if (boxBusy(track, cars, i, car.id)) continue;
     if (reserved === i) return i;
-    const c = boxCenter(track, i)!;
-    const d = (c.x - car.x) * (c.x - car.x) + (c.y - car.y) * (c.y - car.y);
-    if (d < bestD) {
-      bestD = d;
+    const a = along(track, boxCenter(track, i)!);
+    if (a < here + 20 && !inPitLane(track, car.x, car.y)) continue;
+    if (a > bestAlong) {
+      bestAlong = a;
       best = i;
     }
   }
@@ -279,6 +320,7 @@ export function aiInput(car: CarState, track: Track, racing: boolean, cars: CarS
   const ai = car.ai;
   if (!ai || !racing) return { throttle: 0, steer: 0, handbrake: false };
 
+  trackLapUse(car, ai);
   const pitInput = pitSteer(car, ai, track, cars);
   if (pitInput) return pitInput;
 
@@ -508,13 +550,25 @@ function pitSteer(car: CarState, ai: AiMemory, track: Track, cars: CarState[]): 
 
   if (ai.pitPhase === 'race') {
     if (car.finishTick !== null || !aiNeedsPit(car) || !inPitApproach(track, car)) return null;
+    // Too late to turn in this lap: try again next time round.
+    if (!inPitLane(track, car.x, car.y) && along(track, car) > alongSpan(track, track.def.pitLane)[0] + 40) return null;
     const box = pickFreeBox(track, car, cars);
-    if (box < 0) return null;
-    ai.pitPhase = 'enter';
-    ai.pitBox = box;
+    if (box < 0) {
+      // Every stall busy: queue in the lane. A worn car loses more in another lap than in the wait.
+      ai.pitPhase = 'hold';
+      ai.pitBox = -1;
+    } else {
+      ai.pitPhase = 'enter';
+      ai.pitBox = box;
+    }
   }
 
   if (ai.pitPhase === 'hold') {
+    // Drove past the lane while waiting: race on, try next lap.
+    if (!inPitLane(track, car.x, car.y) && along(track, car) > alongSpan(track, track.def.pitLane)[0] + 40) {
+      ai.pitPhase = 'race';
+      return null;
+    }
     const box = pickFreeBox(track, car, cars);
     if (box >= 0) {
       ai.pitPhase = 'enter';
@@ -565,8 +619,13 @@ function pitSteer(car: CarState, ai: AiMemory, track: Track, cars: CarState[]): 
     if (inPitLane(track, car.x, car.y)) {
       return driveTo(car, c.x, c.y, 0.55, true);
     }
+    // On the way in: move over to the pit side and slow to a speed it can stop from.
     const idx = carSampleIndex(track, car);
-    return centerSteer(car, ai, track, pitSideOffset(track, idx));
+    const input = centerSteer(car, ai, track, pitSideOffset(track, idx));
+    const cap = pitEntrySpeed(track, car, ai.pitBox);
+    if (speed > cap + 15) return { ...input, throttle: -1 };
+    if (speed > cap) return { ...input, throttle: 0 };
+    return input;
   }
 
   if (ai.pitPhase === 'box') {
