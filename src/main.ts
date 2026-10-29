@@ -305,7 +305,9 @@ document.querySelector('#race-menu')!.addEventListener('click', () => backToMenu
 document.querySelector('#pause-resume')!.addEventListener('click', () => setPaused(false));
 document.querySelector('#pause-restart')!.addEventListener('click', raceAgain);
 document.querySelector('#pause-menu')!.addEventListener('click', () => backToMenu());
-document.querySelector('#pause-laps')!.addEventListener('click', downloadTelemetry);
+for (const id of ['#pause-laps', '#race-laps']) {
+  document.querySelector(id)!.addEventListener('click', () => downloadTelemetry(game?.log));
+}
 
 function startRound() {
   if (!season || seasonOver(season)) return;

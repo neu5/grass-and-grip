@@ -1,4 +1,4 @@
-import { toCarKind, type CarKind, type GameState, type TickInputs } from '../sim';
+import { toCarKind, type CarKind, type GameState, type RaceLog, type TickInputs } from '../sim';
 
 /** Best human lap per track and car kind, for comparing with the AI (scripts/ai-report.ts). */
 export const TELEMETRY_KEY = 'gg-lap-telemetry';
@@ -95,9 +95,37 @@ export class LapRecorder {
   }
 }
 
-/** Save every recorded best lap as a JSON file. */
-export function downloadTelemetry() {
-  const blob = new Blob([JSON.stringify(loadTelemetry())], { type: 'application/json' });
+/** The last few whole races, for looking at what the AI did. */
+export const RACES_KEY = 'gg-race-logs';
+const KEEP_RACES = 3;
+
+export function loadRaceLogs(): RaceLog[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RACES_KEY) ?? '[]');
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Keep `log` with the last few; the oldest go first when storage runs out. */
+export function saveRaceLog(log: RaceLog) {
+  const list = [...loadRaceLogs(), log].slice(-KEEP_RACES);
+  while (list.length) {
+    try {
+      localStorage.setItem(RACES_KEY, JSON.stringify(list));
+      return;
+    } catch {
+      list.shift();
+    }
+  }
+}
+
+/** Save every recorded best lap and the last races (plus `current`, still running) as a JSON file. */
+export function downloadTelemetry(current?: RaceLog | null) {
+  const races = loadRaceLogs();
+  if (current) races.push(current);
+  const blob = new Blob([JSON.stringify({ laps: loadTelemetry(), races })], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'grass-and-grip-laps.json';
