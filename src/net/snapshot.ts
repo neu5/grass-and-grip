@@ -145,3 +145,10 @@ export function decodeSnapshot(snap: CompactSnapshot, prev?: GameState): GameSta
     trackRecord: prev?.trackRecord ?? null,
   };
 }
+
+/** The snapshot message as text, built once per tick; each client's input ack is spliced in. */
+export function snapshotText(state: GameState): (ack: number) => string {
+  const body = JSON.stringify(encodeSnapshot(state));
+  const head = `{"t":"snap","snap":${body.slice(0, -1)},"ack":`;
+  return (ack) => `${head}${ack}}}`;
+}

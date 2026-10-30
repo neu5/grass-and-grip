@@ -2,7 +2,7 @@ import { aiInput, aiSkill, createAiMemory } from './ai';
 import { collideBounds, collideCars, collideCircle, collideSegment, NO_INPUT, stepCarPhysics } from './physics';
 import { coneOffCircle, conesFromTrack, hitCone, stepCone } from './props';
 import { applyPitService } from './pits';
-import { HEIGHT_SEPARATION, carHeightAt, flyoverAt, getTrack, segmentsIntersect, surfaceAt, terrainHeightAt, updateDeck, type Track } from './track';
+import { HEIGHT_SEPARATION, carHeightAt, flyoverAt, getTrack, obstacleGround, segmentsIntersect, surfaceAt, terrainHeightAt, updateDeck, type Track } from './track';
 import { copyFastestLaps, insertFastestLap } from './fastestLaps';
 import { DEFAULT_RULES, normalizeRules, normalizeSetup, toCarKind, type CarState, type GameState, type PlayerInput, type RaceConfig, type RaceRules, type TickInputs } from './types';
 
@@ -197,13 +197,30 @@ function timeCheckpoint(state: GameState, car: CarState, gateCount: number): voi
   }
 }
 
+/** Deep copy of plain data (objects, arrays, numbers, strings): what the state holds. Much quicker than structuredClone. */
+function clonePlain<T>(v: T): T {
+  if (v === null || typeof v !== 'object') return v;
+  if (Array.isArray(v)) {
+    const out = new Array(v.length);
+    for (let i = 0; i < v.length; i++) out[i] = clonePlain(v[i]);
+    return out as T;
+  }
+  const out: Record<string, unknown> = {};
+  for (const k in v) out[k] = clonePlain((v as Record<string, unknown>)[k]);
+  return out as T;
+}
+
+export function cloneState(state: GameState): GameState {
+  return clonePlain(state);
+}
+
 /**
  * Advance the simulation by exactly one fixed tick. Pure: returns a new state
  * and never mutates the input, so callers can keep the previous state for
  * render interpolation, rollback or replays.
  */
 export function step(prev: GameState, inputs: TickInputs): GameState {
-  const state: GameState = structuredClone(prev);
+  const state: GameState = cloneState(prev);
   const track = getTrack(state.trackId);
   state.tick++;
 
@@ -251,7 +268,7 @@ export function step(prev: GameState, inputs: TickInputs): GameState {
  * so a client can predict its own car from the last authoritative snapshot.
  */
 export function stepOwnCar(prev: GameState, carId: number, input: PlayerInput): GameState {
-  const state: GameState = structuredClone(prev);
+  const state: GameState = cloneState(prev);
   const track = getTrack(state.trackId);
   state.tick++;
   if (state.phase === 'countdown' && state.tick >= state.startTick) state.phase = 'racing';
@@ -276,15 +293,20 @@ export const BARRIER_HALF = 5;
 
 /** Obstacles stand on the ground; a car on a bridge above them passes over. */
 function collideObstacles(car: CarState, height: number, track: Track, rules: RaceRules) {
-  for (const o of track.def.obstacles) {
+  const ground = obstacleGround(track);
+  const obstacles = track.def.obstacles;
+  for (let i = 0; i < obstacles.length; i++) {
+    const o = obstacles[i];
     if (o.kind === 'cone') continue;
-    if (Math.abs(height - terrainHeightAt(track, o.x, o.y)) > HEIGHT_SEPARATION) continue;
+    if (Math.abs(height - ground.obstacles[i]) > HEIGHT_SEPARATION) continue;
     collideCircle(car, o.x, o.y, o.r, rules);
   }
-  for (const b of track.def.barriers ?? []) {
+  const barriers = track.def.barriers ?? [];
+  for (let i = 0; i < barriers.length; i++) {
+    const b = barriers[i];
     const mx = (b.a.x + b.b.x) / 2;
     const my = (b.a.y + b.b.y) / 2;
-    if (Math.abs(height - terrainHeightAt(track, mx, my)) > HEIGHT_SEPARATION) continue;
+    if (Math.abs(height - ground.barriers[i]) > HEIGHT_SEPARATION) continue;
     // Walls under a flyover only stop the cars down there.
     if (car.onDeck && flyoverAt(track, mx, my)) continue;
     collideSegment(car, b.a, b.b, BARRIER_HALF, rules);

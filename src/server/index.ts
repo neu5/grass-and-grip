@@ -3,10 +3,10 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { Socket } from 'node:net';
 import { extname, join, normalize, resolve } from 'node:path';
 import { WebSocket, WebSocketServer } from 'ws';
-import { TICK_RATE } from '../sim';
+import { getTrack, racingLine, TICK_RATE, TRACK_IDS } from '../sim';
 import type { ClientMessage, ServerMessage } from '../net/protocol';
 import { SNAPSHOT_HZ } from '../net/protocol';
-import { encodeSnapshot } from '../net/snapshot';
+import { snapshotText } from '../net/snapshot';
 import { Room } from '../net/room';
 
 const PROD = process.env.NODE_ENV === 'production';
@@ -82,9 +82,20 @@ function later(fn: () => void): void {
 }
 
 function send(socket: WebSocket, msg: ServerMessage) {
+  sendRaw(socket, JSON.stringify(msg));
+}
+
+function sendRaw(socket: WebSocket, text: string) {
   later(() => {
-    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
+    if (socket.readyState === WebSocket.OPEN) socket.send(text);
   });
+}
+
+/** The latest race state to every client in the room: encoded once, with each client's own input ack. */
+function sendSnapshot(room: Room) {
+  if (!room.race) return;
+  const text = snapshotText(room.race);
+  for (const c of clients) if (c.room === room) sendRaw(c.socket, text(room.ackOf(c.id)));
 }
 
 function broadcast(room: Room, msg: ServerMessage) {
@@ -168,17 +179,15 @@ let simTime = performance.now();
 function loop() {
   const now = performance.now();
   if (now - simTime > 250) simTime = now - TICK_MS;
+  // Rooms due a snapshot. After a stall several ticks run back to back; only the newest state is sent.
+  const due = new Set<Room>();
   while (simTime + TICK_MS <= now) {
     simTime += TICK_MS;
     for (const room of rooms.values()) {
-      if (room.tick() && room.race && room.race.tick % SNAP_EVERY === 0) {
-        const encoded = encodeSnapshot(room.race);
-        for (const c of clients) {
-          if (c.room === room) send(c.socket, { t: 'snap', snap: { ...encoded, ack: room.ackOf(c.id) } });
-        }
-      }
+      if (room.tick() && room.race && room.race.tick % SNAP_EVERY === 0) due.add(room);
     }
   }
+  for (const room of due) sendSnapshot(room);
   for (const room of rooms.values()) {
     if (sentVersion.get(room) !== room.version) {
       sentVersion.set(room, room.version);
@@ -189,7 +198,16 @@ function loop() {
 }
 loop();
 
+/** Build every map and its racing line ahead of time, one per turn of the event loop, so the first race on a map doesn't stall every room. */
+function warmTracks(ids: readonly string[]) {
+  const [id, ...rest] = ids;
+  if (!id) return;
+  racingLine(getTrack(id));
+  setTimeout(() => warmTracks(rest), 50);
+}
+
 server.listen(PORT, () => {
+  warmTracks(TRACK_IDS);
   const lag = FAKE_LAG_MS ? `  fake lag ${FAKE_LAG_MS}ms ±${FAKE_JITTER_MS}ms` : '';
   console.log(`Grass & Grip ${PROD ? '' : 'dev '}server on http://localhost:${PORT}  (online lobby: /room)${lag}`);
 });

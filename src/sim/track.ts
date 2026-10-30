@@ -348,6 +348,8 @@ export function buildTrack(def: TrackDef, opts: { grid?: boolean } = {}): Track 
       samples.push(catmullRom(p0, p1, p2, p3, s / SAMPLES_PER_SEGMENT));
     }
   }
+  // Road lookups everywhere on the map go through this grid.
+  segmentGrid(samples, { x: 0, y: 0, w: def.width, h: def.height });
   const rivers = (def.rivers ?? []).map(buildRiverLine);
   const sampleHeights = samples.map((p) => (def.terrain ? landHeight(def, rivers, p.x, p.y) : 0));
   if (def.terrain) {
@@ -720,6 +722,112 @@ function easeOntoBridge(samples: Vec2[], heights: number[], b: Bridge, deck: boo
   }
 }
 
+/** Cell size of the centerline lookup grid. */
+const SEG_CELL = 64;
+
+/** Centerline segments bucketed by the grid cells their bounding boxes touch, lowest index first. */
+interface SegmentGrid {
+  x0: number;
+  y0: number;
+  cols: number;
+  rows: number;
+  cells: number[][];
+}
+
+const segmentGrids = new WeakMap<Vec2[], SegmentGrid>();
+
+/** The lookup grid for a closed centerline, covering it and `bounds` (where it will be asked about). */
+function segmentGrid(samples: Vec2[], bounds?: Rect): SegmentGrid {
+  const known = segmentGrids.get(samples);
+  if (known) return known;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of samples) {
+    minX = Math.min(minX, p.x);
+    minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x);
+    maxY = Math.max(maxY, p.y);
+  }
+  if (bounds) {
+    minX = Math.min(minX, bounds.x);
+    minY = Math.min(minY, bounds.y);
+    maxX = Math.max(maxX, bounds.x + bounds.w);
+    maxY = Math.max(maxY, bounds.y + bounds.h);
+  }
+  const x0 = minX - SEG_CELL;
+  const y0 = minY - SEG_CELL;
+  const cols = Math.floor((maxX + SEG_CELL - x0) / SEG_CELL) + 1;
+  const rows = Math.floor((maxY + SEG_CELL - y0) / SEG_CELL) + 1;
+  const cells: number[][] = Array.from({ length: cols * rows }, () => []);
+  const n = samples.length;
+  for (let i = 0; i < n; i++) {
+    const a = samples[i];
+    const b = samples[(i + 1) % n];
+    const c0 = Math.floor((Math.min(a.x, b.x) - x0) / SEG_CELL);
+    const c1 = Math.floor((Math.max(a.x, b.x) - x0) / SEG_CELL);
+    const r0 = Math.floor((Math.min(a.y, b.y) - y0) / SEG_CELL);
+    const r1 = Math.floor((Math.max(a.y, b.y) - y0) / SEG_CELL);
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) cells[r * cols + c].push(i);
+  }
+  const grid = { x0, y0, cols, rows, cells };
+  segmentGrids.set(samples, grid);
+  return grid;
+}
+
+/**
+ * The segment index with the smallest `cost` (a squared distance from x, y to
+ * something on that segment), the lowest index on a tie: exactly what a loop
+ * over every segment gives, but looking only at nearby grid cells.
+ */
+function nearestOnGrid(samples: Vec2[], x: number, y: number, cost: (i: number) => number): { d: number; i: number } {
+  const g = segmentGrid(samples);
+  const cx = Math.floor((x - g.x0) / SEG_CELL);
+  const cy = Math.floor((y - g.y0) / SEG_CELL);
+  let best = Infinity;
+  let bi = -1;
+  if (cx < 0 || cy < 0 || cx >= g.cols || cy >= g.rows) {
+    // Off the grid: look at everything.
+    for (let i = 0; i < samples.length; i++) {
+      const d = cost(i);
+      if (d < best) {
+        best = d;
+        bi = i;
+      }
+    }
+    return { d: best, i: bi };
+  }
+  const visit = (c: number, r: number) => {
+    if (c < 0 || r < 0 || c >= g.cols || r >= g.rows) return;
+    for (const i of g.cells[r * g.cols + c]) {
+      const d = cost(i);
+      if (d < best || (d === best && i < bi)) {
+        best = d;
+        bi = i;
+      }
+    }
+  };
+  const most = Math.max(g.cols, g.rows);
+  for (let ring = 0; ring <= most; ring++) {
+    if (ring === 0) visit(cx, cy);
+    else {
+      for (let k = -ring; k <= ring; k++) {
+        visit(cx + k, cy - ring);
+        visit(cx + k, cy + ring);
+      }
+      for (let k = -ring + 1; k <= ring - 1; k++) {
+        visit(cx - ring, cy + k);
+        visit(cx + ring, cy + k);
+      }
+    }
+    // Anything not looked at yet is at least ring cells away.
+    const reach = ring * SEG_CELL;
+    if (best < reach * reach) break;
+  }
+  return { d: best, i: bi };
+}
+
 function projectCenterline(
   samples: Vec2[],
   heights: number[],
@@ -728,33 +836,31 @@ function projectCenterline(
   skip?: Uint8Array,
 ): { dist: number; height: number; seg: number } {
   const n = samples.length;
-  let best = Infinity;
-  let height = heights[0] ?? 0;
-  let seg = 0;
-  let along = 0;
-  for (let i = 0; i < n; i++) {
-    if (skip && (skip[i] || skip[(i + 1) % n])) continue;
+  const along = (i: number) => {
     const a = samples[i];
     const b = samples[(i + 1) % n];
     const abx = b.x - a.x;
     const aby = b.y - a.y;
     const len2 = abx * abx + aby * aby;
-    let t = len2 > 0 ? ((x - a.x) * abx + (y - a.y) * aby) / len2 : 0;
-    t = t < 0 ? 0 : t > 1 ? 1 : t;
-    const dx = a.x + abx * t - x;
-    const dy = a.y + aby * t - y;
-    const d = dx * dx + dy * dy;
-    if (d < best) {
-      best = d;
-      seg = i;
-      along = t;
-    }
-  }
+    const t = len2 > 0 ? ((x - a.x) * abx + (y - a.y) * aby) / len2 : 0;
+    return t < 0 ? 0 : t > 1 ? 1 : t;
+  };
+  const hit = nearestOnGrid(samples, x, y, (i) => {
+    if (skip && (skip[i] || skip[(i + 1) % n])) return Infinity;
+    const a = samples[i];
+    const b = samples[(i + 1) % n];
+    const t = along(i);
+    const dx = a.x + (b.x - a.x) * t - x;
+    const dy = a.y + (b.y - a.y) * t - y;
+    return dx * dx + dy * dy;
+  });
+  const best = hit.d;
+  const seg = Math.max(0, hit.i);
   const h0 = heights[(seg - 1 + n) % n];
   const h1 = heights[seg];
   const h2 = heights[(seg + 1) % n];
   const h3 = heights[(seg + 2) % n];
-  height = catmullRom1(h0, h1, h2, h3, along);
+  const height = catmullRom1(h0, h1, h2, h3, hit.i < 0 ? 0 : along(seg));
   return { dist: Math.sqrt(best), height, seg };
 }
 
@@ -922,24 +1028,40 @@ function blurHeightGrid(data: Float32Array, cols: number, rows: number, passes: 
   }
 }
 
+function gridAt(grid: HeightGrid, c: number, r: number): number {
+  const cc = c < 0 ? 0 : c >= grid.cols ? grid.cols - 1 : c;
+  const rr = r < 0 ? 0 : r >= grid.rows ? grid.rows - 1 : r;
+  return grid.data[rr * grid.cols + cc];
+}
+
+/** One grid row (r) blended across at fraction tx past column c. */
+function gridRow(grid: HeightGrid, c: number, r: number, tx: number): number {
+  return catmullRom1(gridAt(grid, c - 1, r), gridAt(grid, c, r), gridAt(grid, c + 1, r), gridAt(grid, c + 2, r), tx);
+}
+
 function sampleHeightGrid(grid: HeightGrid, x: number, y: number): number {
-  const { cols, rows, step, data } = grid;
-  const fx = x / step;
-  const fy = y / step;
+  const fx = x / grid.step;
+  const fy = y / grid.step;
   const ix = Math.floor(fx);
   const iy = Math.floor(fy);
   const tx = fx - ix;
   const ty = fy - iy;
-  const at = (c: number, r: number) => {
-    const cc = c < 0 ? 0 : c >= cols ? cols - 1 : c;
-    const rr = r < 0 ? 0 : r >= rows ? rows - 1 : r;
-    return data[rr * cols + cc];
-  };
-  const col: number[] = [];
-  for (let j = -1; j <= 2; j++) {
-    col.push(catmullRom1(at(ix - 1, iy + j), at(ix, iy + j), at(ix + 1, iy + j), at(ix + 2, iy + j), tx));
+  return catmullRom1(gridRow(grid, ix, iy - 1, tx), gridRow(grid, ix, iy, tx), gridRow(grid, ix, iy + 1, tx), gridRow(grid, ix, iy + 2, tx), ty);
+}
+
+const groundCache = new WeakMap<Track, { obstacles: number[]; barriers: number[] }>();
+
+/** Ground height under each obstacle and at each barrier's midpoint: fixed, so worked out once per track. */
+export function obstacleGround(track: Track): { obstacles: number[]; barriers: number[] } {
+  let g = groundCache.get(track);
+  if (!g) {
+    g = {
+      obstacles: track.def.obstacles.map((o) => terrainHeightAt(track, o.x, o.y)),
+      barriers: (track.def.barriers ?? []).map((b) => terrainHeightAt(track, (b.a.x + b.b.x) / 2, (b.a.y + b.b.y) / 2)),
+    };
+    groundCache.set(track, g);
   }
-  return catmullRom1(col[0], col[1], col[2], col[3], ty);
+  return g;
 }
 
 export function distToSegmentSq(px: number, py: number, a: Vec2, b: Vec2): number {
@@ -955,12 +1077,7 @@ export function distToSegmentSq(px: number, py: number, a: Vec2, b: Vec2): numbe
 
 export function distanceToCenterline(track: Track, x: number, y: number): number {
   const s = track.samples;
-  let best = Infinity;
-  for (let i = 0; i < s.length; i++) {
-    const d = distToSegmentSq(x, y, s[i], s[(i + 1) % s.length]);
-    if (d < best) best = d;
-  }
-  return Math.sqrt(best);
+  return Math.sqrt(nearestOnGrid(s, x, y, (i) => distToSegmentSq(x, y, s[i], s[(i + 1) % s.length])).d);
 }
 
 export function pointInRect(x: number, y: number, r: Rect): boolean {
@@ -1059,17 +1176,8 @@ export function carSampleIndex(track: Track, car: { x: number; y: number; onDeck
       if (car.x < b.x - hw * 2 || car.x > b.x + b.w + hw * 2 || car.y < b.y - hw * 2 || car.y > b.y + b.h + hw * 2) continue;
       // Near the crossing: only the stretch on this car's level.
       const s = track.samples;
-      let best = Infinity;
-      let bi = 0;
-      for (let i = 0; i < s.length; i++) {
-        if (!!f.raised[i] !== !!car.onDeck) continue;
-        const d = (s[i].x - car.x) ** 2 + (s[i].y - car.y) ** 2;
-        if (d < best) {
-          best = d;
-          bi = i;
-        }
-      }
-      return bi;
+      const hit = nearestOnGrid(s, car.x, car.y, (i) => (!!f.raised[i] !== !!car.onDeck ? Infinity : (s[i].x - car.x) ** 2 + (s[i].y - car.y) ** 2));
+      return Math.max(0, hit.i);
     }
   }
   return nearestSampleIndex(track, car.x, car.y);
@@ -1194,18 +1302,9 @@ export const HEIGHT_SEPARATION = 22;
 
 export function nearestSampleIndex(track: Track, x: number, y: number): number {
   const s = track.samples;
-  let best = Infinity;
-  let bi = 0;
-  for (let i = 0; i < s.length; i++) {
-    const dx = s[i].x - x;
-    const dy = s[i].y - y;
-    const d = dx * dx + dy * dy;
-    if (d < best) {
-      best = d;
-      bi = i;
-    }
-  }
-  return bi;
+  // Each sample starts its own segment, so it sits in that segment's cells.
+  const hit = nearestOnGrid(s, x, y, (i) => (s[i].x - x) ** 2 + (s[i].y - y) ** 2);
+  return Math.max(0, hit.i);
 }
 
 /** True if segment p->q crosses segment a->b. */
