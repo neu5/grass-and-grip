@@ -1,4 +1,4 @@
-import { CAR_KIND_SHORT, DEFAULT_RULES, newTrackRecord, standings, ticksToTime, TICK_RATE, toCarKind, type CarState, type GameState } from '../sim';
+import { CAR_KIND_SHORT, DEFAULT_RULES, getTrack, newTrackRecord, raceProgress, standings, ticksToTime, TICK_RATE, toCarKind, type CarState, type GameState } from '../sim';
 import { cameraHudHint } from './touchMap';
 
 export interface Label {
@@ -67,7 +67,7 @@ export function drawHud(
     drawCompact(ctx, state, humanIds, order, bars, cw, tickNow);
   }
   const panelW = 230;
-  const panelH = 137 + bars.length * 17;
+  const panelH = 154 + bars.length * 17;
   if (!compact) humanIds.forEach((id, k) => {
     const car = state.cars[id];
     const pos = order.findIndex((c) => c.id === id) + 1;
@@ -88,25 +88,33 @@ export function drawHud(
     ctx.font = '500 13px ui-monospace, SFMono-Regular, Menlo, monospace';
     const lap = Math.min(car.lapsCompleted + 1, state.totalLaps);
     const running = car.finishTick !== null ? 0 : Math.max(0, tickNow - car.lapStartTick);
-    const rows: [string, string][] = [
-      ['Lap', car.finishTick !== null ? 'FINISHED' : `${lap} / ${state.totalLaps}`],
-      ['Time', state.phase === 'countdown' ? '0:00.000' : ticksToTime(running)],
-      ['Last', car.lastLapTicks !== null ? ticksToTime(car.lastLapTicks) : '–'],
-      ['Best', car.bestLapTicks !== null ? ticksToTime(car.bestLapTicks) : '–'],
-      ['Gap', ''],
+    const last = lapColour(car, state);
+    const near = intervals(state, order, id);
+    const final = onFinalLap(state, car);
+    const rows: [string, string, string, string?][] = [
+      ['Lap', car.finishTick !== null ? 'FINISHED' : `${lap} / ${state.totalLaps}${final ? '  FINAL' : ''}`, final ? '#ffd54a' : '#fff'],
+      ['Time', state.phase === 'countdown' ? '0:00.000' : ticksToTime(running), '#fff'],
+      ['Last', car.lastLapTicks !== null ? ticksToTime(car.lastLapTicks) : '–', last.color, last.delta],
+      ['Best', car.bestLapTicks !== null ? ticksToTime(car.bestLapTicks) : '–', bestColour(car, state)],
+      ['Ahead', near.ahead, '#fff'],
+      ['Behind', near.behind, '#fff'],
     ];
-    rows.forEach(([label, value], i) => {
+    rows.forEach(([label, value, color, extra], i) => {
+      const ry = y + 48 + i * 17;
       ctx.fillStyle = 'rgba(255,255,255,0.6)';
-      ctx.fillText(label, x + 14, y + 48 + i * 17);
-      if (label === 'Gap') return drawGapRow(ctx, car, x + 70, y + 48 + i * 17);
-      ctx.fillStyle = label === 'Best' || (label === 'Lap' && onFinalLap(state, car)) ? '#ffd54a' : '#fff';
-      ctx.fillText(label === 'Lap' && onFinalLap(state, car) ? `${value}  FINAL` : value, x + 70, y + 48 + i * 17);
+      ctx.fillText(label, x + 14, ry);
+      ctx.fillStyle = color;
+      ctx.fillText(fit(ctx, value, panelW - 82), x + 70, ry);
+      if (extra) {
+        ctx.fillStyle = YELLOW;
+        ctx.fillText(extra, x + 78 + ctx.measureText(value).width, ry);
+      }
     });
     const tyreLeft = 1 - Math.min(1, Math.max(0, car.tyreWear ?? 0));
     const fuelLeft = Math.min(1, Math.max(0, car.fuel ?? 1));
     const bodyLeft = 1 - Math.min(1, Math.max(0, car.damage ?? 0));
     const left = { Tyres: tyreLeft, Fuel: fuelLeft, Damage: bodyLeft };
-    bars.forEach((label, i) => drawRemainBar(ctx, label, left[label], x, y + 48 + (5 + i) * 17, panelW));
+    bars.forEach((label, i) => drawRemainBar(ctx, label, left[label], x, y + 48 + (6 + i) * 17, panelW));
   });
 
   if (!compact) drawBoards(ctx, state, humanIds, order, cw);
@@ -228,44 +236,84 @@ function drawMissedGate(ctx: CanvasRenderingContext2D, l: Label) {
   ctx.fillText('Missed checkpoint — go back', l.x, l.y + 64);
 }
 
-/** Own panel: gap to the leader, then how it moved last lap. */
-function drawGapRow(ctx: CanvasRenderingContext2D, car: CarState, x: number, y: number) {
-  const gap = gapCell(car);
-  ctx.fillStyle = gap.color === LOSS_COLOR || gap.color === GAIN_COLOR ? '#fff' : gap.color;
-  ctx.fillText(gap.text, x, y);
-  const change = gapChangeCell(car);
-  if (!change) return;
-  ctx.fillStyle = change.color;
-  ctx.fillText(change.text, x + ctx.measureText(gap.text).width + 10, y);
+const PURPLE = '#b36cff';
+const GREEN = '#6ee07a';
+const YELLOW = '#ffd54a';
+const DIM = 'rgba(255,255,255,0.6)';
+
+/** Seconds like F1 timing: "1.234", or "1:02.345" past a minute. */
+function secs(ticks: number): string {
+  const s = Math.abs(ticks) / TICK_RATE;
+  return s < 60 ? s.toFixed(3) : `${Math.floor(s / 60)}:${(s % 60).toFixed(3).padStart(6, '0')}`;
 }
 
-const GAIN_COLOR = '#6ee07a';
-const LOSS_COLOR = '#ff6b4a';
-
-/** Seconds as "+1.23", or "+1:02.34" past a minute. */
-function gapText(ticks: number): string {
-  const s = ticks / TICK_RATE;
-  if (s < 60) return `+${s.toFixed(2)}`;
-  return `+${Math.floor(s / 60)}:${(s % 60).toFixed(2).padStart(5, '0')}`;
+function lapsText(n: number): string {
+  return `+${n} LAP${n > 1 ? 'S' : ''}`;
 }
 
 /**
- * Gap to the car that led over the line on this car's last lap: "LEAD",
- * "+1.23" (green when it shrank since the lap before, red when it grew), or
- * "–" before the first lap is done.
+ * Standings time for a car, like a TV timing tower: "Leader" for P1, the
+ * gap to the leader at the last checkpoint ("+1.234"), "+1 LAP" once lapped,
+ * "–" before the first checkpoint.
  */
-export function gapCell(c: CarState): { text: string; color: string } {
-  if (c.gapTicks == null) return { text: '–', color: 'rgba(255,255,255,0.5)' };
-  if (c.gapTicks === 0) return { text: 'LEAD', color: 'rgba(255,255,255,0.7)' };
-  const change = c.gapChangeTicks ?? 0;
-  return { text: gapText(c.gapTicks), color: change < 0 ? GAIN_COLOR : change > 0 ? LOSS_COLOR : '#fff' };
+export function gapCell(c: CarState, order: CarState[], state: GameState): { text: string; color: string } {
+  const leader = order[0];
+  if (c === leader) return { text: 'Leader', color: DIM };
+  const g = getTrack(state.trackId).gates.length;
+  const down = raceProgress(leader, g) - raceProgress(c, g);
+  if (down >= g) return { text: lapsText(Math.floor(down / g)), color: '#fff' };
+  if (c.gapTicks == null) return { text: '–', color: DIM };
+  return { text: `+${secs(c.gapTicks)}`, color: '#fff' };
 }
 
-/** How the gap moved last lap: "−0.42" green when catching up, "+0.42" red when dropping back. */
-export function gapChangeCell(c: CarState): { text: string; color: string } | null {
-  if (c.gapTicks == null || c.gapChangeTicks == null || c.gapChangeTicks === 0) return null;
-  const s = Math.abs(c.gapChangeTicks / TICK_RATE).toFixed(2);
-  return c.gapChangeTicks < 0 ? { text: `−${s}`, color: GAIN_COLOR } : { text: `+${s}`, color: LOSS_COLOR };
+/**
+ * Time to the car ahead and from the car behind, at the last checkpoint both
+ * crossed: "+0.812 Rosa" (we are that far behind), "−1.204 Kenji".
+ */
+export function intervals(state: GameState, order: CarState[], id: number): { ahead: string; behind: string } {
+  const g = getTrack(state.trackId).gates.length;
+  const at = order.findIndex((c) => c.id === id);
+  const me = order[at];
+  const gap = (front: CarState, back: CarState, sign: string) => {
+    const down = raceProgress(front, g) - raceProgress(back, g);
+    if (down >= g) return `${lapsText(Math.floor(down / g)).replace('+', sign)} ${front === me ? back.name : front.name}`;
+    const gate = (back.nextCheckpoint - 1 + g) % g;
+    const tf = front.gateTicks?.[gate] ?? -1;
+    const tb = back.gateTicks?.[gate] ?? -1;
+    const other = front === me ? back.name : front.name;
+    return tf < 0 || tb < 0 ? `– ${other}` : `${sign}${secs(tb - tf)} ${other}`;
+  };
+  return {
+    ahead: at > 0 ? gap(order[at - 1], me, '+') : '–',
+    behind: at >= 0 && at < order.length - 1 ? gap(me, order[at + 1], '−') : '–',
+  };
+}
+
+/**
+ * Last lap colour like F1 timing: purple for the fastest lap of the race,
+ * green for a personal best, yellow otherwise, with how far off the best it was.
+ */
+export function lapColour(car: CarState, state: GameState): { color: string; delta?: string } {
+  const last = car.lastLapTicks;
+  if (last === null) return { color: '#fff' };
+  const fastest = state.fastestLaps?.[0];
+  if (fastest && fastest.ticks === last && fastest.name === car.name) return { color: PURPLE };
+  if (last === car.bestLapTicks) return { color: GREEN };
+  return { color: YELLOW, delta: car.bestLapTicks !== null ? `+${secs(last - car.bestLapTicks)}` : undefined };
+}
+
+/** Best lap: purple while it is the fastest of the race. */
+export function bestColour(car: CarState, state: GameState): string {
+  const fastest = state.fastestLaps?.[0];
+  return fastest && car.bestLapTicks !== null && fastest.ticks === car.bestLapTicks && fastest.name === car.name ? PURPLE : '#fff';
+}
+
+/** Header of the timing tower: the leader's lap, or FINISH once the flag is out. */
+function raceLapText(order: CarState[], state: GameState): string {
+  const leader = order[0];
+  if (!leader) return '';
+  if (leader.finishTick !== null) return 'FINISH';
+  return `LAP ${Math.min(leader.lapsCompleted + 1, state.totalLaps)}/${state.totalLaps}`;
 }
 
 /**
@@ -284,7 +332,7 @@ function drawBoards(ctx: CanvasRenderingContext2D, state: GameState, humanIds: n
   ctx.fillStyle = 'rgba(255,255,255,0.6)';
   ctx.fillText('STANDINGS', boardX + 12, 32);
   ctx.textAlign = 'right';
-  ctx.fillText('GAP', boardX + boardW - 44, 32);
+  ctx.fillText(raceLapText(order, state), boardX + boardW - 12, 32);
   ctx.textAlign = 'left';
   order.forEach((c, i) => {
     const y = 51 + i * 18;
@@ -304,11 +352,9 @@ function drawBoards(ctx: CanvasRenderingContext2D, state: GameState, humanIds: n
       ctx.fillStyle = bodyPct > 60 ? '#6ee07a' : bodyPct > 30 ? '#ffd54a' : '#ff6b4a';
       ctx.fillText(`${bodyPct}%`, boardX + 244, y);
     }
-    const gap = gapCell(c);
+    const gap = gapCell(c, order, state);
     ctx.fillStyle = gap.color;
-    ctx.fillText(gap.text, boardX + boardW - 44, y);
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.fillText(c.finishTick !== null ? 'FIN' : `L${Math.min(c.lapsCompleted + 1, state.totalLaps)}`, boardX + boardW - 12, y);
+    ctx.fillText(gap.text, boardX + boardW - 12, y);
     ctx.textAlign = 'left';
   });
 
@@ -406,11 +452,9 @@ function drawCompact(
     ctx.fillStyle = humanIds.includes(c.id) ? '#ffd54a' : '#fff';
     ctx.fillText(fit(ctx, `${i + 1}. ${c.name}`, bw - 100), bx + 21, ry + 11);
     ctx.textAlign = 'right';
-    const gap = gapCell(c);
+    const gap = gapCell(c, order, state);
     ctx.fillStyle = gap.color;
-    ctx.fillText(gap.text, bx + bw - 34, ry + 11);
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.fillText(c.finishTick !== null ? 'FIN' : `L${Math.min(c.lapsCompleted + 1, state.totalLaps)}`, bx + bw - 8, ry + 11);
+    ctx.fillText(gap.text, bx + bw - 8, ry + 11);
     ctx.textAlign = 'left';
   });
 
