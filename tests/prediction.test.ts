@@ -157,17 +157,38 @@ describe('snapshot interpolation', () => {
     const a = drive(solo(), 30, gas);
     const b = drive(a, 3, gas);
     const buf = new SnapshotBuffer();
+    // Three ticks apart, arriving on time (50 ms).
     buf.push(a, 1000);
-    buf.push(b, 1150);
-    const mid = buf.sample(1000 + 100 + 75)!;
+    buf.push(b, 1050);
+    const mid = buf.sample(1000 + 100 + 25)!;
     expect(mid.alpha).toBeCloseTo(0.5, 5);
     expect(mid.prev.tick).toBe(a.tick);
     expect(mid.curr.tick).toBe(b.tick);
 
-    const late = buf.sample(1150 + 100 + 40)!;
+    const late = buf.sample(1050 + 100 + 40)!;
     const extra = extrapolateCar(b.cars[0], 0.04);
     expect(late.curr.cars[0].x).toBeCloseTo(extra.x, 5);
     expect(late.curr.cars[0].y).toBeCloseTo(extra.y, 5);
+  });
+
+  it('plays snapshots on the server clock, so a late one and an early one still move steadily', () => {
+    let s = drive(solo(), 30, gas);
+    const buf = new SnapshotBuffer();
+    // Every 3 ticks (50 ms) on the server; the second packet is 40 ms late and bunches with the third.
+    const arrive = [1000, 1090, 1100, 1150, 1200];
+    const ticks: number[] = [];
+    for (const at of arrive) {
+      ticks.push(s.tick);
+      buf.push(s, at);
+      s = drive(s, 3, gas);
+    }
+    // Rendering 100 ms behind: each 10 ms moves the same 0.6 of a tick.
+    const at = (now: number) => {
+      const smp = buf.sample(now)!;
+      return smp.prev.tick + (smp.curr.tick - smp.prev.tick) * smp.alpha;
+    };
+    for (let now = 1110; now < 1290; now += 10) expect(at(now + 10) - at(now)).toBeCloseTo(0.6, 5);
+    expect(at(1100)).toBeCloseTo(ticks[0], 5);
   });
 
   it('mergeOwn keeps remotes from the buffer and the predicted local car', () => {

@@ -1,4 +1,4 @@
-import type { CarState, GameState } from '../sim';
+import { TICK_RATE, type CarState, type GameState } from '../sim';
 
 /** Render remotes this far behind the newest snapshot so we usually have a pair. */
 export const INTERP_DELAY_MS = 100;
@@ -16,6 +16,13 @@ export interface Sample {
   alpha: number;
 }
 
+const TICK_MS = 1000 / TICK_RATE;
+
+/**
+ * Received snapshots, played back on the server's own clock: each one is
+ * placed by its tick, not by when it arrived, so a late packet followed by
+ * an early one doesn't make the cars lurch and stall.
+ */
 export class SnapshotBuffer {
   private snaps: Buffered[] = [];
 
@@ -39,29 +46,39 @@ export class SnapshotBuffer {
   }
 
   /**
-   * Sample the buffer at `now - delay`. Interpolates between received snapshots
-   * and briefly extrapolates on a gap.
+   * Where server tick 0 falls on our clock: the quickest arrival in the buffer
+   * (about two seconds), so packets that came in late don't drag it.
+   */
+  private origin(): number {
+    let best = Infinity;
+    for (const s of this.snaps) best = Math.min(best, s.at - s.state.tick * TICK_MS);
+    return best;
+  }
+
+  /**
+   * Sample the buffer `delayMs` behind the newest server time. Interpolates
+   * between received snapshots and briefly extrapolates on a gap.
    */
   sample(now: number, delayMs = INTERP_DELAY_MS): Sample | null {
     if (this.snaps.length === 0) return null;
-    const target = now - delayMs;
-    if (target <= this.snaps[0].at) {
+    const tick = (now - delayMs - this.origin()) / TICK_MS;
+    if (tick <= this.snaps[0].state.tick) {
       const s = this.snaps[0].state;
       return { prev: s, curr: s, alpha: 1 };
     }
     const last = this.snaps[this.snaps.length - 1];
-    if (target >= last.at) {
-      const dt = Math.min(EXTRAPOLATE_MS, target - last.at) / 1000;
+    if (tick >= last.state.tick) {
+      const dt = Math.min(EXTRAPOLATE_MS, (tick - last.state.tick) * TICK_MS) / 1000;
       if (dt <= 0) return { prev: last.state, curr: last.state, alpha: 1 };
       return { prev: last.state, curr: extrapolateState(last.state, dt), alpha: 1 };
     }
     let i = this.snaps.length - 1;
-    while (i > 0 && this.snaps[i - 1].at > target) i--;
-    const b = this.snaps[i];
-    const a = this.snaps[Math.max(0, i - 1)];
-    const span = b.at - a.at;
-    const alpha = span <= 0 ? 1 : (target - a.at) / span;
-    return { prev: a.state, curr: b.state, alpha };
+    while (i > 0 && this.snaps[i - 1].state.tick > tick) i--;
+    const b = this.snaps[i].state;
+    const a = this.snaps[Math.max(0, i - 1)].state;
+    const span = b.tick - a.tick;
+    const alpha = span <= 0 ? 1 : (tick - a.tick) / span;
+    return { prev: a, curr: b, alpha };
   }
 }
 
