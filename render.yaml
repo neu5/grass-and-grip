@@ -3,6 +3,9 @@ services:
     name: grass-and-grip
     runtime: node
     plan: free
+    # Close to players in Europe. Render can't move an existing service:
+    # a new region means a new service from this blueprint.
+    region: frankfurt
     # Rooms live in memory, so this must stay a single instance.
     numInstances: 1
     buildCommand: npm install && npm run build
