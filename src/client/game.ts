@@ -15,6 +15,9 @@ import {
   type GameState,
   type GridOrder,
   type PlayerInput,
+  type RaceConfig,
+  RaceLogWriter,
+  type RaceLog,
   type RaceRules,
   type TickInputs,
 } from '../sim';
@@ -22,7 +25,7 @@ import { AI_NAMES, CAR_COLORS, MAX_PLAYERS, clampAiCount } from '../net/protocol
 import { loadFastestLaps, persistFastestLaps } from './fastestStore';
 import { BINDINGS_P1, BINDINGS_P2, BINDINGS_SOLO, Keyboard, mergeInputs, NO_PLAYER_INPUT } from './input';
 import type { Renderer3D } from './renderer3d';
-import { LapRecorder } from './lapRecorder';
+import { LapRecorder, saveRaceLog } from './lapRecorder';
 
 export interface GameOptions {
   humans: 1 | 2;
@@ -129,6 +132,8 @@ export class Game {
   private humanIds: number[] = [];
   /** Every tick's inputs, in order: enough to replay the race exactly. */
   inputLog: TickInputs[] = [];
+  /** The whole race, saved for looking at what the AI did (scripts/race-report.ts). */
+  private raceLog: RaceLogWriter | null = null;
 
   constructor(
     private renderer: Renderer3D,
@@ -164,14 +169,18 @@ export class Game {
     const cars = orderGrid(entries, this.options.grid);
     const trackId = this.options.trackId ?? 'meadow';
     this.renderer.setTrack(trackId);
-    this.curr = createRace({
+    this.saveRace();
+    const config: RaceConfig = {
       trackId,
       totalLaps: this.options.laps,
       cars,
       countdownSeconds: this.options.countdownSeconds,
       rules: this.options.rules,
       trackRecord: this.options.persistFastest === false ? null : (loadFastestLaps(trackId)[0] ?? null),
-    });
+    };
+    this.curr = createRace(config);
+    // Demos rig the state by hand: a log of that would not play back.
+    this.raceLog = this.options.setup ? null : new RaceLogWriter(config, this.curr);
     this.options.setup?.(this.curr);
     this.prev = this.curr;
     this.humanIds = players.map((p) => cars.findIndex((c) => c.name === p.name));
@@ -203,11 +212,15 @@ export class Game {
         this.prev = this.curr;
         this.curr = step(this.curr, inputs);
         this.recorder.record(this.curr, inputs, this.humanIds);
+        this.raceLog?.record(this.curr, inputs);
         if (this.options.persistFastest !== false && lapsDone(this.curr) !== lapsDone(this.prev)) {
           persistFastestLaps(this.curr.trackId, this.curr.fastestLaps);
         }
         this.renderer.onTick(this.curr);
-        if (this.prev.phase !== 'finished' && this.curr.phase === 'finished') this.options.onFinish?.(this.curr);
+        if (this.prev.phase !== 'finished' && this.curr.phase === 'finished') {
+          this.saveRace();
+          this.options.onFinish?.(this.curr);
+        }
         this.acc -= DT;
         steps++;
       }
@@ -221,5 +234,19 @@ export class Game {
 
   stop() {
     cancelAnimationFrame(this.raf);
+    this.saveRace();
+  }
+
+  /** This race so far, as a log (null for demos). */
+  get log(): RaceLog | null {
+    return this.raceLog?.value ?? null;
+  }
+
+  /** Keep this race's log once it has run a while; once per race. */
+  private saveRace() {
+    const log = this.raceLog;
+    if (!log || log.ticks < 60 * 20) return;
+    saveRaceLog(log.value);
+    this.raceLog = null;
   }
 }

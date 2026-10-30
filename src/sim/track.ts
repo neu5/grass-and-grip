@@ -47,7 +47,7 @@ export interface Decor {
 export const TRACK_IDS = ['oldtown', 'canyon', 'meadow', 'harbor', 'jungle', 'harvest', 'alpine', 'grandprix'] as const;
 export type TrackId = (typeof TRACK_IDS)[number];
 
-/** Marked stalls on tracks that have a pit lane. */
+/** Marked stalls on tracks that have a pit lane, unless a map asks for more. */
 export const PIT_STALLS = 4;
 const PIT_BOX_W = 90;
 const PIT_BOX_H = 54;
@@ -71,7 +71,7 @@ const PIT_LANE_FAR = 198;
  * cars drive over the line (an axis, so stalls stay plain rectangles) and
  * `side` which side of the road the pits are on.
  */
-export function pitComplexAt(start: Vec2, heading: Heading, side: 'left' | 'right'): { pitLane: Rect; pitBoxes: Rect[] } {
+export function pitComplexAt(start: Vec2, heading: Heading, side: 'left' | 'right', stalls = PIT_STALLS): { pitLane: Rect; pitBoxes: Rect[] } {
   const u = HEADING_VEC[heading];
   // Left of travel with y pointing down the screen.
   const l = side === 'left' ? { x: u.y, y: -u.x } : { x: -u.y, y: u.x };
@@ -83,11 +83,11 @@ export function pitComplexAt(start: Vec2, heading: Heading, side: 'left' | 'righ
     return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
   };
   const pitBoxes: Rect[] = [];
-  for (let i = 0; i < PIT_STALLS; i++) {
+  for (let i = 0; i < stalls; i++) {
     const a = PIT_FIRST_ALONG + i * (PIT_BOX_W + PIT_BOX_GAP);
     pitBoxes.push(rect(a, a + PIT_BOX_W, PIT_BOX_NEAR, PIT_BOX_NEAR + PIT_BOX_H));
   }
-  const end = PIT_FIRST_ALONG + PIT_STALLS * (PIT_BOX_W + PIT_BOX_GAP) - PIT_BOX_GAP;
+  const end = PIT_FIRST_ALONG + stalls * (PIT_BOX_W + PIT_BOX_GAP) - PIT_BOX_GAP;
   return { pitLane: rect(PIT_FIRST_ALONG - PIT_LANE_PAD, end + PIT_LANE_PAD, PIT_LANE_NEAR, PIT_LANE_FAR), pitBoxes };
 }
 
@@ -386,8 +386,13 @@ export function buildTrack(def: TrackDef, opts: { grid?: boolean } = {}): Track 
     const idx = gateSample(g, def.checkpointCount, curvature, (i) => nearPits(def, samples[i]));
     const c = samples[idx];
     const nrm = normals[idx];
-    const reachA = gateReach(def, samples, segmentLengths, idx, -1);
-    const reachB = gateReach(def, samples, segmentLengths, idx, 1);
+    let reachA = gateReach(def, samples, segmentLengths, idx, -1);
+    let reachB = gateReach(def, samples, segmentLengths, idx, 1);
+    if (g === 0) {
+      // The finish line also spans the pit side, so a car moving over for the pits still crosses it.
+      reachA = Math.max(reachA, pitReach(def, c, nrm, -1));
+      reachB = Math.max(reachB, pitReach(def, c, nrm, 1));
+    }
     gates.push({
       a: { x: c.x - nrm.x * reachA, y: c.y - nrm.y * reachA },
       b: { x: c.x + nrm.x * reachB, y: c.y + nrm.y * reachB },
@@ -550,6 +555,22 @@ function gateSample(g: number, count: number, curvature: number[], blocked: (i: 
     }
   }
   return best;
+}
+
+/** How far out on one side the finish line must reach to cover the pit lane beside it (0 if the lane is the other side). */
+function pitReach(def: TrackDef, c: Vec2, nrm: Vec2, side: number): number {
+  const l = def.pitLane;
+  if (l.w <= 0 || l.h <= 0) return 0;
+  let far = 0;
+  for (const [x, y] of [
+    [l.x, l.y],
+    [l.x + l.w, l.y],
+    [l.x, l.y + l.h],
+    [l.x + l.w, l.y + l.h],
+  ]) {
+    far = Math.max(far, ((x - c.x) * nrm.x + (y - c.y) * nrm.y) * side);
+  }
+  return far > def.halfWidth ? far + GATE_CLEARANCE : 0;
 }
 
 /**
@@ -1216,7 +1237,7 @@ export const TRACKS: Record<string, TrackDef> = {
 /** A design with its pit complex laid out beside the start line. */
 function withPits(d: MapDesign): TrackDef {
   const { pits, ...def } = d;
-  return { ...def, pitSide: pits.side, ...pitComplexAt(def.controlPoints[0], pits.heading, pits.side) };
+  return { ...def, pitSide: pits.side, ...pitComplexAt(def.controlPoints[0], pits.heading, pits.side, pits.stalls) };
 }
 
 const cache = new Map<string, Track>();

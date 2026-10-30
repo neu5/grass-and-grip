@@ -9,7 +9,8 @@ export const GRAND_PRIX: MapDesign = {
   halfWidth: 80,
   checkpointCount: 8,
   // Run anticlockwise: start westbound on the main straight, pits and paddock on the infield side.
-  pits: { heading: 'west', side: 'left' },
+  // A long main straight: room for six stalls, so a full grid doesn't queue.
+  pits: { heading: 'west', side: 'left', stalls: 6 },
   theme: 'circuit',
   controlPoints: [
     { x: 1400, y: 195 },

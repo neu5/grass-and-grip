@@ -166,7 +166,9 @@ const fmt = (ticks: number) => (ticks / TICK_RATE).toFixed(2);
 const lines: string[] = [`# AI report — level ${level}`, ''];
 const spots: Spot[] = [];
 const summary: string[] = ['| map | kind | best | ideal | lost | off-road | hits |', '|---|---|---|---|---|---|---|'];
-const human: LapTelemetry[] = humanFile ? JSON.parse(readFileSync(humanFile, 'utf8')) : [];
+// Older downloads are just the laps; newer ones are { laps, races }.
+const download = humanFile ? JSON.parse(readFileSync(humanFile, 'utf8')) : [];
+const human: LapTelemetry[] = Array.isArray(download) ? download : (download.laps ?? []);
 
 for (const map of maps) {
   const track = getTrack(map);

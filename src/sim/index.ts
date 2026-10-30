@@ -11,3 +11,4 @@ export { racingLine, speedProfile, planMargins, PLAN_TUNE, missedGate, pastNextG
 export { AI_LEVEL, aiSkill } from './ai';
 export { CONE, conesFromTrack } from './props';
 export * from './trackTools';
+export * from './raceLog';
