@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SnapshotBuffer, extrapolateCar, mergeOwn } from '../src/net/interpolate';
 import { InputQueue, lerpCar, reconcile, replayUnacked, smoothCar } from '../src/net/prediction';
 import { decodeSnapshot, encodeSnapshot, POS_Q } from '../src/net/snapshot';
-import { COUNTDOWN_SECONDS, Room } from '../src/net/room';
+import { COUNTDOWN_SECONDS, MAX_QUEUED_INPUTS, Room } from '../src/net/room';
 import { CAR_COLORS } from '../src/net/protocol';
 import { createRace, DT, NO_INPUT, step, stepOwnCar, TICK_RATE, type GameState, type PlayerInput } from '../src/sim';
 
@@ -203,7 +203,7 @@ describe('snapshot interpolation', () => {
 });
 
 describe('room input seq', () => {
-  it('acks the latest processed seq and ignores stale packets', () => {
+  it('acks the seq it has played and ignores stale packets', () => {
     const room = new Room('seq');
     expect(room.join('p0', 'Ada', CAR_COLORS[0])).toBeNull();
     room.setReady('p0', true);
@@ -211,10 +211,50 @@ describe('room input seq', () => {
     room.setInput('p0', gas, 1);
     room.setInput('p0', turn, 2);
     room.setInput('p0', NO_INPUT, 1);
+    // Received is not played: the ack moves one tick at a time.
+    expect(room.ackOf('p0')).toBe(0);
+    room.tick();
+    expect(room.ackOf('p0')).toBe(1);
+    room.tick();
     expect(room.ackOf('p0')).toBe(2);
+    room.setInput('p0', gas, 3);
     for (let i = 0; i < COUNTDOWN_SECONDS * TICK_RATE + 8; i++) room.tick();
     const mine = room.race!.cars[room.carOf.get('p0')!];
     expect(Math.hypot(mine.vx, mine.vy)).toBeGreaterThan(0);
+  });
+
+  it('plays inputs that arrive in a bunch one per tick, in order, like the client drove them', () => {
+    const room = new Room('bunch');
+    room.join('p0', 'Ada', CAR_COLORS[0]);
+    room.setSettings('p0', { aiCount: 0 });
+    room.setReady('p0', true);
+    const id = room.carOf.get('p0')!;
+    // Countdown over, then the client's own copy starts from the same state.
+    for (let i = 0; i < COUNTDOWN_SECONDS * TICK_RATE + 1; i++) room.tick();
+    let client = room.race!;
+    const drive = Array.from({ length: 24 }, (_, i): PlayerInput => (i % 6 < 2 ? turn : i % 6 < 4 ? gas : { throttle: 1, steer: -1, handbrake: false }));
+    for (const input of drive) client = stepOwnCar(client, id, input);
+    // The network delivers them four at a time, between server ticks.
+    let seq = 0;
+    for (let i = 0; i < drive.length; i += 4) {
+      for (const input of drive.slice(i, i + 4)) room.setInput('p0', input, ++seq);
+      for (let k = 0; k < 4; k++) room.tick();
+    }
+    expect(room.ackOf('p0')).toBe(drive.length);
+    const server = room.race!.cars[id];
+    const mine = client.cars[id];
+    expect(server.x).toBeCloseTo(mine.x, 6);
+    expect(server.y).toBeCloseTo(mine.y, 6);
+    expect(server.angle).toBeCloseTo(mine.angle, 6);
+  });
+
+  it('keeps only a short queue, so a stalled server does not build up lag', () => {
+    const room = new Room('cap');
+    room.join('p0', 'Ada', CAR_COLORS[0]);
+    room.setReady('p0', true);
+    for (let s = 1; s <= MAX_QUEUED_INPUTS + 10; s++) room.setInput('p0', gas, s);
+    room.tick();
+    expect(room.ackOf('p0')).toBe(11);
   });
 });
 
