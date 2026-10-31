@@ -36,6 +36,8 @@ export const MAX_CUSTOM_TRACK_BYTES = 60_000;
 export const RESULTS_TICKS = 6 * TICK_RATE;
 export const MAX_RACE_TICKS = 15 * 60 * TICK_RATE;
 const MAX_NAME_LENGTH = 16;
+/** Inputs waiting their turn per player: enough to ride out network jitter, few enough not to add lag. */
+export const MAX_QUEUED_INPUTS = 8;
 
 export interface RoomPlayer {
   id: string;
@@ -75,7 +77,12 @@ export class Room {
   /** Bumped whenever the lobby view changes, so the server knows when to broadcast it. */
   version = 0;
   private inputs: TickInputs = {};
+  /** Newest seq received per player, to drop repeats and stragglers. */
   private lastSeq = new Map<string, number>();
+  /** Inputs received but not yet played, oldest first: one per tick, in order, as the client drove them. */
+  private queued = new Map<string, { seq: number; input: PlayerInput }[]>();
+  /** Seq of the input each player's car last ran on: the snapshot's ack. */
+  private applied = new Map<string, number>();
   private resultsLeft = 0;
 
   /** `random` picks the starting grid; tests pass a seeded one. */
@@ -115,6 +122,8 @@ export class Room {
       const carId = this.carOf.get(id);
       this.carOf.delete(id);
       this.lastSeq.delete(id);
+      this.queued.delete(id);
+      this.applied.delete(id);
       if (carId !== undefined) delete this.inputs[carId];
       if (this.carOf.size === 0) this.backToLobby();
     }
@@ -186,22 +195,43 @@ export class Room {
   setInput(id: string, input: PlayerInput, seq?: number): void {
     const carId = this.carOf.get(id);
     if (carId === undefined || !input) return;
-    if (seq !== undefined) {
-      const prev = this.lastSeq.get(id) ?? 0;
-      if (seq <= prev) return;
-      this.lastSeq.set(id, seq);
+    const clean = { throttle: clamp1(input.throttle), steer: clamp1(input.steer), handbrake: !!input.handbrake };
+    if (seq === undefined) {
+      this.inputs[carId] = clean;
+      return;
     }
-    this.inputs[carId] = { throttle: clamp1(input.throttle), steer: clamp1(input.steer), handbrake: !!input.handbrake };
+    const prev = this.lastSeq.get(id) ?? 0;
+    if (seq <= prev) return;
+    this.lastSeq.set(id, seq);
+    // The client stepped its car once per input. Playing them one per tick, in
+    // order, keeps the server's car on the same path even when packets come in
+    // bunches; taking just the newest would skip some and repeat others.
+    const q = this.queued.get(id) ?? [];
+    q.push({ seq, input: clean });
+    while (q.length > MAX_QUEUED_INPUTS) q.shift();
+    this.queued.set(id, q);
   }
 
-  /** Last input seq applied for this player, for snapshot acks. */
+  /** Seq of the last input the server ran, for snapshot acks. */
   ackOf(id: string): number {
-    return this.lastSeq.get(id) ?? 0;
+    return this.applied.get(id) ?? 0;
+  }
+
+  /** Each player's next queued input for this tick; with none waiting the car keeps its last one. */
+  private takeInputs(): void {
+    for (const [id, q] of this.queued) {
+      const next = q.shift();
+      const carId = this.carOf.get(id);
+      if (!next || carId === undefined) continue;
+      this.inputs[carId] = next.input;
+      this.applied.set(id, next.seq);
+    }
   }
 
   /** Advance one sim tick. Returns true when there is a race state to broadcast. */
   tick(): boolean {
     if (!this.race) return false;
+    this.takeInputs();
     this.race = step(this.race, this.inputs);
     if (lapsDone(this.race) !== this.lapsMerged) {
       this.lapsMerged = lapsDone(this.race);
@@ -261,6 +291,8 @@ export class Room {
     const cars = orderGrid(entries, 'random', this.random);
     this.carOf.clear();
     this.lastSeq.clear();
+    this.queued.clear();
+    this.applied.clear();
     this.players.forEach((p, i) => this.carOf.set(p.id, cars.indexOf(entries[i])));
     this.inputs = {};
     this.lapsMerged = 0;
@@ -280,6 +312,8 @@ export class Room {
     this.race = null;
     this.carOf.clear();
     this.lastSeq.clear();
+    this.queued.clear();
+    this.applied.clear();
     this.inputs = {};
     for (const p of this.players) p.ready = false;
     this.changed();
