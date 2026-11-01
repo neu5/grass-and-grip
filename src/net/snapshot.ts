@@ -1,4 +1,4 @@
-import { copyFastestLaps, DEFAULT_RULES, type Prop, normalizeRules, normalizeSetup, toCarKind, type CarState, type FastestLap, type GameState } from '../sim';
+import { copyFastestLaps, DEFAULT_RULES, type Prop, normalizeRules, toCarKind, type CarState, type FastestLap, type GameState } from '../sim';
 import type { CompactCar, CompactFastestLap, CompactSnapshot } from './protocol';
 
 /** Position / velocity stored in tenths. Angle in milliradians. Wear/fuel/damage 0–1 as 0–1000. */
@@ -17,9 +17,6 @@ function encodeCar(car: CarState): CompactCar {
     n: car.name,
     col: car.color,
     knd: car.kind,
-    ...(car.setup && (car.setup.gearing || car.setup.steering || car.setup.grip)
-      ? { su: [car.setup.gearing, car.setup.steering, car.setup.grip] as [number, number, number] }
-      : {}),
     ctl: car.controller,
     x: q(car.x, POS_Q),
     y: q(car.y, POS_Q),
@@ -50,7 +47,6 @@ function decodeCar(c: CompactCar, prev?: CarState): CarState {
     name: c.n,
     color: c.col,
     kind: toCarKind(c.knd),
-    setup: normalizeSetup(c.su ? { gearing: c.su[0], steering: c.su[1], grip: c.su[2] } : undefined),
     controller: c.ctl,
     x: u(c.x, POS_Q),
     y: u(c.y, POS_Q),

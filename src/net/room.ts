@@ -10,7 +10,6 @@ import {
   parseTrackDef,
   registerTrack,
   validateTrack,
-  normalizeSetup,
   parseCarKind,
   parseCarMode,
   spawnAiKind,
@@ -20,7 +19,6 @@ import {
   type CarConfig,
   type CarKind,
   type CarMode,
-  type CarSetup,
   type FastestLap,
   type GameState,
   type PlayerInput,
@@ -44,7 +42,6 @@ export interface RoomPlayer {
   name: string;
   color: string;
   car: CarKind;
-  setup: CarSetup;
   ready: boolean;
 }
 
@@ -100,7 +97,7 @@ export class Room {
   }
 
   /** Returns an error message, or null on success. */
-  join(id: string, rawName: string, color: string, car?: string, setup?: unknown): string | null {
+  join(id: string, rawName: string, color: string, car?: string): string | null {
     if (this.players.some((p) => p.id === id)) return 'Already joined';
     if (this.players.length >= MAX_PLAYERS) return 'Room is full';
     if (!(CAR_COLORS as readonly string[]).includes(color)) return 'Unknown color';
@@ -108,7 +105,7 @@ export class Room {
     const kind = car === undefined || car === '' ? 'rally' : parseCarKind(car);
     if (!kind) return 'Unknown car';
     const name = String(rawName ?? '').trim().slice(0, MAX_NAME_LENGTH) || `Player ${this.players.length + 1}`;
-    this.players.push({ id, name, color, car: kind, setup: normalizeSetup(setup), ready: false });
+    this.players.push({ id, name, color, car: kind, ready: false });
     this.aiCount = clampAiCount(this.players.length, this.aiCount);
     this.changed();
     return null;
@@ -138,16 +135,6 @@ export class Room {
     p.ready = !!ready;
     this.changed();
     this.maybeStart();
-    return null;
-  }
-
-  /** A player's own garage setup, changeable in the lobby. */
-  setSetup(id: string, setup: unknown): string | null {
-    const p = this.players.find((q) => q.id === id);
-    if (!p) return 'Join the room first';
-    if (this.phase !== 'lobby') return 'Race in progress';
-    p.setup = normalizeSetup(setup);
-    this.changed();
     return null;
   }
 
@@ -280,7 +267,6 @@ export class Room {
           color: p.color,
           controller: 'human',
           kind: spawnKind(p.car, this.carMode),
-          setup: p.setup,
         }),
       ),
       ...freeColors.slice(0, this.aiCount).map(

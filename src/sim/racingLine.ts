@@ -1,6 +1,6 @@
 import { carStats, surfaceFor, tyreFactor, TYRE, type CarStats } from './physics';
 import { surfaceAt, type Track, type Vec2 } from './track';
-import type { CarKind, CarSetup, CarState } from './types';
+import type { CarKind, CarState } from './types';
 
 /** How far the line stays inside the road edge (car half-width plus a little). */
 const LINE_MARGIN = 18;
@@ -217,13 +217,13 @@ function steerLimit(C: CarStats, kappa: number, yawShare: number): number {
  * `wear` (tyre wear 0..1, in steps of 0.1) how much grip and braking the
  * tyres have left.
  */
-export function speedProfile(track: Track, car: { kind?: CarKind; setup?: CarSetup }, level = 0, wear = 0): number[] {
+export function speedProfile(track: Track, car: { kind?: CarKind }, level = 0, wear = 0): number[] {
   const C = carStats(car);
   const m = planMargins(level);
   const w = Math.round(Math.min(1, Math.max(0, wear)) * 10) / 10;
   const gripLeft = tyreFactor(w, TYRE.wornGrip);
   const brakeLeft = tyreFactor(w, TYRE.wornBrake);
-  const key = `${car.kind}|${car.setup?.gearing ?? 0},${car.setup?.steering ?? 0},${car.setup?.grip ?? 0}|${m.grip},${m.brake},${m.steer}|${w}`;
+  const key = `${car.kind}|${m.grip},${m.brake},${m.steer}|${w}`;
   let perTrack = profiles.get(track);
   if (!perTrack) {
     perTrack = new Map();

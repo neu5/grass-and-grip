@@ -1,4 +1,4 @@
-import type { CarKind, CarMode, CarSetup, FastestLap, Phase, PlayerInput, RaceRules, TrackDef } from '../sim';
+import type { CarKind, CarMode, FastestLap, Phase, PlayerInput, RaceRules, TrackDef } from '../sim';
 
 export type { CarKind };
 export {
@@ -6,9 +6,7 @@ export {
   CAR_KIND_NAMES,
   CAR_KIND_SHORT,
   DEFAULT_RULES,
-  DEFAULT_SETUP,
   normalizeRules,
-  normalizeSetup,
   parseCarKind,
   CAR_MODES,
   CAR_MODE_NAMES,
@@ -18,7 +16,7 @@ export {
   isTrackId,
   parseCarMode,
 } from '../sim';
-export type { CarMode, CarSetup, RaceRules, TrackId } from '../sim';
+export type { CarMode, RaceRules, TrackId } from '../sim';
 
 /** Humans + AI in one race. Humans 1–8; AI fills the rest. */
 export const MAX_PLAYERS = 8;
@@ -80,7 +78,6 @@ export interface LobbyPlayer {
   name: string;
   color: string;
   car: CarKind;
-  setup: CarSetup;
   ready: boolean;
   host: boolean;
 }
@@ -105,7 +102,7 @@ export interface LobbyState {
 }
 
 export type ClientMessage =
-  | { t: 'join'; name: string; color: string; car?: CarKind; setup?: CarSetup }
+  | { t: 'join'; name: string; color: string; car?: CarKind }
   | { t: 'ready'; ready: boolean }
   | {
       t: 'settings';
@@ -117,7 +114,6 @@ export type ClientMessage =
       /** A track from the host's editor; validated and shared with the room. */
       customTrack?: unknown;
     }
-  | { t: 'setup'; setup: CarSetup }
   | { t: 'input'; seq: number; tick: number; input: PlayerInput }
   | { t: 'ping'; t0: number };
 
@@ -134,8 +130,6 @@ export interface CompactCar {
   n: string;
   col: string;
   knd: CarKind;
-  /** Setup as [gearing, steering, grip]; missing means stock. */
-  su?: [number, number, number];
   ctl: 'human' | 'ai';
   x: number;
   y: number;

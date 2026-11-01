@@ -116,16 +116,13 @@ function handle(client: Client, msg: ClientMessage) {
   let error: string | null = null;
   switch (msg.t) {
     case 'join':
-      error = room.join(id, msg.name, msg.color, msg.car, msg.setup);
+      error = room.join(id, msg.name, msg.color, msg.car);
       break;
     case 'ready':
       error = room.setReady(id, msg.ready);
       break;
     case 'settings':
       error = room.setSettings(id, msg);
-      break;
-    case 'setup':
-      error = room.setSetup(id, msg.setup);
       break;
     case 'input':
       room.setInput(id, msg.input, msg.seq);

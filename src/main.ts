@@ -25,7 +25,7 @@ import { SoundEngine } from './client/audio';
 import { loadCustomTracks } from './client/customTracks';
 import { Renderer3D } from './client/renderer3d';
 import { mountLapsPicker } from './client/lapsPicker';
-import { mountRulesFields, mountSetupFields } from './client/raceOptionsUi';
+import { mountRulesFields } from './client/raceOptionsUi';
 import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
 import { CAR_COLORS, CAR_KIND_SHORT, COLOR_NAMES, MAX_PLAYERS, clampAiCount, clampLaps, parseCarKind, parseCarMode } from './net/protocol';
 import { isTrackId, newTrackRecord, standings, ticksToTime, TRACK_IDS, TRACKS, type FastestLap, trackName as simTrackName, type GameState } from './sim';
@@ -129,8 +129,6 @@ function lockColors() {
   }
 }
 
-const p1Setup = mountSetupFields(document.querySelector<HTMLElement>('#p1-setup')!, 'p1setup');
-const p2Setup = mountSetupFields(document.querySelector<HTMLElement>('#p2-setup')!, 'p2setup');
 const rules = mountRulesFields(
   document.querySelector<HTMLElement>('#rules')!,
   'rule',
@@ -155,7 +153,6 @@ function updateControlsHint() {
   document.querySelector('#hint-solo')!.toggleAttribute('hidden', mobile || two);
   document.querySelector('#hint-duo')!.toggleAttribute('hidden', mobile || !two);
   document.querySelector('#p2-car')!.toggleAttribute('hidden', !two);
-  document.querySelector('#p2-setup')!.toggleAttribute('hidden', !two);
   document.querySelector('#p2-who')!.toggleAttribute('hidden', !two);
   lockColors();
   const championship = selected('series') === 'season';
@@ -417,8 +414,6 @@ form.addEventListener('submit', (e) => {
     trackId: selected('track') || 'meadow',
     p1Car: parseCarKind(selected('p1car')) ?? 'rally',
     p2Car: parseCarKind(selected('p2car')) ?? 'rally',
-    p1Setup: p1Setup.get(),
-    p2Setup: p2Setup.get(),
     p1Name: nameInputs[0].value,
     p2Name: nameInputs[1].value,
     p1Color: selected('p1color'),

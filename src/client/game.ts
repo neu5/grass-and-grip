@@ -11,7 +11,6 @@ import {
   type CarConfig,
   type CarKind,
   type CarMode,
-  type CarSetup,
   type GameState,
   type GridOrder,
   type PlayerInput,
@@ -34,8 +33,6 @@ export interface GameOptions {
   trackId?: string;
   p1Car?: CarKind;
   p2Car?: CarKind;
-  p1Setup?: CarSetup;
-  p2Setup?: CarSetup;
   /** Driver names; blank means "Player 1" / "Player 2". */
   p1Name?: string;
   p2Name?: string;
@@ -95,14 +92,12 @@ export function gridCars(options: GameOptions): CarConfig[] {
   const p1 = spawnKind(options.p1Car, mode);
   const p2 = spawnKind(options.p2Car, mode);
   const humanKinds: CarKind[] = humanCount === 2 ? [p1, p2] : [p1];
-  const setups = [options.p1Setup, options.p2Setup];
   const drivers = humanDrivers(options, humanCount);
   const humans: CarConfig[] = drivers.map((d, i) => ({
     name: d.name,
     color: d.color,
     controller: 'human',
     kind: humanKinds[i],
-    setup: setups[i],
   }));
   // AI take the colors and names nobody else is using.
   const freeColors = CAR_COLORS.filter((c) => !drivers.some((d) => d.color === c));
