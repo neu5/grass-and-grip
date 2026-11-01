@@ -283,6 +283,17 @@ export function mountTouchControls(opts: { onCamera: () => void; onMenu?: () => 
     applyOverlayInsets();
   };
 
+  // iOS Safari zooms on a quick double tap and on pinch whatever the viewport
+  // tag says, and fast pedal taps look like a double tap. While racing every
+  // control works from pointer events, so the page's own touch handling
+  // (double-tap zoom, pinch, scrolling) can be turned off outright.
+  const racing = () => visible && !blocked;
+  const noZoom = (e: Event) => {
+    if (racing() && e.cancelable) e.preventDefault();
+  };
+  const zoomEvents = ['touchend', 'touchmove', 'dblclick', 'gesturestart', 'gesturechange', 'gestureend'];
+  for (const type of zoomEvents) document.addEventListener(type, noZoom, { passive: false });
+
   const onResize = () => syncLayout();
   window.addEventListener('resize', onResize);
   window.addEventListener('orientationchange', onResize);
@@ -310,6 +321,7 @@ export function mountTouchControls(opts: { onCamera: () => void; onMenu?: () => 
       window.visualViewport?.removeEventListener('resize', onResize);
       window.visualViewport?.removeEventListener('scroll', onResize);
       document.removeEventListener('fullscreenchange', onResize);
+      for (const type of zoomEvents) document.removeEventListener(type, noZoom);
       overlay.remove();
       gate.remove();
     },

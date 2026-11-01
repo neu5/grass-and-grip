@@ -685,8 +685,17 @@ html.gg-touch #menu {
   touch-action: manipulation;
 }
 
-html.gg-touch.gg-racing {
+html.gg-touch.gg-racing,
+html.gg-touch.gg-racing body,
+html.gg-touch.gg-racing #stage,
+html.gg-touch.gg-racing #game,
+html.gg-touch.gg-racing #hud,
+html.gg-touch #mobile-controls {
   touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 html.gg-touch fieldset span {
