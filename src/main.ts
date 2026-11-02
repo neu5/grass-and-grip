@@ -29,7 +29,8 @@ import { mountRulesFields } from './client/raceOptionsUi';
 import { applyTouchMenuHints, detectMobile, mountTouchControls } from './client/touchControls';
 import { CAR_COLORS, CAR_KIND_SHORT, COLOR_NAMES, MAX_PLAYERS, clampAiCount, clampLaps, parseCarKind, parseCarMode } from './net/protocol';
 import { isTrackId, newTrackRecord, standings, ticksToTime, TRACK_IDS, TRACKS, type FastestLap, trackName as simTrackName, type GameState } from './sim';
-import { trackLabelHtml } from './client/trackLabel';
+import { decorateCarPicks, mountLogos, trackCardHtml } from './client/menuArt';
+import { startAttract } from './client/attract';
 import { downloadTelemetry } from './client/lapRecorder';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
@@ -45,7 +46,7 @@ const form = document.querySelector<HTMLFormElement>('#menu-form')!;
 // Built-in tracks smallest map first, then tracks made in the editor.
 for (const def of [...TRACK_IDS.map((id) => TRACKS[id]), ...loadCustomTracks()]) {
   const builtIn = isTrackId(def.id);
-  const label = trackLabelHtml(def);
+  const label = trackCardHtml(def);
   const single = document.createElement('label');
   single.innerHTML = `<input type="radio" name="track" value="${def.id}"${def.id === 'meadow' ? ' checked' : ''} /><span>${label}</span>`;
   document.querySelector('#single-track')!.append(single);
@@ -75,6 +76,12 @@ const touch = mobile
     })
   : null;
 let game: Game | null = null;
+/** Stops the AI race running behind the menu, if any. */
+let stopAttract: (() => void) | null = null;
+function attract(on: boolean) {
+  stopAttract?.();
+  stopAttract = on ? startAttract(renderer) : null;
+}
 
 function selected(name: string): string {
   return (form.querySelector<HTMLInputElement>(`input[name="${name}"]:checked`)?.value ?? '') as string;
@@ -103,7 +110,7 @@ for (const n of [1, 2]) {
   const box = document.querySelector<HTMLElement>(`#p${n}-colors`)!;
   for (const c of CAR_COLORS) {
     const l = document.createElement('label');
-    l.innerHTML = `<input type="radio" name="p${n}color" value="${c}" /><span style="background:${c}33;border-color:${c}">${COLOR_NAMES[c]}</span>`;
+    l.innerHTML = `<input type="radio" name="p${n}color" value="${c}" /><span style="--c:${c}" title="${COLOR_NAMES[c]}"><i>${COLOR_NAMES[c]}</i></span>`;
     box.append(l);
   }
 }
@@ -148,6 +155,8 @@ function lockCarPicks(oneMake: string | null) {
 
 function updateControlsHint() {
   const two = selected('humans') === '2';
+  // Car icons take each player's color.
+  for (const n of [1, 2]) document.querySelector<HTMLElement>(`#p${n}-who`)!.style.setProperty('--car', selected(`p${n}color`));
   const humans = two ? 2 : 1;
   const mode = parseCarMode(selected('carmode')) ?? 'mixed';
   document.querySelector('#hint-solo')!.toggleAttribute('hidden', mobile || two);
@@ -177,6 +186,9 @@ function refreshFastestBoard() {
   if (!ol) return;
   fillFastestList(ol, loadFastestLaps(selected('track') || 'meadow'));
 }
+
+mountLogos();
+decorateCarPicks(form);
 
 form.addEventListener('change', () => {
   updateControlsHint();
@@ -223,6 +235,7 @@ function trackName(id: string): string {
 const raceOverHint = renderer.finishHint;
 
 function startGame(options: GameOptions, finishHint = raceOverHint) {
+  attract(false);
   renderer.finishHint = finishHint;
   game?.stop();
   game = new Game(renderer, keyboard, options, touch ?? undefined);
@@ -377,6 +390,7 @@ function backToMenu() {
   raceOverEl.hidden = true;
   pauseEl.hidden = true;
   menu.hidden = false;
+  attract(true);
   refreshFastestBoard();
   refreshResume();
 }
@@ -404,6 +418,7 @@ resumeBtn.addEventListener('click', () => {
   if (season && !seasonOver(season)) startRound();
 });
 refreshResume();
+if (!menu.hidden) attract(true);
 
 form.addEventListener('submit', (e) => {
   e.preventDefault();

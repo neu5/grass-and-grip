@@ -128,7 +128,7 @@ export function downloadTelemetry(current?: RaceLog | null) {
   const blob = new Blob([JSON.stringify({ laps: loadTelemetry(), races })], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'grass-and-grip-laps.json';
+  a.download = 'tiny-laps-laps.json';
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }

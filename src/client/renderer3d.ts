@@ -976,6 +976,8 @@ export class Renderer3D {
   cameraMode: CameraMode = 'follow';
   finishHint = 'Press R to race again · Esc for menu';
   keyHints = true;
+  /** Off for the race behind the menu: no standings or names over it. */
+  hudVisible = true;
 
   constructor(
     private glCanvas: HTMLCanvasElement,
@@ -1489,6 +1491,7 @@ export class Renderer3D {
       return label;
     });
     this.hud.clearRect(0, 0, w, h);
+    if (!this.hudVisible) return;
     drawHud(
       this.hud,
       curr,
