@@ -42,14 +42,17 @@ body {
 }
 
 #menu {
+  --accent: #ff4d3d;
+  --accent-2: #ffd23f;
+  --panel: rgba(13, 17, 23, 0.84);
+  --line: rgba(255, 255, 255, 0.09);
   position: fixed;
   inset: 0;
   z-index: 10;
-  display: grid;
-  place-items: center;
-  padding: 16px;
-  background: radial-gradient(circle at 50% 30%, rgba(20, 40, 24, 0.55), rgba(6, 12, 8, 0.85));
-  backdrop-filter: blur(3px);
+  overflow: auto;
+  padding: 20px;
+  /* Darker at the sides, so the race behind shows through in the middle. */
+  background: linear-gradient(180deg, rgba(6, 9, 12, 0.55), rgba(6, 9, 12, 0.25) 35%, rgba(6, 9, 12, 0.7));
 }
 
 #menu[hidden] {
@@ -67,66 +70,189 @@ body {
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
-/* Menu and lobby: wide two-column card on big screens, one column on phones. */
-@media (min-width: 900px) {
-  .card.wide,
-  html.gg-touch .card.wide {
-    width: min(1040px, 100%);
-    padding: 32px 36px;
-  }
-
-  .cols {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 0 36px;
-    align-items: start;
-  }
-
-  .cols[hidden] {
-    display: none;
-  }
+/* Menu and online room: header, three panels, a footer with the big button. */
+.lobby {
+  width: min(1240px, 100%);
+  margin: 0 auto;
 }
 
-/* Phones: one column, with the lobby's status and Ready button at the very end. */
-@media (max-width: 899px) {
-  #lobby:not([hidden]) {
-    display: flex;
-    flex-direction: column;
-  }
-
-  #lobby .col {
-    display: contents;
-  }
-
-  #lobby #status,
-  #lobby #ready {
-    order: 1;
-  }
+.lobby-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  margin: 4px 4px 18px;
 }
 
-h1 {
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin: 0;
-  font-size: 34px;
-  letter-spacing: -0.02em;
+  font-size: 40px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
 }
 
-h1 span {
-  color: #e8443a;
+.logo-mark {
+  width: 64px;
+  height: 44px;
+  filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.35));
+}
+
+.wordmark {
+  font-weight: 900;
+  font-style: italic;
+  text-transform: uppercase;
+}
+
+.wordmark em {
+  margin-left: 0.18em;
+  color: var(--accent-2);
 }
 
 .tag {
-  margin: 6px 0 20px;
-  color: rgba(255, 255, 255, 0.65);
+  flex: 1;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.78);
   line-height: 1.45;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.head-links {
+  display: flex;
+  gap: 8px;
+}
+
+.head-links a {
+  padding: 8px 14px;
+  border-radius: 999px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.head-links a:hover {
+  border-color: var(--accent-2);
+}
+
+.lobby-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.lobby-grid[hidden] {
+  display: none;
+}
+
+.panel {
+  padding: 18px 18px 6px;
+  border-radius: 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+}
+
+.panel h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.panel h2::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: conic-gradient(#fff 0 25%, #111 0 50%, #fff 0 75%, #111 0) 0 0 / 7px 7px;
+}
+
+.who {
+  margin: 0 0 12px;
+  padding: 12px 12px 2px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border-left: 4px solid var(--car, var(--accent));
+}
+
+.who[hidden] {
+  display: none;
+}
+
+.lobby-foot {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.lobby-foot .controls {
+  flex: 1;
+  margin: 0;
+}
+
+.go {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 8px;
+  width: min(360px, 100%);
+}
+
+.go[hidden] {
+  display: none;
+}
+
+.go button.secondary {
+  margin: 0;
+}
+
+button.start,
+#ready {
+  padding: 18px;
+  border-radius: 14px;
+  font-size: 22px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #1a1206;
+  background: linear-gradient(180deg, #ffe066, #ffb321);
+  box-shadow: 0 5px 0 #b86f00, 0 14px 30px rgba(0, 0, 0, 0.4);
+  transition: transform 0.08s, box-shadow 0.08s;
+}
+
+button.start:active,
+#ready:active {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 #b86f00, 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+#ready.on {
+  color: #062010;
+  background: linear-gradient(180deg, #7ef09a, #34b856);
+  box-shadow: 0 5px 0 #1d7a35, 0 14px 30px rgba(0, 0, 0, 0.4);
 }
 
 fieldset {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   margin: 0 0 14px;
   padding: 0;
   border: 0;
+  min-width: 0;
 }
 
 fieldset[hidden] {
@@ -135,9 +261,9 @@ fieldset[hidden] {
 
 legend {
   margin-bottom: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.55);
 }
@@ -155,13 +281,13 @@ fieldset input {
 fieldset span {
   display: block;
   padding: 9px 0;
-  border-radius: 8px;
+  border-radius: 10px;
   text-align: center;
-  font-weight: 600;
+  font-weight: 700;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, border-color 0.15s;
 }
 
 fieldset span:hover {
@@ -169,19 +295,209 @@ fieldset span:hover {
 }
 
 fieldset input:checked + span {
-  background: #e8443a;
-  border-color: #e8443a;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
 fieldset input:focus-visible + span {
   outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+fieldset input:disabled + span {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Two-way switches: one pill with a sliding highlight. */
+fieldset.seg {
+  gap: 0;
+  padding: 3px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+fieldset.seg legend {
+  float: left;
+  width: 100%;
+  margin: -3px 0 9px -3px;
+}
+
+fieldset.seg span {
+  border: 0;
+  background: transparent;
+  border-radius: 9px;
+}
+
+fieldset.seg input:checked + span {
+  background: #f4f6f2;
+  color: #10141a;
+}
+
+/* Color picker: round swatches. */
+fieldset.colors,
+#colors {
+  gap: 8px;
+}
+
+.colors label,
+#colors label {
+  flex: 0 0 auto;
+}
+
+.colors span,
+#colors span {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--c);
+  border: 3px solid rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.2);
+}
+
+.colors span i,
+#colors span i {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.colors span:hover,
+#colors span:hover {
+  background: var(--c);
+  transform: scale(1.1);
+}
+
+.colors input:checked + span,
+#colors input:checked + span {
+  background: var(--c);
+  border-color: #fff;
+  transform: scale(1.12);
+}
+
+/* Car pickers: icon over the name. */
+fieldset.car-kinds {
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+fieldset.car-kinds label {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+fieldset.car-kinds span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 0 6px;
+  font-size: 12px;
+}
+
+.car-icon {
+  width: 28px;
+  height: 35px;
+  --car: var(--accent);
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.35));
+}
+
+.who .car-icon {
+  --car: inherit;
+}
+
+fieldset.car-kinds input:checked + span {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: var(--accent-2);
+  box-shadow: inset 0 0 0 1px var(--accent-2);
+}
+
+.who fieldset.car-kinds input:checked + span {
+  border-color: var(--car);
+  box-shadow: inset 0 0 0 1px var(--car);
+}
+
+.grid-kinds .car-icon {
+  --car: #c9ced6;
+}
+
+/* Track picker: cards with a mini map. */
+fieldset.tracks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 10px;
+}
+
+fieldset.tracks legend {
+  grid-column: 1 / -1;
+}
+
+fieldset.tracks[hidden] {
+  display: none;
+}
+
+fieldset.tracks span {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 6px 6px 8px;
+  text-align: left;
+  border-radius: 14px;
+  border-width: 2px;
+}
+
+fieldset.tracks .thumb {
+  display: block;
+  width: 100%;
+  height: 92px;
+  margin-bottom: 6px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+fieldset.tracks b {
+  padding: 0 4px;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+fieldset.tracks .map-size {
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+fieldset.tracks input:checked + span {
+  background: rgba(255, 210, 63, 0.14);
+  border-color: var(--accent-2);
+}
+
+fieldset.tracks input:checked + span .map-size {
+  color: var(--accent-2);
+}
+
+fieldset.tracks input[type='checkbox']:checked + span b::before {
+  content: '✓ ';
+  color: var(--accent-2);
+}
+
+fieldset.nums label {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .controls {
   margin: 18px 0 20px;
   padding: 12px 14px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: 14px;
+  background: var(--panel, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--line, transparent);
   font-size: 14px;
   line-height: 1.7;
 }
@@ -211,6 +527,12 @@ button:hover {
   filter: brightness(1.08);
 }
 
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+}
+
 button.on {
   background: linear-gradient(180deg, #4cc46a, #2f9a4b);
 }
@@ -221,6 +543,11 @@ a {
 
 fieldset.stack {
   display: block;
+  margin-bottom: 10px;
+}
+
+fieldset.stack legend {
+  color: var(--car, rgba(255, 255, 255, 0.55));
 }
 
 fieldset input.text {
@@ -229,11 +556,17 @@ fieldset input.text {
   pointer-events: auto;
   width: 100%;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.3);
   color: inherit;
   font: inherit;
+  font-weight: 600;
+}
+
+fieldset input.text:focus {
+  outline: none;
+  border-color: var(--accent-2, #ffd23f);
 }
 
 fieldset.laps-picker {
@@ -241,18 +574,11 @@ fieldset.laps-picker {
   align-items: stretch;
 }
 
-#colors label,
-.colors label,
-#ai label {
-  flex: 1 1 18%;
-  min-width: 3.1rem;
-}
-
 .laps-input {
   flex: 1;
   min-width: 0;
   text-align: center;
-  font-weight: 700;
+  font-weight: 800;
   font-size: 18px;
   font-variant-numeric: tabular-nums;
 }
@@ -265,7 +591,7 @@ fieldset.laps-picker {
   line-height: 1;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 .laps-step:hover {
@@ -277,20 +603,6 @@ fieldset.laps-picker {
 .laps-input:disabled {
   opacity: 0.35;
   cursor: not-allowed;
-}
-
-fieldset.car-kinds {
-  flex-wrap: nowrap;
-  gap: 6px;
-}
-
-fieldset.car-kinds label {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
-fieldset.car-kinds span {
-  font-size: 13px;
 }
 
 fieldset.compact {
@@ -317,21 +629,21 @@ fieldset input.ai-slider {
   pointer-events: auto;
   flex: 1 1 100%;
   margin: 4px 0 0;
-  accent-color: #e8443a;
+  accent-color: var(--accent, #e8443a);
 }
 
 details.more {
   margin: 0 0 14px;
   padding: 10px 12px 2px;
-  border-radius: 10px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.04);
 }
 
 details.more summary {
   margin-bottom: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
@@ -341,25 +653,9 @@ details.more [hidden] {
   display: none;
 }
 
-fieldset input:disabled + span {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-#colors span,
-.colors span {
-  border-width: 2px;
-}
-
-#colors input:checked + span,
-.colors input:checked + span {
-  outline: 2px solid #fff;
-  outline-offset: 2px;
-}
-
 #players {
   list-style: none;
-  margin: 6px 0 14px;
+  margin: 0 0 14px;
   padding: 0;
 }
 
@@ -367,30 +663,61 @@ fieldset input:disabled + span {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 8px 12px 8px 8px;
   margin-bottom: 6px;
-  border-radius: 8px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.05);
+  border-left: 4px solid var(--car);
 }
 
-#players .swatch {
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
+#players li.me {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+#players .car-icon {
+  --car: inherit;
+  width: 20px;
+  height: 26px;
 }
 
 #players .grow {
   flex: 1;
+  min-width: 0;
+  font-weight: 700;
 }
 
 #players .badge {
   font-size: 12px;
+  font-weight: 600;
   color: rgba(255, 255, 255, 0.55);
 }
 
+#players .ready,
+#players .waiting {
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
 #players .ready {
-  color: #5fd37a;
-  font-weight: 700;
+  color: #062010;
+  background: #5fd37a;
+}
+
+#players .waiting {
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+#players li.empty {
+  justify-content: center;
+  border-left-color: transparent;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 13px;
 }
 
 .fastest-board {
@@ -418,7 +745,7 @@ fieldset input:disabled + span {
 .fastest-board .swatch {
   width: 12px;
   height: 12px;
-  border-radius: 4px;
+  border-radius: 50%;
 }
 
 .fastest-board .grow {
@@ -443,9 +770,121 @@ fieldset input:disabled + span {
   margin-left: 6px;
 }
 
-.online-link {
-  margin: 14px 0 0;
-  text-align: center;
+.room-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  font-weight: 700;
+}
+
+.room-chip .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ffb321;
+}
+
+.room-chip.live .dot {
+  background: #5fd37a;
+}
+
+/* Narrower screens: Track on its own row, then one column on phones. */
+@media (max-width: 1100px) {
+  .lobby-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .panel-track {
+    grid-column: 1 / -1;
+    order: -1;
+  }
+
+  fieldset.tracks {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  #menu {
+    padding: 12px;
+  }
+
+  .lobby-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .brand {
+    font-size: 30px;
+  }
+
+  .logo-mark {
+    width: 48px;
+    height: 33px;
+  }
+
+  .tag {
+    flex-basis: 100%;
+    order: 3;
+    font-size: 14px;
+  }
+
+  .lobby-foot {
+    flex-direction: column-reverse;
+  }
+
+  .go {
+    width: 100%;
+  }
+}
+
+/* Phones held sideways: little height, so a tighter header and shorter cards. */
+@media (max-height: 500px) {
+  .lobby-head {
+    margin-bottom: 10px;
+  }
+
+  .tag {
+    display: none;
+  }
+
+  fieldset.tracks .thumb {
+    height: 64px;
+  }
+
+  /* Start stays in reach while scrolling the menu. */
+  .lobby-foot {
+    position: sticky;
+    bottom: -12px;
+    z-index: 2;
+    flex-direction: row;
+    margin: 10px -12px -12px;
+    padding: 18px 12px 12px;
+    background: linear-gradient(180deg, transparent, rgba(6, 9, 12, 0.92) 40%);
+  }
+
+  .lobby-foot .controls,
+  .lobby-foot:has(.go[hidden]) {
+    display: none;
+  }
+
+  .go {
+    flex-direction: row;
+    width: 100%;
+  }
+
+  .go > * {
+    flex: 1;
+  }
+
+  button.start,
+  #ready {
+    padding: 12px;
+    font-size: 18px;
+  }
 }
 
 #mobile-controls {
@@ -936,4 +1375,37 @@ button.secondary {
   font-size: 11px;
   font-weight: 500;
   opacity: 0.6;
+}
+
+/* Touch: keep the big tap targets, but swatches and track cards keep their shape. */
+html.gg-touch .colors span,
+html.gg-touch #colors span {
+  width: 40px;
+  height: 40px;
+  min-height: 0;
+  padding: 0;
+}
+
+html.gg-touch fieldset.tracks span,
+html.gg-touch fieldset.car-kinds span {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  min-height: 0;
+  padding: 6px 6px 8px;
+}
+
+html.gg-touch fieldset.car-kinds span {
+  align-items: center;
+}
+
+/* Online room: the join form is one narrow panel. */
+.panel.join {
+  width: min(520px, 100%);
+  margin: 0 auto;
+  padding-bottom: 18px;
+}
+
+.panel.join button.start {
+  margin-top: 4px;
 }

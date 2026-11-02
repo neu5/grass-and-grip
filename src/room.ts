@@ -1,6 +1,7 @@
 import './style.css';
 import { fillFastestList } from './client/fastestBoard';
-import { trackLabelHtml } from './client/trackLabel';
+import { carIconSvg, decorateCarPicks, mountLogos, trackCardHtml } from './client/menuArt';
+import { startAttract } from './client/attract';
 import { loadFastestLaps, persistFastestLaps } from './client/fastestStore';
 import { BINDINGS_SOLO, Keyboard, mergeInputs, NO_PLAYER_INPUT } from './client/input';
 import { loadCustomTracks } from './client/customTracks';
@@ -72,23 +73,43 @@ function radios(container: HTMLElement, name: string, values: readonly (string |
     container.append(l);
   }
 }
-radios($('#colors'), 'color', CAR_COLORS, (c) => COLOR_NAMES[c], (c) => `background:${c}33;border-color:${c}`);
+radios($('#colors'), 'color', CAR_COLORS, (c) => `<i>${COLOR_NAMES[c]}</i>`, (c) => `--c:${c}`);
 radios($('#cars'), 'car', CAR_KINDS, (k) => CAR_KIND_SHORT[k as keyof typeof CAR_KIND_SHORT]);
 radios($('#ai'), 'ai', Array.from({ length: MAX_PLAYERS }, (_, i) => i), (v) => v);
 radios($('#carmode'), 'carmode', CAR_MODES, (v) => (v === 'mixed' ? CAR_MODE_NAMES.mixed : CAR_KIND_SHORT[v as keyof typeof CAR_KIND_SHORT]) ?? v);
-radios($('#track'), 'track', TRACK_IDS, (v) => trackLabelHtml(TRACKS[v]));
+radios($('#track'), 'track', TRACK_IDS, (v) => trackCardHtml(TRACKS[v]));
 // The host's own editor tracks; picking one sends the whole track to the room.
 const myTracks = new Map<string, TrackDef>(loadCustomTracks().map((d) => [d.id, d]));
-radios($('#track'), 'track', [...myTracks.keys()], (id) => trackLabelHtml(myTracks.get(id)!));
+radios($('#track'), 'track', [...myTracks.keys()], (id) => trackCardHtml(myTracks.get(id)!));
 /** Radio for a custom track the host picked that this player does not have. */
 function ensureTrackRadio(def: TrackDef) {
   if ($('#track').querySelector(`input[value="${CSS.escape(def.id)}"]`)) return;
-  radios($('#track'), 'track', [def.id], () => trackLabelHtml(def));
+  radios($('#track'), 'track', [def.id], () => trackCardHtml(def));
 }
 const lapsPicker = mountLapsPicker($('#laps'), (laps) => {
   if (laps !== lobby?.laps) send({ t: 'settings', laps });
 });
 joinForm.querySelector<HTMLInputElement>('input[name=car][value=rally]')!.checked = true;
+mountLogos();
+decorateCarPicks(document);
+/** Car icons in the join form take the picked color. */
+function tintJoinForm() {
+  const color = joinForm.querySelector<HTMLInputElement>('input[name=color]:checked')?.value;
+  if (color) joinForm.style.setProperty('--car', color);
+}
+joinForm.addEventListener('change', tintJoinForm);
+$('#copy-link').addEventListener('click', async () => {
+  const btn = $<HTMLButtonElement>('#copy-link');
+  try {
+    await navigator.clipboard.writeText(location.href);
+    btn.textContent = 'Link copied!';
+  } catch {
+    btn.textContent = location.href;
+  }
+  setTimeout(() => (btn.textContent = 'Copy invite link'), 2000);
+});
+/** Stops the AI race shown behind the lobby, if it is running. */
+let stopAttract: (() => void) | null = null;
 const roomRules = mountRulesFields($('#room-rules'), 'rule', (rules) => send({ t: 'settings', rules }), $('#room-ai-level'));
 
 function send(msg: ClientMessage) {
@@ -113,9 +134,13 @@ function resetRaceNet() {
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   socket = new WebSocket(`${proto}://${location.host}/ws?room=${encodeURIComponent(roomId)}`);
-  socket.onopen = () => ($('#conn').textContent = 'Connected');
+  socket.onopen = () => {
+    $('#conn').textContent = 'Connected';
+    $('#conn-chip').classList.add('live');
+  };
   socket.onclose = () => {
     $('#conn').textContent = 'Disconnected — reconnecting…';
+    $('#conn-chip').classList.remove('live');
     lobby = null;
     resetRaceNet();
     renderLobby();
@@ -144,12 +169,18 @@ function renderLobby() {
   const inRace = !!lobby && lobby.phase !== 'lobby';
   menu.hidden = inRace;
   touch?.setVisible(inRace);
+  if (inRace && stopAttract) {
+    stopAttract();
+    stopAttract = null;
+  } else if (!inRace && !stopAttract) stopAttract = startAttract(renderer);
   if (!inRace) {
     resetRaceNet();
     sound.silence();
   }
   joinForm.hidden = !lobby || !!me;
   lobbyEl.hidden = !lobby || !me;
+  // Ready and the invite link only once you are in.
+  $('.go').hidden = lobbyEl.hidden;
   if (!lobby) return;
 
   const taken = lobby.players.map((p) => p.color);
@@ -162,6 +193,7 @@ function renderLobby() {
     const free = joinForm.querySelector<HTMLInputElement>('input[name=color]:not(:disabled)');
     if (free) free.checked = true;
   }
+  tintJoinForm();
   for (const input of joinForm.querySelectorAll<HTMLInputElement>('input[name=car]')) {
     input.disabled = oneMake !== null;
     if (oneMake && input.value === oneMake) input.checked = true;
@@ -170,13 +202,17 @@ function renderLobby() {
   if (!me) return;
 
   const shownKind = (car: CarKind) => CAR_KIND_NAMES[oneMake ?? car] ?? 'Rally';
-  $('#players').innerHTML = lobby.players
-    .map(
-      (p) => `<li><span class="swatch" style="background:${p.color}"></span><span class="grow">${escapeHtml(p.name)}${
-        p.id === myId ? ' <span class="badge">(you)</span>' : ''
-      }${p.host ? ' <span class="badge">host</span>' : ''} <span class="badge">${shownKind(p.car)}</span></span><span class="${p.ready ? 'ready' : 'badge'}">${p.ready ? 'READY' : 'not ready'}</span></li>`,
-    )
-    .join('');
+  const aiRow = lobby.aiCount
+    ? `<li class="empty">+ ${lobby.aiCount} AI driver${lobby.aiCount > 1 ? 's' : ''}</li>`
+    : '';
+  $('#players').innerHTML =
+    lobby.players
+      .map(
+        (p) => `<li class="${p.id === myId ? 'me' : ''}" style="--car:${p.color}">${carIconSvg(oneMake ?? p.car)}<span class="grow">${escapeHtml(p.name)}${
+          p.id === myId ? ' <span class="badge">you</span>' : ''
+        }${p.host ? ' <span class="badge">host</span>' : ''}<br><span class="badge">${shownKind(p.car)}</span></span><span class="${p.ready ? 'ready' : 'waiting'}">${p.ready ? 'READY' : 'WAITING'}</span></li>`,
+      )
+      .join('') + aiRow;
   const isHost = me.host;
   for (const input of lobbyEl.querySelectorAll<HTMLInputElement>('input[name=ai]')) {
     input.checked = Number(input.value) === lobby.aiCount;
@@ -198,7 +234,7 @@ function renderLobby() {
   $('#status').textContent = `${lobby.players.length} human${lobby.players.length > 1 ? 's' : ''} + ${lobby.aiCount} AI. ${
     waiting ? `Waiting for ${waiting} driver${waiting > 1 ? 's' : ''} to get ready.` : ''
   }${isHost ? '' : ' The host picks AI, laps, track, grid and options.'}`;
-  readyBtn.textContent = me.ready ? 'Ready! (click to cancel)' : 'Ready';
+  readyBtn.textContent = me.ready ? 'Ready! (tap to cancel)' : "I'm ready";
   readyBtn.classList.toggle('on', me.ready);
   fillFastestList($('#fastest-laps ol'), lobby.fastestLaps ?? []);
 }

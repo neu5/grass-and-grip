@@ -1,8 +1,8 @@
 /**
  * What every car did in races saved from the game (pause or race over → Download laps).
  *
- *   npx tsx scripts/race-report.ts grass-and-grip-laps.json        every saved race
- *   npx tsx scripts/race-report.ts grass-and-grip-laps.json 2      just the third one
+ *   npx tsx scripts/race-report.ts tiny-laps-laps.json        every saved race
+ *   npx tsx scripts/race-report.ts tiny-laps-laps.json 2      just the third one
  *
  * Plays each race back tick by tick and, per car: place, best lap, pit stops,
  * the most tyre wear it raced on, time on nearly bald tyres, and the longest

@@ -856,7 +856,7 @@ $<HTMLInputElement>('#import').addEventListener('change', async (e) => {
     dirty = true;
     $('#status').textContent = `Imported "${parsed.name}". Save to keep it.`;
   } catch {
-    $('#status').textContent = 'That file is not a Grass & Grip track.';
+    $('#status').textContent = 'That file is not a Tiny Laps track.';
   }
 });
 

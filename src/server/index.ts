@@ -206,5 +206,5 @@ function warmTracks(ids: readonly string[]) {
 server.listen(PORT, () => {
   warmTracks(TRACK_IDS);
   const lag = FAKE_LAG_MS ? `  fake lag ${FAKE_LAG_MS}ms ±${FAKE_JITTER_MS}ms` : '';
-  console.log(`Grass & Grip ${PROD ? '' : 'dev '}server on http://localhost:${PORT}  (online lobby: /room)${lag}`);
+  console.log(`Tiny Laps ${PROD ? '' : 'dev '}server on http://localhost:${PORT}  (online lobby: /room)${lag}`);
 });

@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect x=%223%22 y=%225%22 width=%2210%22 height=%226%22 rx=%222%22 fill=%22%233a8ee8%22/%3E%3C/svg%3E" />
-    <title>Grass &amp; Grip — online room</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect x=%222%22 y=%223.5%22 width=%2212%22 height=%229%22 rx=%224.5%22 fill=%22none%22 stroke=%22%232e3238%22 stroke-width=%223%22/%3E%3Crect x=%222%22 y=%223.5%22 width=%2212%22 height=%229%22 rx=%224.5%22 fill=%22none%22 stroke=%22%23ffd23f%22 stroke-width=%220.8%22 stroke-dasharray=%221.5 1.5%22/%3E%3Crect x=%2210%22 y=%2210.5%22 width=%224%22 height=%223%22 rx=%221%22 fill=%22%23e8443a%22/%3E%3C/svg%3E" />
+    <title>Tiny Laps — online room</title>
   </head>
   <body>
     <div id="stage">
@@ -12,65 +12,80 @@
       <canvas id="hud"></canvas>
     </div>
     <div id="menu">
-      <div class="card wide">
-        <h1>Grass <span>&amp;</span> Grip</h1>
-        <p class="tag">Online room <b id="room-id"></b> · up to 8 cars. <span id="conn" class="muted">Connecting…</span></p>
+      <div class="lobby">
+        <header class="lobby-head">
+          <h1 class="brand" data-logo>Tiny Laps</h1>
+          <p class="tag">
+            <span id="conn-chip" class="room-chip"><span class="dot"></span>Room <b id="room-id"></b> · <span id="conn">Connecting…</span></span>
+            &nbsp;Up to 8 cars. Share the link to invite friends.
+          </p>
+          <nav class="head-links">
+            <a href="/">Local play</a>
+            <a href="/editor">Track editor</a>
+          </nav>
+        </header>
 
-        <form id="join-form" hidden>
+        <form id="join-form" class="panel join" hidden>
+          <h2>Join the race</h2>
           <fieldset class="stack">
             <legend>Your name</legend>
             <input id="name" class="text" autofocus maxlength="16" placeholder="Driver name" autocomplete="nickname" />
           </fieldset>
-          <fieldset id="colors">
-            <legend>Car color</legend>
-          </fieldset>
-          <fieldset id="cars" class="car-kinds">
-            <legend>Car</legend>
-          </fieldset>
-          <button type="submit">Join room</button>
+          <fieldset id="colors" aria-label="Car color"></fieldset>
+          <fieldset id="cars" class="car-kinds" aria-label="Car"></fieldset>
+          <button type="submit" class="start">Join room</button>
         </form>
 
-        <div id="lobby" class="cols" hidden>
-          <div class="col">
-          <legend>Drivers</legend>
-          <ul id="players"></ul>
-          <div id="fastest-laps" class="fastest-board">
-            <legend>Fastest laps ever</legend>
-            <ol></ol>
-          </div>
-          <p id="status" class="muted"></p>
-          <button id="ready" type="button">Ready</button>
-          </div>
-          <div class="col">
-          <fieldset id="ai">
-            <legend>AI opponents</legend>
-          </fieldset>
-          <div id="room-ai-level"></div>
-          <fieldset id="carmode" class="car-kinds">
-            <legend>Grid</legend>
-          </fieldset>
-          <fieldset id="laps" class="laps-picker">
-            <legend>Laps</legend>
-            <button type="button" class="laps-step" data-laps-delta="-1" aria-label="Fewer laps">−</button>
-            <input type="number" name="laps" class="text laps-input" min="1" max="99" step="1" value="3" inputmode="numeric" />
-            <button type="button" class="laps-step" data-laps-delta="1" aria-label="More laps">+</button>
-          </fieldset>
-          <fieldset id="track">
-            <legend>Track</legend>
-          </fieldset>
-          <details class="more">
-            <summary>Race options</summary>
-            <div id="room-rules"></div>
-          </details>
-          </div>
+        <div id="lobby" class="lobby-grid" hidden>
+          <section class="panel">
+            <h2>Drivers</h2>
+            <ul id="players"></ul>
+            <p id="status" class="muted"></p>
+            <div id="fastest-laps" class="fastest-board">
+              <legend>Fastest laps ever</legend>
+              <ol></ol>
+            </div>
+          </section>
+
+          <section class="panel panel-track">
+            <h2>Track</h2>
+            <fieldset id="track" class="tracks"></fieldset>
+          </section>
+
+          <section class="panel">
+            <h2>Race</h2>
+            <fieldset id="laps" class="laps-picker">
+              <legend>Laps</legend>
+              <button type="button" class="laps-step" data-laps-delta="-1" aria-label="Fewer laps">−</button>
+              <input type="number" name="laps" class="text laps-input" min="1" max="99" step="1" value="3" inputmode="numeric" />
+              <button type="button" class="laps-step" data-laps-delta="1" aria-label="More laps">+</button>
+            </fieldset>
+            <fieldset id="ai" class="nums">
+              <legend>AI opponents</legend>
+            </fieldset>
+            <div id="room-ai-level"></div>
+            <fieldset id="carmode" class="car-kinds grid-kinds">
+              <legend>Grid</legend>
+            </fieldset>
+            <details class="more">
+              <summary>Race options</summary>
+              <div id="room-rules"></div>
+            </details>
+          </section>
         </div>
 
         <p id="error" class="error" hidden></p>
-        <div class="controls">
-          <div data-kb-hint><b>Drive</b> Arrows or WASD &nbsp;·&nbsp; <b>Handbrake</b> Space / Shift &nbsp;·&nbsp; <b>C</b> camera &nbsp;·&nbsp; <b>M</b> sound &nbsp;·&nbsp; <b>F3</b> net debug</div>
-          <div data-touch-hint hidden><b>Drive</b> hold FWD / REV &nbsp;·&nbsp; <b>Brake</b> BRAKE &nbsp;·&nbsp; <b>Steer</b> right stick &nbsp;·&nbsp; <b>Camera</b> CAM</div>
-          <div class="muted">Share this page's URL to invite friends. <a href="/">Local play</a></div>
-        </div>
+        <footer class="lobby-foot">
+          <div class="controls">
+            <div data-kb-hint><b>Drive</b> Arrows or WASD &nbsp;·&nbsp; <b>Handbrake</b> Space / Shift</div>
+            <div class="muted" data-kb-hint>C camera · M sound · F frame meter · F3 net debug</div>
+            <div data-touch-hint hidden><b>Drive</b> hold FWD / REV &nbsp;·&nbsp; <b>Brake</b> BRAKE &nbsp;·&nbsp; <b>Steer</b> right stick &nbsp;·&nbsp; <b>Camera</b> CAM</div>
+          </div>
+          <div class="go" hidden>
+            <button type="button" id="copy-link" class="secondary">Copy invite link</button>
+            <button id="ready" type="button">Ready</button>
+          </div>
+        </footer>
       </div>
     </div>
     <script type="module" src="/src/room.ts"></script>
