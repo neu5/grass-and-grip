@@ -30,6 +30,11 @@ export const AI_LEVEL = {
   /** Extra pace while braking late. */
   mistakePace: 0.1,
   mistakeTicks: 40,
+  /**
+   * Share of the planned speed given up per unit of tyre wear: like a human
+   * feeling for grip on worn tyres, rather than driving the new limit exactly.
+   */
+  wornCaution: 0.2,
   /** Gap kept to a car when passing, at level 0 and 1. */
   passGapMin: 8,
   passGapMax: 18,
@@ -45,8 +50,8 @@ export function aiSkill(level: number, carIndex: number): number {
 export const AI_PIT = {
   /** Pit if fuel would be at or below this after another lap. */
   fuelLow: 0.1,
-  /** Pit if tyre wear would reach this after another lap: later costs more in slides than the stop. */
-  tyreWorn: 0.8,
+  /** Pit if tyre wear would reach this after another lap: later costs more than the stop. Stops land at ~35–45% left. */
+  tyreWorn: 0.7,
   /** Pit if damage is at or above this (very broken). */
   damageHigh: 0.75,
   /** On the last lap: only stop if the tyres or fuel would not reach the flag. */
@@ -457,7 +462,7 @@ function raceDrive(car: CarState, ai: AiMemory, track: Track, cars: CarState[], 
   const steer = clamp(wanted, -1, 1);
 
   // Target speed: own profile for these tyres, a few samples ahead.
-  let pace = AI_LEVEL.paceMin + (AI_LEVEL.paceMax - AI_LEVEL.paceMin) * level;
+  let pace = (AI_LEVEL.paceMin + (AI_LEVEL.paceMax - AI_LEVEL.paceMin) * level) * (1 - AI_LEVEL.wornCaution * (car.tyreWear ?? 0));
   const ahead = (idx + 3) % n;
   const planned = profile[ahead];
   if ((ai.mistakeTicks ?? 0) > 0) {
