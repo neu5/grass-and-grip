@@ -191,7 +191,6 @@ export const HARBOR: MapDesign = {
     { x: 38, y: 313, r: 14, kind: 'tree' },
     { x: 767, y: 165, r: 18, kind: 'tree' },
     { x: 561, y: 38, r: 16, kind: 'tree' },
-    { x: 1533, y: 62, r: 15, kind: 'tree' },
     { x: 37, y: 131, r: 18, kind: 'tree' },
     { x: 118, y: 56, r: 18, kind: 'tree' },
     { x: 1028, y: 514, r: 15, kind: 'tree' },

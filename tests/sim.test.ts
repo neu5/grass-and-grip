@@ -378,10 +378,10 @@ describe('pit stops', () => {
     car.tyreWear = tyreWear;
   }
 
-  it('has four marked pit boxes off the racing line but on asphalt', () => {
-    for (const id of ['meadow', 'harbor'] as const) {
+  it('has marked pit boxes off the racing line but on asphalt', () => {
+    for (const [id, stalls] of [['meadow', 4], ['harbor', 6]] as const) {
       const t = getTrack(id);
-      expect(t.def.pitBoxes).toHaveLength(4);
+      expect(t.def.pitBoxes).toHaveLength(stalls);
       const seen = new Set<number>();
       for (const b of t.def.pitBoxes) {
         const cx = b.x + b.w / 2;
@@ -392,7 +392,7 @@ describe('pit stops', () => {
         expect(idx).toBeGreaterThanOrEqual(0);
         seen.add(idx);
       }
-      expect(seen.size).toBe(4);
+      expect(seen.size).toBe(stalls);
     }
     expect(surfaceAt(track, 30, 30)).toBe('grass');
   });

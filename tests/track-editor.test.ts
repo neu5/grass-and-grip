@@ -132,7 +132,8 @@ describe('parsing untrusted tracks', () => {
     const def = parseTrackDef(raw)!;
     expect(def.halfWidth).toBe(MAX_HALF_WIDTH);
     expect(def.name.length).toBeLessThanOrEqual(24);
-    expect(def.pitBoxes).toEqual(pitComplex(480).pitBoxes);
+    // A medium map: six stalls.
+    expect(def.pitBoxes).toEqual(pitComplex(480, 6).pitBoxes);
     expect(def.bridges).toHaveLength(2);
     expect(def.obstacles[0]).toMatchObject({ x: 0, r: 30, kind: 'tyres' });
   });
@@ -160,7 +161,9 @@ describe('map sizes', () => {
       const r = resizeTrack(harbor, size);
       expect(r.width).toBe(MAP_SIZES[size].width);
       expect(r.controlPoints[0]).toEqual(harbor.controlPoints[0]);
-      expect(r.pitBoxes).toEqual(harbor.pitBoxes);
+      // Same first stall; how many follows the map size.
+      expect(r.pitBoxes[0]).toMatchObject({ x: harbor.pitBoxes[0].x, y: harbor.pitBoxes[0].y });
+      expect(r.pitBoxes).toHaveLength(size === 'small' ? 4 : 6);
       for (const p of r.controlPoints) {
         expect(p.x).toBeLessThanOrEqual(r.width);
         expect(p.y).toBeLessThanOrEqual(r.height);

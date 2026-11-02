@@ -204,7 +204,6 @@ export const ALPINE: MapDesign = {
     { x: 1260, y: 640, r: 20, kind: 'rock' },
     { x: 1432, y: 454, r: 16, kind: 'tree' },
     { x: 2161, y: 974, r: 17, kind: 'tree' },
-    { x: 1801, y: 1058, r: 15, kind: 'tree' },
     { x: 2112, y: 680, r: 17, kind: 'tree' },
     { x: 512, y: 636, r: 18, kind: 'tree' },
     { x: 1783, y: 458, r: 16, kind: 'tree' },

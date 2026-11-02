@@ -47,11 +47,42 @@ export interface Decor {
 export const TRACK_IDS = ['oldtown', 'canyon', 'meadow', 'harbor', 'jungle', 'harvest', 'alpine', 'grandprix'] as const;
 export type TrackId = (typeof TRACK_IDS)[number];
 
-/** Marked stalls on tracks that have a pit lane, unless a map asks for more. */
+/**
+ * Map sizes a custom track can use. Every size keeps the pit complex and
+ * start straight in the same top-left spot; the map grows right and down.
+ */
+export const MAP_SIZES = {
+  small: { width: 1200, height: 800 },
+  medium: { width: 1600, height: 1050 },
+  large: { width: 2200, height: 1450 },
+} as const;
+export type MapSize = keyof typeof MAP_SIZES;
+export const MAP_SIZE_NAMES: Record<MapSize, string> = { small: 'Small', medium: 'Medium', large: 'Large' };
+/** The built-in tracks' size. */
+export const MAP_WIDTH = MAP_SIZES.medium.width;
+export const MAP_HEIGHT = MAP_SIZES.medium.height;
+
+/** Size preset matching a track's map, or medium when it matches none. */
+export function mapSizeOf(def: { width: number; height: number }): MapSize {
+  for (const k of Object.keys(MAP_SIZES) as MapSize[]) {
+    if (MAP_SIZES[k].width === def.width && MAP_SIZES[k].height === def.height) return k;
+  }
+  return 'medium';
+}
+
+/** Marked stalls on a small map; medium and large maps get PIT_STALLS_BIG. */
 export const PIT_STALLS = 4;
-const PIT_BOX_W = 90;
-const PIT_BOX_H = 54;
-const PIT_BOX_GAP = 12;
+export const PIT_STALLS_BIG = 6;
+
+/** Stalls for a map of this size: a bigger field of cars and a longer lap. */
+export function pitStallsFor(def: { width: number; height: number }): number {
+  return mapSizeOf(def) === 'small' ? PIT_STALLS : PIT_STALLS_BIG;
+}
+/** Stall length along the straight (shorter with six, to fit short straights), depth across it, and the gap between. */
+const PIT_BOX_W = 104;
+const PIT_BOX_W_SHORT = 78;
+const PIT_BOX_H = 70;
+const PIT_BOX_GAP = 6;
 const PIT_LANE_PAD = 20;
 
 /** The shared start and pits of custom tracks: an east-going straight at the top. */
@@ -62,12 +93,12 @@ const HEADING_VEC: Record<Heading, Vec2> = { east: { x: 1, y: 0 }, west: { x: -1
 
 /** Where the stalls start after the line, how far they sit from the road centre, and the lane around them. */
 const PIT_FIRST_ALONG = 80;
-const PIT_BOX_NEAR = 124;
+const PIT_BOX_NEAR = 120;
 const PIT_LANE_NEAR = 18;
 const PIT_LANE_FAR = 198;
 
 /**
- * Pit lane and four stalls beside the start straight. `heading` is the way
+ * Pit lane and its stalls beside the start straight. `heading` is the way
  * cars drive over the line (an axis, so stalls stay plain rectangles) and
  * `side` which side of the road the pits are on.
  */
@@ -82,18 +113,20 @@ export function pitComplexAt(start: Vec2, heading: Heading, side: 'left' | 'righ
     const y = Math.min(...ys);
     return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
   };
+  // Six stalls are a little shorter, so they still fit on a short start straight.
+  const long = stalls > PIT_STALLS ? PIT_BOX_W_SHORT : PIT_BOX_W;
   const pitBoxes: Rect[] = [];
   for (let i = 0; i < stalls; i++) {
-    const a = PIT_FIRST_ALONG + i * (PIT_BOX_W + PIT_BOX_GAP);
-    pitBoxes.push(rect(a, a + PIT_BOX_W, PIT_BOX_NEAR, PIT_BOX_NEAR + PIT_BOX_H));
+    const a = PIT_FIRST_ALONG + i * (long + PIT_BOX_GAP);
+    pitBoxes.push(rect(a, a + long, PIT_BOX_NEAR, PIT_BOX_NEAR + PIT_BOX_H));
   }
-  const end = PIT_FIRST_ALONG + stalls * (PIT_BOX_W + PIT_BOX_GAP) - PIT_BOX_GAP;
+  const end = PIT_FIRST_ALONG + stalls * (long + PIT_BOX_GAP) - PIT_BOX_GAP;
   return { pitLane: rect(PIT_FIRST_ALONG - PIT_LANE_PAD, end + PIT_LANE_PAD, PIT_LANE_NEAR, PIT_LANE_FAR), pitBoxes };
 }
 
 /** The classic layout: stalls along the top, first one at `firstBoxX`. */
-export function pitComplex(firstBoxX: number): { pitLane: Rect; pitBoxes: Rect[] } {
-  return pitComplexAt({ x: firstBoxX - PIT_FIRST_ALONG, y: DEFAULT_START.y }, 'east', 'left');
+export function pitComplex(firstBoxX: number, stalls = PIT_STALLS): { pitLane: Rect; pitBoxes: Rect[] } {
+  return pitComplexAt({ x: firstBoxX - PIT_FIRST_ALONG, y: DEFAULT_START.y }, 'east', 'left', stalls);
 }
 
 /** The axis heading from the first control point toward the second. */
@@ -1336,7 +1369,7 @@ export const TRACKS: Record<string, TrackDef> = {
 /** A design with its pit complex laid out beside the start line. */
 function withPits(d: MapDesign): TrackDef {
   const { pits, ...def } = d;
-  return { ...def, pitSide: pits.side, ...pitComplexAt(def.controlPoints[0], pits.heading, pits.side, pits.stalls) };
+  return { ...def, pitSide: pits.side, ...pitComplexAt(def.controlPoints[0], pits.heading, pits.side, pits.stalls ?? pitStallsFor(def)) };
 }
 
 const cache = new Map<string, Track>();
