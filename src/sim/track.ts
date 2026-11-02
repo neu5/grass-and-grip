@@ -8,6 +8,8 @@ import { JUNGLE } from './maps/jungle';
 import { MEADOW } from './maps/meadow';
 import { OLD_TOWN } from './maps/oldTown';
 import { RED_CANYON } from './maps/redCanyon';
+import { FROST_HOLLOW } from './maps/frostHollow';
+import { RIVERSIDE_CITY } from './maps/riversideCity';
 
 export type Vec2 = { x: number; y: number };
 
@@ -44,7 +46,7 @@ export interface Decor {
   h?: number;
 }
 
-export const TRACK_IDS = ['oldtown', 'canyon', 'meadow', 'harbor', 'jungle', 'harvest', 'alpine', 'grandprix'] as const;
+export const TRACK_IDS = ['oldtown', 'canyon', 'meadow', 'frost', 'harbor', 'jungle', 'harvest', 'alpine', 'grandprix', 'riverside'] as const;
 export type TrackId = (typeof TRACK_IDS)[number];
 
 /**
@@ -154,6 +156,8 @@ export const TRACK_NAMES: Record<TrackId, string> = {
   jungle: 'Jungle Temple',
   harvest: 'Harvest Rally',
   grandprix: 'Grand Prix',
+  frost: 'Frost Hollow',
+  riverside: 'Riverside City',
 };
 
 export function isTrackId(id: string | undefined): id is TrackId {
@@ -1364,6 +1368,8 @@ export const TRACKS: Record<string, TrackDef> = {
   jungle: withPits(JUNGLE),
   harvest: withPits(HARVEST_RALLY),
   grandprix: withPits(GRAND_PRIX),
+  frost: withPits(FROST_HOLLOW),
+  riverside: withPits(RIVERSIDE_CITY),
 };
 
 /** A design with its pit complex laid out beside the start line. */
