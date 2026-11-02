@@ -243,6 +243,8 @@ export const TYRE = {
   wornGrip: 0.38,
   wornBrake: 0.5,
   wornSlideThreshold: 0.48,
+  /** Tyres last this many times longer than the rates above give. */
+  life: 1.2,
 };
 
 export function tyreFactor(wear: number, worn: number): number {
@@ -371,7 +373,7 @@ export function stepCarPhysics(
     if (surface === 'dirt') wearRate += TYRE.dirt * spd;
     if (surface === 'mud') wearRate += TYRE.sand * spd;
   }
-  car.tyreWear = clamp(wear + wearRate * rules.tyreWear * dt, 0, 1);
+  car.tyreWear = clamp(wear + (wearRate / TYRE.life) * rules.tyreWear * dt, 0, 1);
 
   let burn = 0;
   if (speed0 > 4 || throttle > 0) {
