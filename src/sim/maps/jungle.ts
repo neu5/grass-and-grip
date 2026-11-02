@@ -194,7 +194,7 @@ export const JUNGLE: MapDesign = {
     { x: 324, y: 889, r: 16, kind: 'tree' },
     { x: 107, y: 769, r: 16, kind: 'tree' },
     { x: 388, y: 156, r: 17, kind: 'tree' },
-    { x: 565, y: 107, r: 18, kind: 'tree' },
+    { x: 540, y: 107, r: 18, kind: 'tree' },
     { x: 1564, y: 540, r: 14, kind: 'tree' },
     { x: 211, y: 37, r: 16, kind: 'tree' },
     { x: 287, y: 191, r: 14, kind: 'tree' },

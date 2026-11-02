@@ -78,10 +78,11 @@ export const PIT_STALLS_BIG = 6;
 export function pitStallsFor(def: { width: number; height: number }): number {
   return mapSizeOf(def) === 'small' ? PIT_STALLS : PIT_STALLS_BIG;
 }
-const PIT_BOX_W = 90;
-const PIT_BOX_W_SHORT = 75;
-const PIT_BOX_H = 54;
-const PIT_BOX_GAP = 12;
+/** Stall length along the straight (shorter with six, to fit short straights), depth across it, and the gap between. */
+const PIT_BOX_W = 104;
+const PIT_BOX_W_SHORT = 78;
+const PIT_BOX_H = 70;
+const PIT_BOX_GAP = 6;
 const PIT_LANE_PAD = 20;
 
 /** The shared start and pits of custom tracks: an east-going straight at the top. */
@@ -92,7 +93,7 @@ const HEADING_VEC: Record<Heading, Vec2> = { east: { x: 1, y: 0 }, west: { x: -1
 
 /** Where the stalls start after the line, how far they sit from the road centre, and the lane around them. */
 const PIT_FIRST_ALONG = 80;
-const PIT_BOX_NEAR = 124;
+const PIT_BOX_NEAR = 120;
 const PIT_LANE_NEAR = 18;
 const PIT_LANE_FAR = 198;
 
