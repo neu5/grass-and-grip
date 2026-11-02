@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   aiNeedsPit,
   carHeightAt,
+  carSampleIndex,
   createRace,
   getTrack,
   pitBoxIndex,
@@ -171,6 +172,40 @@ describe('pits', () => {
     // Car-ticks on nearly bald tyres outside the pits, across all eight cars.
     expect(wornRacing).toBeLessThan(60 * 5);
   }, 120_000);
+
+  it.each(TRACK_IDS)('does not slow the AI down early on its way into the pits on %s', (id) => {
+    // Seconds over the last stretch of road before the line, racing past or heading in to pit.
+    const approach = (pit: boolean) => {
+      const t = getTrack(id);
+      const n = t.samples.length;
+      let s: GameState = createRace({
+        trackId: id,
+        totalLaps: 3,
+        countdownSeconds: 0,
+        cars: [{ name: 'A', color: '#fff', controller: 'ai', kind: 'rally' }],
+        rules: { damage: 0, tyreWear: 0, fuel: pit ? 1 : 0, collisions: true, aiLevel: 90 },
+      });
+      s.phase = 'racing';
+      let from = -1;
+      let lowered = false;
+      for (let i = 0; i < 60 * 60; i++) {
+        const idx = carSampleIndex(t, s.cars[0]);
+        if (pit && !lowered && s.cars[0].lapsCompleted === 1 && idx > n / 2) {
+          s.cars[0].fuel = 0.08;
+          lowered = true;
+        }
+        s = step(s, {});
+        if (s.cars[0].lapsCompleted !== 1) continue;
+        const at = carSampleIndex(t, s.cars[0]);
+        let left = 0;
+        for (let k = at; k < n; k++) left += t.segmentLengths[k];
+        if (from < 0 && at > n / 2 && left < 1500) from = i;
+        if (from >= 0 && (left < 60 || at < n / 4)) return (i - from) / 60;
+      }
+      return Infinity;
+    };
+    expect(approach(true)).toBeLessThan(approach(false) + 0.15);
+  }, 20_000);
 
   it.each(TRACK_IDS)('lets the AI find the pits and refuel on %s', (id) => {
     let s: GameState = createRace({

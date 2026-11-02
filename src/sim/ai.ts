@@ -141,6 +141,20 @@ function along(track: Track, p: { x: number; y: number }): number {
   return p.x * u.x + p.y * u.y;
 }
 
+/**
+ * Like `along`, but before the start line it counts the road still to drive
+ * to the line. A road that doubles back beside the pits is not "level with
+ * the stalls" until it really gets there.
+ */
+function roadAlong(track: Track, car: CarState): number {
+  const n = track.samples.length;
+  const idx = carSampleIndex(track, car);
+  if (idx < n / 2) return along(track, car);
+  let left = 0;
+  for (let i = idx; i < n; i++) left += track.segmentLengths[i];
+  return along(track, track.samples[0]) - left;
+}
+
 /** First and last `along` reached by a rectangle. */
 function alongSpan(track: Track, r: Rect): [number, number] {
   const a = along(track, { x: r.x, y: r.y });
@@ -161,7 +175,7 @@ export function inPitApproach(track: Track, car: CarState): boolean {
   const idx = carSampleIndex(track, car);
   const n = track.samples.length;
   if (idx >= n * 0.14 && idx <= n * 0.86) return false;
-  const s = along(track, car);
+  const s = roadAlong(track, car);
   return s > alongSpan(track, track.def.pitLane)[0] - PIT_APPROACH && s < boxesEnd(track) + 10;
 }
 
@@ -180,12 +194,12 @@ function stopSpeed(left: number): number {
 function pitEntrySpeed(track: Track, car: CarState, box: number): number {
   const c = boxCenter(track, box);
   if (!c) return Infinity;
-  return stopSpeed(along(track, c) - along(track, car) - 30);
+  return stopSpeed(along(track, c) - roadAlong(track, car) - 30);
 }
 
 /** 0 far out, 1 near the lane: how far over to the pit side to drive. */
 function pitSideShare(track: Track, car: CarState): number {
-  return clamp((along(track, car) - (alongSpan(track, track.def.pitLane)[0] - 250)) / 150, 0, 1);
+  return clamp((roadAlong(track, car) - (alongSpan(track, track.def.pitLane)[0] - 250)) / 150, 0, 1);
 }
 
 /** Racing-line offset that hugs the pit-lane side without leaving the asphalt. */
@@ -298,7 +312,7 @@ function pickFreeBox(track: Track, car: CarState, cars: CarState[]): number {
   let best = -1;
   let bestAlong = -Infinity;
   const reserved = car.ai?.pitBox ?? -1;
-  const here = along(track, car);
+  const here = roadAlong(track, car);
   for (let i = 0; i < boxes.length; i++) {
     if (boxBusy(track, cars, i, car.id)) continue;
     if (reserved === i) return i;
@@ -577,7 +591,7 @@ function pitSteer(car: CarState, ai: AiMemory, track: Track, cars: CarState[], t
   if (ai.pitPhase === 'race') {
     if (car.finishTick !== null || !aiNeedsPit(car, lapsLeft) || !inPitApproach(track, car)) return null;
     // Too late to turn in this lap: try again next time round.
-    if (!inPitLane(track, car.x, car.y) && along(track, car) > alongSpan(track, track.def.pitLane)[0] + 40) return null;
+    if (!inPitLane(track, car.x, car.y) && roadAlong(track, car) > alongSpan(track, track.def.pitLane)[0] + 40) return null;
     const box = pickFreeBox(track, car, cars);
     if (box < 0) {
       // Every stall busy: queue in the lane. A worn car loses more in another lap than in the wait.
@@ -591,7 +605,7 @@ function pitSteer(car: CarState, ai: AiMemory, track: Track, cars: CarState[], t
 
   if (ai.pitPhase === 'hold') {
     // Drove past the lane while waiting: race on, try next lap.
-    if (!inPitLane(track, car.x, car.y) && along(track, car) > alongSpan(track, track.def.pitLane)[0] + 40) {
+    if (!inPitLane(track, car.x, car.y) && roadAlong(track, car) > alongSpan(track, track.def.pitLane)[0] + 40) {
       ai.pitPhase = 'race';
       return null;
     }
@@ -604,12 +618,12 @@ function pitSteer(car: CarState, ai: AiMemory, track: Track, cars: CarState[], t
       const hold = queueSpot(track, car, cars);
       return driveTo(car, hold.x, hold.y, 0.32, true);
     } else {
-      return approach(stopSpeed(along(track, queueSpot(track, car, cars)) - along(track, car) - 10));
+      return approach(stopSpeed(along(track, queueSpot(track, car, cars)) - roadAlong(track, car) - 10));
     }
   }
 
   if (ai.pitPhase === 'enter') {
-    if (!inPitLane(track, car.x, car.y) && along(track, car) > boxesEnd(track) + 20) {
+    if (!inPitLane(track, car.x, car.y) && roadAlong(track, car) > boxesEnd(track) + 20) {
       ai.pitPhase = 'race';
       ai.pitBox = -1;
       return null;
@@ -621,7 +635,7 @@ function pitSteer(car: CarState, ai: AiMemory, track: Track, cars: CarState[], t
         ai.pitBox = -1;
         const hold = queueSpot(track, car, cars);
         if (inPitLane(track, car.x, car.y)) return driveTo(car, hold.x, hold.y, 0.32, true);
-        return approach(stopSpeed(along(track, hold) - along(track, car) - 10));
+        return approach(stopSpeed(along(track, hold) - roadAlong(track, car) - 10));
       }
       ai.pitBox = alt;
     }
