@@ -133,8 +133,7 @@ export const OLD_TOWN: MapDesign = {
     { a: { x: 239, y: 795 }, b: { x: 239, y: 624 } },
     { a: { x: 239, y: 624 }, b: { x: 244, y: 611 } },
     { a: { x: 244, y: 611 }, b: { x: 1063, y: 610 } },
-    { a: { x: 847, y: 430 }, b: { x: 955, y: 430 } },
-    { a: { x: 955, y: 430 }, b: { x: 1063, y: 430 } },
+    { a: { x: 970, y: 430 }, b: { x: 1063, y: 430 } },
     { a: { x: 1238, y: 430 }, b: { x: 1338, y: 431 } },
     { a: { x: 1338, y: 431 }, b: { x: 1358, y: 428 } },
     { a: { x: 1358, y: 428 }, b: { x: 1354, y: 429 } },
@@ -180,7 +179,7 @@ export const OLD_TOWN: MapDesign = {
   decor: [
     { kind: 'building', x: 180, y: 250, w: 150, d: 120, h: 40 },
     { kind: 'building', x: 170, y: 330, w: 100, d: 90, h: 30 },
-    { kind: 'building', x: 960, y: 290, w: 150, d: 150, h: 44 },
+    { kind: 'building', x: 990, y: 290, w: 120, d: 150, h: 44 },
     { kind: 'building', x: 650, y: 150, w: 250, d: 110, h: 52 },
     { kind: 'building', x: 330, y: 120, w: 200, d: 90, h: 36 },
     { kind: 'building', x: 330, y: 700, w: 170, d: 150, h: 34 },

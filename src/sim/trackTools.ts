@@ -7,6 +7,12 @@ import {
   nearestSampleIndex,
   pitComplex,
   pitComplexAt,
+  pitStallsFor,
+  mapSizeOf,
+  MAP_SIZES,
+  MAP_WIDTH,
+  MAP_HEIGHT,
+  type MapSize,
   startHeading,
   PATCH_SURFACES,
   DECOR_KINDS,
@@ -22,29 +28,6 @@ import {
   type TrackDef,
   type Vec2,
 } from './track';
-
-/**
- * Map sizes a custom track can use. Every size keeps the pit complex and
- * start straight in the same top-left spot; the map grows right and down.
- */
-export const MAP_SIZES = {
-  small: { width: 1200, height: 800 },
-  medium: { width: 1600, height: 1050 },
-  large: { width: 2200, height: 1450 },
-} as const;
-export type MapSize = keyof typeof MAP_SIZES;
-export const MAP_SIZE_NAMES: Record<MapSize, string> = { small: 'Small', medium: 'Medium', large: 'Large' };
-/** The built-in tracks' size. */
-export const MAP_WIDTH = MAP_SIZES.medium.width;
-export const MAP_HEIGHT = MAP_SIZES.medium.height;
-
-/** Size preset matching a track's map, or medium when it matches none. */
-export function mapSizeOf(def: { width: number; height: number }): MapSize {
-  for (const k of Object.keys(MAP_SIZES) as MapSize[]) {
-    if (MAP_SIZES[k].width === def.width && MAP_SIZES[k].height === def.height) return k;
-  }
-  return 'medium';
-}
 
 /** The start line stays here for every size; resizing scales away from it. */
 const ANCHOR = { x: 400, y: 210 };
@@ -143,7 +126,7 @@ export function finalizeTrack(def: TrackDef): TrackDef {
     checkpointCount: 8,
     halfWidth: Math.min(MAX_HALF_WIDTH, Math.max(MIN_HALF_WIDTH, def.halfWidth)),
     // Pits beside the start line, on the chosen side.
-    ...pitComplexAt(def.controlPoints[0], startHeading(def.controlPoints), def.pitSide ?? 'left'),
+    ...pitComplexAt(def.controlPoints[0], startHeading(def.controlPoints), def.pitSide ?? 'left', pitStallsFor(size)),
     bridges: [],
   };
   return { ...base, bridges: autoBridges(base) };
@@ -225,7 +208,8 @@ export function validateTrack(def: TrackDef, built?: Track): TrackProblem[] {
   const lane = def.pitLane;
   const pitsBeside = def.pitBoxes.every((b) => {
     const k = nearestSampleIndex(t, b.x + b.w / 2, b.y + b.h / 2);
-    return k < n * 0.3 && distanceToCenterline(t, b.x + b.w / 2, b.y + b.h / 2) < 200;
+    // A far stall may sit where the straight starts to bend away.
+    return k < n * 0.3 && distanceToCenterline(t, b.x + b.w / 2, b.y + b.h / 2) < 240;
   });
   if (offAxis > 0.35 || !pitsBeside || lane.x < 0 || lane.y < 0 || lane.x + lane.w > def.width || lane.y + lane.h > def.height) {
     out.push({ message: 'Start line must be on a straight right beside the pits.', at: start });

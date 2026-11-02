@@ -4,8 +4,8 @@ import type { CarState } from './types';
 
 /** GeneRally-style service: tyres + fuel + body together, only while stopped in a box. */
 export const PIT = {
-  /** Must be slower than this (px/s) to take service. */
-  stopSpeed: 24,
+  /** Must be slower than this (px/s) to take service: rolling to a stop is enough. */
+  stopSpeed: 45,
   /** Remaining fuel/body climb and tyre wear drops at this rate. ~2.4s empty→full. */
   refillPerSecond: 0.42,
 };

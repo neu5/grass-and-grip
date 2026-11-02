@@ -40,11 +40,11 @@ describe('8-car field', () => {
     expect(room.aiCount).toBe(0);
   });
 
-  it('has four pit stalls off the racing line on meadow and harbor', () => {
+  it('has four pit stalls on a small map and six on a medium one, off the racing line', () => {
     expect(PIT_STALLS).toBe(4);
-    for (const id of ['meadow', 'harbor'] as const) {
+    for (const [id, stalls] of [['meadow', 4], ['harbor', 6]] as const) {
       const track = getTrack(id);
-      expect(track.def.pitBoxes).toHaveLength(4);
+      expect(track.def.pitBoxes).toHaveLength(stalls);
       for (const b of track.def.pitBoxes) {
         const cx = b.x + b.w / 2;
         const cy = b.y + b.h / 2;
