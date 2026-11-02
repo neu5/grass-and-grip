@@ -341,11 +341,6 @@ details.more [hidden] {
   display: none;
 }
 
-.setup-who {
-  margin: 4px 0 6px;
-  font-weight: 700;
-}
-
 fieldset input:disabled + span {
   opacity: 0.3;
   cursor: not-allowed;

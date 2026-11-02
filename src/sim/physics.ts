@@ -1,6 +1,6 @@
 import { clamp, dcos, dsin, normalizeAngle } from './dmath';
 import type { Surface } from './track';
-import { DEFAULT_RULES, toCarKind, type CarKind, type CarSetup, type CarState, type PlayerInput, type RaceRules } from './types';
+import { DEFAULT_RULES, toCarKind, type CarKind, type CarState, type PlayerInput, type RaceRules } from './types';
 
 export interface SurfaceParams {
   grip: number;
@@ -195,49 +195,14 @@ export const CARS: Record<CarKind, CarStats> = {
 /** Default / rally stats. Prefer `carStats(car)` for per-car physics. */
 export const CAR = CARS.rally;
 
-/** Stock stats for a kind (size, looks). Driving uses `carStats`, which adds the setup. */
+/** Stats for a kind. */
 export function statsFor(kind: CarKind | undefined): CarStats {
   return CARS[toCarKind(kind)];
 }
 
-/** What one setup step changes. */
-export const SETUP_EFFECT = {
-  /** Long gearing: less pull, less drag, so a higher top speed. */
-  gearingAccel: 0.05,
-  gearingDrag: 0.15,
-  steerRate: 0.07,
-  /** More grip: more cornering, a little more drag and less pull. */
-  gripLateral: 0.05,
-  gripSlide: 0.05,
-  gripDrag: 0.04,
-  gripAccel: 0.025,
-};
-
-const tunedCache = new Map<string, CarStats>();
-
-/** Stats for one car: its kind plus garage setup. */
-export function carStats(car: { kind?: CarKind; setup?: CarSetup }): CarStats {
-  const kind = toCarKind(car.kind);
-  const g = car.setup?.gearing ?? 0;
-  const st = car.setup?.steering ?? 0;
-  const gr = car.setup?.grip ?? 0;
-  if (g === 0 && st === 0 && gr === 0) return CARS[kind];
-  const key = `${kind}:${g}:${st}:${gr}`;
-  let tuned = tunedCache.get(key);
-  if (!tuned) {
-    const base = CARS[kind];
-    const e = SETUP_EFFECT;
-    tuned = {
-      ...base,
-      engineAccel: base.engineAccel * (1 - e.gearingAccel * g) * (1 - e.gripAccel * gr),
-      airDrag: base.airDrag * (1 - e.gearingDrag * g) * (1 + e.gripDrag * gr),
-      steerRate: base.steerRate * (1 + e.steerRate * st),
-      lateralGrip: base.lateralGrip * (1 + e.gripLateral * gr),
-      slideThreshold: base.slideThreshold * (1 + e.gripSlide * gr),
-    };
-    tunedCache.set(key, tuned);
-  }
-  return tuned;
+/** Stats for one car. */
+export function carStats(car: { kind?: CarKind }): CarStats {
+  return CARS[toCarKind(car.kind)];
 }
 
 /** Surface grip / power / rolling for one car, after its off-road ability. */

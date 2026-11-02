@@ -54,32 +54,6 @@ export function toCarKind(v: unknown): CarKind {
   return parseCarKind(v) ?? 'rally';
 }
 
-/** Garage tweaks, each a step from -2 to 2. 0 is the stock car. */
-export interface CarSetup {
-  /** Short (+accel) .. long (+top speed). */
-  gearing: number;
-  /** Slow .. quick steering. */
-  steering: number;
-  /** Low drag .. high grip (more grip costs a little speed). */
-  grip: number;
-}
-
-export const SETUP_MIN = -2;
-export const SETUP_MAX = 2;
-export const DEFAULT_SETUP: CarSetup = { gearing: 0, steering: 0, grip: 0 };
-
-function setupStep(v: unknown): number {
-  const n = Math.round(Number(v));
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(SETUP_MIN, Math.min(SETUP_MAX, n));
-}
-
-/** Any value to a valid setup; missing or bad fields become 0. */
-export function normalizeSetup(v: unknown): CarSetup {
-  const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
-  return { gearing: setupStep(o.gearing), steering: setupStep(o.steering), grip: setupStep(o.grip) };
-}
-
 /** 0 = off, 1 = normal, 2 = double. */
 export type RuleRate = 0 | 1 | 2;
 
@@ -155,8 +129,6 @@ export interface CarState {
   name: string;
   color: string;
   kind: CarKind;
-  /** Garage setup. Missing means stock. */
-  setup?: CarSetup;
   controller: Controller;
   x: number;
   y: number;
@@ -229,7 +201,6 @@ export interface CarConfig {
   controller: Controller;
   /** Defaults to rally. */
   kind?: CarKind;
-  setup?: CarSetup;
 }
 
 export interface RaceConfig {

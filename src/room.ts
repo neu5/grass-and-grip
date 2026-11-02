@@ -5,7 +5,7 @@ import { loadFastestLaps, persistFastestLaps } from './client/fastestStore';
 import { BINDINGS_SOLO, Keyboard, mergeInputs, NO_PLAYER_INPUT } from './client/input';
 import { loadCustomTracks } from './client/customTracks';
 import { mountLapsPicker } from './client/lapsPicker';
-import { mountRulesFields, mountSetupFields } from './client/raceOptionsUi';
+import { mountRulesFields } from './client/raceOptionsUi';
 import { drawNetDebug } from './client/netDebug';
 import { SoundEngine } from './client/audio';
 import { Renderer3D } from './client/renderer3d';
@@ -89,7 +89,6 @@ const lapsPicker = mountLapsPicker($('#laps'), (laps) => {
   if (laps !== lobby?.laps) send({ t: 'settings', laps });
 });
 joinForm.querySelector<HTMLInputElement>('input[name=car][value=rally]')!.checked = true;
-const mySetup = mountSetupFields($('#my-setup'), 'setup', (setup) => send({ t: 'setup', setup }));
 const roomRules = mountRulesFields($('#room-rules'), 'rule', (rules) => send({ t: 'settings', rules }), $('#room-ai-level'));
 
 function send(msg: ClientMessage) {
@@ -189,7 +188,6 @@ function renderLobby() {
   }
   roomRules.set(lobby.rules);
   roomRules.setDisabled(!isHost);
-  mySetup.set(me.setup);
   lapsPicker.setValue(lobby.laps);
   lapsPicker.setDisabled(!isHost);
   for (const input of lobbyEl.querySelectorAll<HTMLInputElement>('input[name=track]')) {

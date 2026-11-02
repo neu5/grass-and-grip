@@ -4,7 +4,7 @@ import { coneOffCircle, conesFromTrack, hitCone, stepCone } from './props';
 import { applyPitService } from './pits';
 import { HEIGHT_SEPARATION, carHeightAt, flyoverAt, getTrack, obstacleGround, segmentsIntersect, surfaceAt, terrainHeightAt, updateDeck, type Track } from './track';
 import { copyFastestLaps, insertFastestLap } from './fastestLaps';
-import { DEFAULT_RULES, normalizeRules, normalizeSetup, toCarKind, type CarState, type GameState, type PlayerInput, type RaceConfig, type RaceRules, type TickInputs } from './types';
+import { DEFAULT_RULES, normalizeRules, toCarKind, type CarState, type GameState, type PlayerInput, type RaceConfig, type RaceRules, type TickInputs } from './types';
 
 export const TICK_RATE = 60;
 export const DT = 1 / TICK_RATE;
@@ -92,7 +92,6 @@ export function createRace(config: RaceConfig): GameState {
       name: c.name,
       color: c.color,
       kind: toCarKind(c.kind),
-      setup: normalizeSetup(c.setup),
       controller: c.controller,
       x: pose.x,
       y: pose.y,

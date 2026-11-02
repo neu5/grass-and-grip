@@ -8,11 +8,9 @@ import {
   createRace,
   DEFAULT_RULES,
   normalizeRules,
-  normalizeSetup,
   step,
   TRACK_IDS,
   type CarKind,
-  type CarSetup,
   type CarState,
   type GameState,
   type RaceRules,
@@ -20,11 +18,11 @@ import {
 import { CARS, collideCars, stepCarPhysics } from '../src/sim/physics';
 import type { Surface } from '../src/sim/track';
 
-function lone(kind: CarKind, setup?: CarSetup): CarState {
+function lone(kind: CarKind): CarState {
   const s = createRace({
     trackId: 'meadow',
     totalLaps: 1,
-    cars: [{ name: 'T', color: '#fff', controller: 'human', kind, setup }],
+    cars: [{ name: 'T', color: '#fff', controller: 'human', kind }],
     countdownSeconds: 0,
   });
   const car = s.cars[0];
@@ -35,8 +33,8 @@ function lone(kind: CarKind, setup?: CarSetup): CarState {
 }
 
 /** Full throttle straight ahead on one surface; speed after `ticks`. */
-function speedAfter(kind: CarKind, surface: Surface, ticks: number, setup?: CarSetup): number {
-  const car = lone(kind, setup);
+function speedAfter(kind: CarKind, surface: Surface, ticks: number): number {
+  const car = lone(kind);
   for (let i = 0; i < ticks; i++) stepCarPhysics(car, { throttle: 1, steer: 0, handbrake: false }, surface, 1 / 60);
   return Math.hypot(car.vx, car.vy);
 }
@@ -152,29 +150,6 @@ describe('balance', () => {
   });
 });
 
-describe('car setup', () => {
-  it('trades acceleration for top speed with gearing', () => {
-    const long = { gearing: 2, steering: 0, grip: 0 };
-    const short = { gearing: -2, steering: 0, grip: 0 };
-    expect(speedAfter('rally', 'asphalt', 1500, long)).toBeGreaterThan(speedAfter('rally', 'asphalt', 1500));
-    expect(speedAfter('rally', 'asphalt', 40, short)).toBeGreaterThan(speedAfter('rally', 'asphalt', 40, long));
-  });
-
-  it('turns quicker with quick steering and corners harder with more wing', () => {
-    expect(carStats({ kind: 'rally', setup: { gearing: 0, steering: 2, grip: 0 } }).steerRate).toBeGreaterThan(
-      carStats({ kind: 'rally' }).steerRate,
-    );
-    expect(carStats({ kind: 'f1', setup: { gearing: 0, steering: 0, grip: 2 } }).lateralGrip).toBeGreaterThan(
-      carStats({ kind: 'f1' }).lateralGrip,
-    );
-  });
-
-  it('clamps setup steps to -2..2 and treats junk as stock', () => {
-    expect(normalizeSetup({ gearing: 9, steering: -7, grip: 'x' })).toEqual({ gearing: 2, steering: -2, grip: 0 });
-    expect(normalizeSetup(undefined)).toEqual({ gearing: 0, steering: 0, grip: 0 });
-  });
-});
-
 describe('race rules', () => {
   function raceWith(rules: Partial<RaceRules>, cars = 1): GameState {
     const s = createRace({
@@ -248,36 +223,29 @@ describe('race rules', () => {
 });
 
 describe('network', () => {
-  it('round-trips car kind, setup and rules through a snapshot', () => {
+  it('round-trips car kind and rules through a snapshot', () => {
     const s = createRace({
       trackId: 'harbor',
       totalLaps: 2,
       cars: [
-        { name: 'A', color: CAR_COLORS[0], controller: 'human', kind: 'truck', setup: { gearing: 1, steering: -2, grip: 2 } },
+        { name: 'A', color: CAR_COLORS[0], controller: 'human', kind: 'truck' },
         { name: 'B', color: CAR_COLORS[1], controller: 'ai', kind: 'kart' },
       ],
       rules: { damage: 2, tyreWear: 0, fuel: 1, collisions: false, aiLevel: 35 },
     });
     const back = decodeSnapshot(JSON.parse(JSON.stringify(encodeSnapshot(s))));
     expect(back.cars.map((c) => c.kind)).toEqual(['truck', 'kart']);
-    expect(back.cars[0].setup).toEqual({ gearing: 1, steering: -2, grip: 2 });
-    expect(back.cars[1].setup).toEqual({ gearing: 0, steering: 0, grip: 0 });
     expect(back.rules).toEqual({ damage: 2, tyreWear: 0, fuel: 1, collisions: false, aiLevel: 35, carDetails: false });
   });
 
-  it('takes setup from players and rules from the host only, into the race', () => {
+  it('takes cars from players and rules from the host only, into the race', () => {
     const room = new Room('t');
-    expect(room.join('p0', 'Host', CAR_COLORS[0], 'buggy', { gearing: 2 })).toBeNull();
+    expect(room.join('p0', 'Host', CAR_COLORS[0], 'buggy')).toBeNull();
     expect(room.join('p1', 'Guest', CAR_COLORS[1], 'kart')).toBeNull();
-    expect(room.setSetup('p1', { steering: 1 })).toBeNull();
     expect(room.setSettings('p1', { rules: { damage: 0 } })).toBe('Only the host can change settings');
     expect(room.setSettings('p0', { rules: { damage: 0, collisions: false } })).toBeNull();
     const view = room.view();
     expect(view.rules).toMatchObject({ damage: 0, collisions: false, tyreWear: 1 });
-    expect(view.players.map((p) => p.setup)).toEqual([
-      { gearing: 2, steering: 0, grip: 0 },
-      { gearing: 0, steering: 1, grip: 0 },
-    ]);
     room.setSettings('p0', { aiCount: 1 });
     room.setReady('p0', true);
     room.setReady('p1', true);
@@ -285,6 +253,5 @@ describe('network', () => {
     const host = room.race!.cars[room.carOf.get('p0')!];
     const guest = room.race!.cars[room.carOf.get('p1')!];
     expect([host.kind, guest.kind]).toEqual(['buggy', 'kart']);
-    expect(host.setup).toEqual({ gearing: 2, steering: 0, grip: 0 });
   });
 });

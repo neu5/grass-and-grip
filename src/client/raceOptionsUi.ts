@@ -1,13 +1,4 @@
-import {
-  DEFAULT_RULES,
-  DEFAULT_SETUP,
-  normalizeRules,
-  normalizeSetup,
-  SETUP_MAX,
-  SETUP_MIN,
-  type CarSetup,
-  type RaceRules,
-} from '../sim';
+import { DEFAULT_RULES, normalizeRules, type RaceRules } from '../sim';
 
 interface Choice {
   value: string;
@@ -146,41 +137,5 @@ export function mountRulesFields(
   container.addEventListener('change', changed);
   // The slider sends once on release, not on every step.
   if (aiContainer !== container) aiContainer.addEventListener('change', changed);
-  return fields;
-}
-
-const STEPS: Choice[] = Array.from({ length: SETUP_MAX - SETUP_MIN + 1 }, (_, i) => {
-  const v = SETUP_MIN + i;
-  return { value: String(v), label: v > 0 ? `+${v}` : v < 0 ? `−${-v}` : '0' };
-});
-
-const SETUP_ROWS: [keyof CarSetup, string][] = [
-  ['gearing', 'Gearing <i>accel ← → top speed</i>'],
-  ['steering', 'Steering <i>slow ← → quick</i>'],
-  ['grip', 'Wings <i>low drag ← → grip</i>'],
-];
-
-export interface SetupFields {
-  get(): CarSetup;
-  set(setup: CarSetup): void;
-}
-
-export function mountSetupFields(container: HTMLElement, prefix: string, onChange?: (setup: CarSetup) => void): SetupFields {
-  for (const [key, legend] of SETUP_ROWS) group(container, `${prefix}-${key}`, legend, STEPS);
-  const fields: SetupFields = {
-    get() {
-      return normalizeSetup({
-        gearing: pick(container, `${prefix}-gearing`),
-        steering: pick(container, `${prefix}-steering`),
-        grip: pick(container, `${prefix}-grip`),
-      });
-    },
-    set(setup) {
-      const s = normalizeSetup(setup);
-      for (const [key] of SETUP_ROWS) check(container, `${prefix}-${key}`, String(s[key]));
-    },
-  };
-  fields.set(DEFAULT_SETUP);
-  container.addEventListener('change', () => onChange?.(fields.get()));
   return fields;
 }

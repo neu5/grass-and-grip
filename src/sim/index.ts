@@ -4,7 +4,7 @@ export * from './grid';
 export * from './fastestLaps';
 export * from './sim';
 export * from './track';
-export { CAR, CARS, SURFACES, SETUP_EFFECT, collideSegment, NO_INPUT, carStats, statsFor, TYRE, tyreFactor, FUEL, DAMAGE, applyCollisionDamage } from './physics';
+export { CAR, CARS, SURFACES, collideSegment, NO_INPUT, carStats, statsFor, TYRE, tyreFactor, FUEL, DAMAGE, applyCollisionDamage } from './physics';
 export { PIT, applyPitService, isStoppedInPit, needsPitService, carSpeed } from './pits';
 export { aiInput, AI_PIT, aiNeedsPit, aiPitReady, createAiMemory, inPitApproach } from './ai';
 export { racingLine, speedProfile, planMargins, PLAN_TUNE, missedGate, pastNextGate, MISSED_GATE_DISTANCE } from './racingLine';
