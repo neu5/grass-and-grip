@@ -2,6 +2,7 @@ import './style.css';
 import { fillFastestList } from './client/fastestBoard';
 import { carIconSvg, decorateCarPicks, mountLogos, trackCardHtml } from './client/menuArt';
 import { startAttract } from './client/attract';
+import { splashDone } from './client/splash';
 import { loadFastestLaps, persistFastestLaps } from './client/fastestStore';
 import { BINDINGS_SOLO, Keyboard, mergeInputs, NO_PLAYER_INPUT } from './client/input';
 import { loadCustomTracks } from './client/customTracks';
@@ -363,3 +364,4 @@ window.addEventListener('keydown', (e) => {
 
 connect();
 requestAnimationFrame(frame);
+splashDone();

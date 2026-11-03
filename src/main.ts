@@ -31,6 +31,7 @@ import { CAR_COLORS, CAR_KIND_SHORT, COLOR_NAMES, MAX_PLAYERS, clampAiCount, cla
 import { isTrackId, newTrackRecord, standings, ticksToTime, TRACK_IDS, TRACKS, type FastestLap, trackName as simTrackName, type GameState } from './sim';
 import { decorateCarPicks, mountLogos, trackCardHtml } from './client/menuArt';
 import { startAttract } from './client/attract';
+import { splashDone } from './client/splash';
 import { downloadTelemetry } from './client/lapRecorder';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
@@ -477,3 +478,5 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyR' && season) return;
   if (e.code === 'Escape') backToMenu();
 });
+
+splashDone();
