@@ -8,6 +8,7 @@ import {
   hashState,
   nearestSampleIndex,
   racingLine,
+  speedProfile,
   step,
   surfaceAt,
   TRACK_IDS,
@@ -58,6 +59,27 @@ describe('racing line', () => {
   it('uses the width of the road in corners', () => {
     const line = racingLine(getTrack('meadow'));
     expect(Math.max(...line.offset.map(Math.abs))).toBeGreaterThan(30);
+  });
+});
+
+describe('racing line shape', () => {
+  it('never jumps sideways along the road', () => {
+    for (const id of TRACK_IDS) {
+      const track = getTrack(id);
+      const { offset } = racingLine(track);
+      offset.forEach((o, i) => {
+        const next = offset[(i + 1) % offset.length];
+        expect(Math.abs(next - o), `${id} sample ${i}`).toBeLessThan(track.segmentLengths[i] * 2 + 4);
+      });
+    }
+  });
+
+  it('does not plan a crawl on the Harbor straight before the first bridge', () => {
+    const track = getTrack('harbor');
+    const plan = speedProfile(track, { kind: 'f1' }, 0.9, 0);
+    // The stretch where the road bends but the line runs straight (x about 229).
+    const n = track.samples.length;
+    for (let i = Math.floor(n * 0.55); i < n * 0.58; i++) expect(plan[i]).toBeGreaterThan(400);
   });
 });
 
