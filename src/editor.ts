@@ -1,6 +1,7 @@
 import './editor.css';
 import { deleteCustomTrack, loadCustomTracks, saveCustomTrack } from './client/customTracks';
 import { Renderer3D } from './client/renderer3d';
+import { splashDone } from './client/splash';
 import {
   buildTrack,
   createRace,
@@ -896,3 +897,4 @@ renderToolOptions();
 refreshList();
 changed(false);
 layout();
+splashDone();
