@@ -22,6 +22,8 @@ const EVEN_PROBE = 0.5;
 const INSIDE_SHARE = 0.9;
 /** Half the stretch the line's bend is measured over: about a car length, what a car actually steers through. */
 const BEND_REACH = 12;
+/** The speed plan also looks this many times further along the line. */
+const CURVE_REACH = 3;
 
 export interface RacingLine {
   /** Lateral offset from the centerline sample, along its normal. */
@@ -120,20 +122,42 @@ export function racingLine(track: Track): RacingLine {
         const slope = (probe - here) / EVEN_PROBE;
         if (Math.abs(slope) < 1e-9) continue;
         const moved = o + ((want - here) / slope) * EVEN_STEP;
-        offset[k] = moved < lo[k] ? lo[k] : moved > hi[k] ? hi[k] : moved;
+        // Stay by its neighbours: where the inside edge folds, a point barely
+        // moves with its offset, and it would run off across the road.
+        const room = BOUND_SLOPE * seg[k];
+        const mid = (offset[(k - 1 + n) % n] + offset[(k + 1) % n]) / 2;
+        const min = Math.max(lo[k], mid - room);
+        const max = Math.min(hi[k], mid + room);
+        offset[k] = moved < min ? min : moved > max ? max : moved;
       }
     }
   }
   const points = offset.map((_, i) => at(i));
   const reach = samplesFor(BEND_REACH);
-  // Never tighter than the road's own centre there: where the line pinches
-  // round the inside of a hairpin, a car rounds that pinch off anyway.
-  const curvature = points.map((_, i) => {
-    const line = circleCurvature(points[(i - reach + n) % n], points[i], points[(i + reach) % n]);
+  const reachDist = reach * spacing;
+  // Measured over distance on the line, not samples: on the inside of a bend
+  // the points bunch up, and a few close together make a straight look sharp.
+  const along = (i: number, dir: 1 | -1, dist = reachDist) => {
+    let j = i;
+    for (let d = 0, k = 0; d < dist && k < n; k++) {
+      const m = (j + dir + n) % n;
+      d += Math.hypot(points[m].x - points[j].x, points[m].y - points[j].y);
+      j = m;
+    }
+    return points[j];
+  };
+  const curvatureAt = (i: number) => {
+    const near = circleCurvature(along(i, -1), points[i], along(i, 1));
+    // A corner shows at both reaches; a wiggle shorter than a car only at the near one.
+    const far = reachDist * CURVE_REACH;
+    const line = Math.min(near, circleCurvature(along(i, -1, far), points[i], along(i, 1, far)));
+    // Never tighter than the road's own centre there: where the line pinches
+    // round the inside of a hairpin, a car rounds that pinch off anyway.
     const road = circleCurvature(s[(i - reach + n) % n], s[i], s[(i + reach) % n]);
     return Math.min(line, Math.max(road, 1e-4));
-  });
-  const bend = points.map((_, i) => signedCurvature(points[(i - reach + n) % n], points[i], points[(i + reach) % n]));
+  };
+  const curvature = points.map((_, i) => curvatureAt(i));
+  const bend = points.map((_, i) => signedCurvature(along(i, -1), points[i], along(i, 1)));
   const arc = [0];
   for (let i = 1; i < n; i++) arc.push(arc[i - 1] + track.segmentLengths[i - 1]);
   const length = arc[n - 1] + track.segmentLengths[n - 1];
