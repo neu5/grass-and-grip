@@ -83,6 +83,18 @@ describe('racing line shape', () => {
   });
 });
 
+describe('black ice', () => {
+  it('is crossed straight on Frost Hollow, turning on the grip either side', () => {
+    const track = getTrack('frost');
+    const line = racingLine(track);
+    const plan = speedProfile(track, { kind: 'f1' }, 1, 0);
+    const onIce = line.points.map((p, i) => (surfaceAt(track, p.x, p.y) === 'ice' ? plan[i] : -1)).filter((v) => v >= 0).sort((a, b) => a - b);
+    expect(onIce.length).toBeGreaterThan(10);
+    // Most of the patch at speed, not crawled across at the ice's corner limit.
+    expect(onIce[onIce.length >> 1]).toBeGreaterThan(450);
+  });
+});
+
 describe('corner speed', () => {
   it('takes the long Meadow hairpin wide instead of crawling round a kink at its end', () => {
     const track = getTrack('meadow');
