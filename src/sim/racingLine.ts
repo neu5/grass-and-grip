@@ -116,9 +116,10 @@ export function racingLine(track: Track): RacingLine {
     return g[n >> 1];
   })();
   let share = new Array<number>(n).fill(1);
+  let raw = share;
   const ease = samplesFor(GRIP_EASE);
   const measureShare = () => {
-    const raw = offset.map((_, i) => {
+    raw = offset.map((_, i) => {
       const p = at(i);
       return Math.min(1, SURFACES[surfaceAt(track, p.x, p.y)].grip / usualGrip) ** 0.5;
     });
@@ -154,6 +155,7 @@ export function racingLine(track: Track): RacingLine {
       }
     }
   }
+  measureShare();
   const points = offset.map((_, i) => at(i));
   const reach = samplesFor(BEND_REACH);
   const reachDist = reach * spacing;
@@ -181,11 +183,24 @@ export function racingLine(track: Track): RacingLine {
     }
     return smooth[j];
   };
+  // Unsmoothed, so a corner just behind does not blur into it.
+  const ahead = (i: number, dist: number) => {
+    let j = i;
+    for (let d = 0, k = 0; d < dist && k < n; k++) {
+      const m = (j + 1) % n;
+      d += Math.hypot(points[m].x - points[j].x, points[m].y - points[j].y);
+      j = m;
+    }
+    return points[j];
+  };
   const curvatureAt = (i: number) => {
     const near = circleCurvature(along(i, -1), smooth[i], along(i, 1));
     // A corner shows at both reaches; a wiggle shorter than a car only at the near one.
     const far = reachDist * CURVE_REACH;
-    const line = Math.min(near, circleCurvature(along(i, -1, far), smooth[i], along(i, 1, far)));
+    let line = Math.min(near, circleCurvature(along(i, -1, far), smooth[i], along(i, 1, far)));
+    // On low grip only the bend still ahead counts: a corner just behind, at
+    // the patch's edge, was turned on the grip before it.
+    if (raw[i] < 1) line = Math.min(line, circleCurvature(points[i], ahead(i, reachDist), ahead(i, 2 * reachDist)));
     // Never tighter than the road's own centre there: where the line pinches
     // round the inside of a hairpin, a car rounds that pinch off anyway.
     // The road's bend is taken at its sharpest nearby: between map points the
