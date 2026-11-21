@@ -15,8 +15,14 @@ const LOCK = { lift: 1.7, brake: 2.5 };
 /** Room kept behind a car being followed, and the share of the brakes counted on to keep it. */
 const FOLLOW_GAP = 10;
 const FOLLOW_BRAKE = 0.55;
-/** Share of the line's bend steered in directly, before the aim-point correction. */
-const FEED_FORWARD = 0.5;
+/**
+ * Share of the line's bend steered in directly, before the aim-point
+ * correction: on the line, and while off it to pass (where the line's bend is
+ * not the lane's, so steering it in full runs the car wide).
+ */
+const FEED_FORWARD = { line: 0.8, passing: 0.5 };
+/** Sideways distance off the line over which the passing share takes over. */
+const FEED_FORWARD_FADE = 10;
 
 /** How the 0..1 driving level shapes the AI. */
 export const AI_LEVEL = {
@@ -471,7 +477,9 @@ function raceDrive(car: CarState, ai: AiMemory, track: Track, cars: CarState[], 
   const fwd = Math.max(0, car.vx * dcos(car.angle) + car.vy * dsin(car.angle));
   const yaw = (C.steerRate * Math.min(1, fwd / C.steerFullSpeed)) / (1 + fwd / C.steerDampSpeed);
   const bend = line.bend[(idx + 2) % n];
-  const feed = yaw > 0.05 ? clamp((bend * fwd) / yaw, -1, 1) * FEED_FORWARD : 0;
+  const onLine = Math.max(0, 1 - Math.abs(ai.passOffset ?? 0) / FEED_FORWARD_FADE);
+  const share = FEED_FORWARD.passing + (FEED_FORWARD.line - FEED_FORWARD.passing) * onLine;
+  const feed = yaw > 0.05 ? clamp((bend * fwd) / yaw, -1, 1) * share : 0;
   const wanted = feed + err * 2.2 + slipAngle * 0.9;
   const steer = clamp(wanted, -1, 1);
 

@@ -1,4 +1,4 @@
-import { carStats, surfaceFor, tyreFactor, TYRE, type CarStats } from './physics';
+import { carStats, SURFACES, surfaceFor, tyreFactor, TYRE, type CarStats } from './physics';
 import { surfaceAt, type Track, type Vec2 } from './track';
 import type { CarKind, CarState } from './types';
 
@@ -22,6 +22,8 @@ const EVEN_PROBE = 0.5;
 const INSIDE_SHARE = 0.9;
 /** Half the stretch the line's bend is measured over: about a car length, what a car actually steers through. */
 const BEND_REACH = 12;
+/** How far either side of a low-grip patch the line already keeps straight (road distance). */
+const GRIP_EASE = 12;
 /** The speed plan also looks this many times further along the line. */
 const CURVE_REACH = 3;
 
@@ -107,12 +109,33 @@ export function racingLine(track: Track): RacingLine {
   // its curvature is the average of its neighbours'. Smoothing alone hugs the
   // inside of a long hairpin and leaves a very tight kink at its end; evening
   // out the curvature takes that kink wide instead.
+  // Where the line runs over less grip than the rest of the lap (black ice),
+  // it should bend less there and more on the grip either side.
+  const usualGrip = (() => {
+    const g = s.map((p) => SURFACES[surfaceAt(track, p.x, p.y)].grip).sort((a, b) => a - b);
+    return g[n >> 1];
+  })();
+  let share = new Array<number>(n).fill(1);
+  let raw = share;
+  const ease = samplesFor(GRIP_EASE);
+  const measureShare = () => {
+    raw = offset.map((_, i) => {
+      const p = at(i);
+      return Math.min(1, SURFACES[surfaceAt(track, p.x, p.y)].grip / usualGrip) ** 0.5;
+    });
+    share = raw.map((_, i) => {
+      let low = 1;
+      for (let d = -ease; d <= ease; d++) low = Math.min(low, raw[(i + d + n) % n]);
+      return low;
+    });
+  };
   for (const span of EVEN_SCALES.map(samplesFor)) {
+    measureShare();
     for (let it = 0; it < EVEN_ITERATIONS; it++) {
       for (let i = 0; i < n; i++) {
         const prev = at(i - span);
         const next = at(i + span);
-        const want = (signedCurvature(at(i - 2 * span), prev, at(i)) + signedCurvature(at(i), next, at(i + 2 * span))) / 2;
+        const want = ((signedCurvature(at(i - 2 * span), prev, at(i)) + signedCurvature(at(i), next, at(i + 2 * span))) / 2) * share[((i % n) + n) % n];
         const o = offset[i];
         const k = ((i % n) + n) % n;
         const here = signedCurvature(prev, at(i), next);
@@ -132,32 +155,65 @@ export function racingLine(track: Track): RacingLine {
       }
     }
   }
+  measureShare();
   const points = offset.map((_, i) => at(i));
   const reach = samplesFor(BEND_REACH);
   const reachDist = reach * spacing;
+  // Where the inside edge folds, neighbouring points can zigzag a few units:
+  // bends are measured on the line averaged over about a car length.
+  const half = reach;
+  const smooth = points.map((_, i) => {
+    let x = 0;
+    let y = 0;
+    for (let d = -half; d <= half; d++) {
+      const p = points[(i + d + n) % n];
+      x += p.x;
+      y += p.y;
+    }
+    return { x: x / (2 * half + 1), y: y / (2 * half + 1) };
+  });
   // Measured over distance on the line, not samples: on the inside of a bend
   // the points bunch up, and a few close together make a straight look sharp.
   const along = (i: number, dir: 1 | -1, dist = reachDist) => {
     let j = i;
     for (let d = 0, k = 0; d < dist && k < n; k++) {
       const m = (j + dir + n) % n;
+      d += Math.hypot(smooth[m].x - smooth[j].x, smooth[m].y - smooth[j].y);
+      j = m;
+    }
+    return smooth[j];
+  };
+  // Unsmoothed, so a corner just behind does not blur into it.
+  const ahead = (i: number, dist: number) => {
+    let j = i;
+    for (let d = 0, k = 0; d < dist && k < n; k++) {
+      const m = (j + 1) % n;
       d += Math.hypot(points[m].x - points[j].x, points[m].y - points[j].y);
       j = m;
     }
     return points[j];
   };
   const curvatureAt = (i: number) => {
-    const near = circleCurvature(along(i, -1), points[i], along(i, 1));
+    const near = circleCurvature(along(i, -1), smooth[i], along(i, 1));
     // A corner shows at both reaches; a wiggle shorter than a car only at the near one.
     const far = reachDist * CURVE_REACH;
-    const line = Math.min(near, circleCurvature(along(i, -1, far), points[i], along(i, 1, far)));
+    let line = Math.min(near, circleCurvature(along(i, -1, far), smooth[i], along(i, 1, far)));
+    // On low grip only the bend still ahead counts: a corner just behind, at
+    // the patch's edge, was turned on the grip before it.
+    if (raw[i] < 1) line = Math.min(line, circleCurvature(points[i], ahead(i, reachDist), ahead(i, 2 * reachDist)));
     // Never tighter than the road's own centre there: where the line pinches
     // round the inside of a hairpin, a car rounds that pinch off anyway.
-    const road = circleCurvature(s[(i - reach + n) % n], s[i], s[(i + reach) % n]);
+    // The road's bend is taken at its sharpest nearby: between map points the
+    // centre can run nearly straight for a few samples inside a steady bend.
+    let road = 0;
+    for (let d = -reach * CURVE_REACH; d <= reach * CURVE_REACH; d += reach) {
+      const j = (i + d + n) % n;
+      road = Math.max(road, circleCurvature(s[(j - reach + n) % n], s[j], s[(j + reach) % n]));
+    }
     return Math.min(line, Math.max(road, 1e-4));
   };
   const curvature = points.map((_, i) => curvatureAt(i));
-  const bend = points.map((_, i) => signedCurvature(along(i, -1), points[i], along(i, 1)));
+  const bend = points.map((_, i) => signedCurvature(along(i, -1), smooth[i], along(i, 1)));
   const arc = [0];
   for (let i = 1; i < n; i++) arc.push(arc[i - 1] + track.segmentLengths[i - 1]);
   const length = arc[n - 1] + track.segmentLengths[n - 1];
